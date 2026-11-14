@@ -42,7 +42,7 @@ def budget_column(c):
  if (c.get('financial_action')or{}).get('kind')=='recover_campaign':return 'Пополнить на '+str(c['financial_action']['amount_cny'])+' CNY.\nВключает снижение всех ставок до '+str(c['financial_action']['target_minor']/100)+' CNY и возобновление.'
  if (c.get('financial_action')or{}).get('kind')=='pause_campaign':return 'Не пополнять.\nПредлагается приостановить РК.'
  if c.get('owner_budget_refused'):return 'Пока не пополнять'
- if c.get('budget_audit_state')in('owner_decided_no_fund','owner_limited_test_ready'):return c['budget_short_note']
+ if c.get('budget_audit_state')in('owner_decided_no_fund','owner_limited_test_ready','reviewed_no_fund'):return c['budget_short_note']
  if c.get('budget_audit_state')in('paused_zero','paused_review','budget_pause_review','owner_paused','draft_review','starter_review','data_blocked'):
   return c['budget_short_note']
  if c.get('budget_audit_state')=='funding_blocked':return 'Пополнение не готово.\n'+(c.get('budget_economics_reason')or'Нужна проверка экономики РК.')
@@ -128,7 +128,7 @@ def _render_legacy(bundle):
    ref=a['recovery_evidence'].get('spend_cny',c.get('period',{}).get('spend'))
    c.update(budget_reference_need=ref,budget_cash_gap=max(0,ref-c['balance'])if ref is not None else None,budget_average_daily=ref/3 if ref is not None else None,budget_reference_label='Расход за 3 дня: ')
  im,d=canvas('Китай · бюджеты и суммы пополнения');y=240;actions=[]
- selected=[c for c in bundle['campaigns'] if c.get('budget_review_required')or c.get('financial_action')]
+ selected=[c for c in bundle['campaigns'] if c.get('budget_review_required')or c.get('financial_action')or c.get('budget_audit_state')=='reviewed_no_fund']
  for c in selected:
   need=c.get('budget_reference_need');gap=c.get('budget_cash_gap')
   title=wrap(d,'РК '+str(c['id'])+' · '+c['name'],730,29,True)
@@ -208,6 +208,8 @@ def render(bundle):
   parts=[f for f in files if f['family']==family]
   for index,f in enumerate(parts,1):f.update(kind=family+':'+str(index).zfill(3),page=index,total=len(parts))
  return files
+
+
 
 
 

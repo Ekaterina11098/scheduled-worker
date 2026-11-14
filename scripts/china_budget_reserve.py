@@ -161,6 +161,19 @@ def apply(bundle,minimum_cny=100):
     c.update(budget_audit_state='owner_paused',budget_review_required=False,budget_short_note='Приостановлена нами по подтверждённой команде. Без новой команды не пополнять и не возобновлять.')
    elif cause=='budget_exhaustion_observed':
     c.update(budget_audit_state='budget_pause_review',budget_short_note='Вероятная пауза из-за исчерпания бюджета. Проверить резерв и продолжение теста; ручная команда паузы не подтверждена.')
+   model=c.get('campaign_budget_economics')or{}
+   if c.get('status')==11 and cause!='owner_paused' and model.get('status')=='review':
+    note='Не пополнять и не возобновлять. '+model['reason']
+    c.update(budget_audit_state='reviewed_no_fund',budget_review_required=False,budget_decision_complete=True,budget_economics_status='review',budget_short_note=note,budget_recommendation=note)
+    try:
+     days=out['budget_days'];at=instant(out['budget_observed_at']);last=date.fromisoformat(days[-1])
+     if len(days)!=3 or days!=[str(last-timedelta(days=i))for i in(2,1,0)]or last>=at.astimezone(MSK).date():raise ValueError('Incomplete reserve window')
+     if not 0<=(at-instant(out['budget_balance_observed_at_iso'])).total_seconds()<=80*60:raise ValueError('Stale balance')
+     spend=number(c['budget_period']['spend']);balance=number(c['balance'])
+     c.update(budget_reference_need=float(spend),budget_cash_gap=float(max(Decimal(0),spend-balance)),budget_average_daily=float(spend/3),budget_reference_label='Исторический ориентир резерва: ')
+    except (KeyError,ValueError,TypeError,InvalidOperation):pass
+   elif c.get('status')==11 and cause!='owner_paused' and model.get('status')=='positive':
+    c.update(budget_short_note='Положительная предварительная экономика; подготовить согласуемое пополнение и возобновление. Автозапуск запрещён.',budget_recommendation='Требуется готовый план пополнения и возобновления.')
    # Do not turn an intentional pause or an exhausted starter grant into a restart.
    continue
   try:
@@ -183,10 +196,12 @@ def apply(bundle,minimum_cny=100):
    # Preserve economic readiness separately from the missing three-full-day reserve baseline.
    estate,ereason=economics_review(c,days,observed)
    c.update(budget_economics_status=estate,budget_economics_reason=ereason)
-   # Partial launch traffic is neither three full reference days nor proof of runway.
-   note='Новый тест: трёх полных дней расхода нет. Нужен отдельный расчёт резерва продолжения; текущий остаток не доказывает запас на 3 дня.'
-   c.update(budget_audit_state='starter_review',budget_review_required=True,budget_reference_need=None,budget_cash_gap=None,budget_average_daily=None,budget_short_note=note,budget_recommendation=note)
-   continue
+   # Keep the historical cash estimate separate from the post-launch verdict.
+   # This is not three full days of the new test and never grants funding permission.
+   c.update(budget_reference_label='Ориентир по расходу завершённых календарных дней: ',budget_partial_launch_reference=True,not_three_full_test_days=True)
+   model=c.get('campaign_budget_economics')or{}
+   if estate=='positive'and model.get('stress_after_ads_cny',0)<=0:
+    model.update(status='review',ready=False,reason='Не пополнять: стресс-модель продолжения теста не положительна.')
   if gap==0:
    c['budget_audit_state']='covered'
    c['budget_short_note']='Пополнение не требуется по расчётному запасу на 3 дня.';c['budget_recommendation']=c['budget_short_note'];continue
@@ -215,9 +230,13 @@ def apply(bundle,minimum_cny=100):
    if not out.get('view_only'):
     c['budget_action']=dict(id='topup:'+str(c['id']),kind='topup_campaign',campaign_id=c['id'],amount_cny=int(amount),balance_before=float(balance),target_balance=float(balance+amount),status_before=9,nm_ids=members,basis=POLICY,completed_days=days,budget_evidence=copy.deepcopy(c.get('campaign_budget_economics')))
   c['budget_short_note']=decision;c['budget_recommendation']=decision
+  if c['budget_audit_state']=='funding_blocked'and state=='review':
+   c['budget_audit_state']='reviewed_no_fund';c['budget_review_required']=False;c['budget_decision_complete']=True
  out['budget_audit']={str(c['id']):dict(status=c['budget_audit_state'],balance=c.get('balance'),review_required=c.get('budget_review_required',False),reason=c.get('budget_short_note'),pause_reason=c.get('budget_pause_reason'),amount_cny=(c.get('budget_action')or{}).get('amount_cny'))for c in out['campaigns']}
  out['budget_audit_coverage']=dict(inventory_count=len(out['campaigns']),audited_count=len(out['budget_audit']),complete=len(out['campaigns'])==len(out['budget_audit']))
  return out
+
+
 
 
 

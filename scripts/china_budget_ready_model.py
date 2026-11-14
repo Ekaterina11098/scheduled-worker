@@ -6,7 +6,7 @@ def finite(v):return type(v)in(int,float)and math.isfinite(v)
 def instant(v):return datetime.fromisoformat(v.replace('Z','+00:00').replace(' UTC','+00:00'))
 def assess_campaign(state,raw,economics,own,changes,days,observed,funding_reference_days=None):
  result=dict(status='unknown',observed_at=observed,preliminary=True,unknown_costs=True,source='whole_campaign_attribution_with_own_buyout_model',ready=False)
- if state.get('status')!=9 or not raw:return dict(result,reason='Нет полного результата действующей РК.')
+ if state.get('status')not in(9,11) or not raw:return dict(result,reason='Нет полного результата РК.')
  end=date.fromisoformat(days[-1]);members={n['nm_id']for n in state['nm_settings']}
  dates=[instant(x['at']).astimezone(ZoneInfo('Europe/Moscow')).date()for x in changes if x.get('cid')==state['id']and x['kind']in['bid','added','excluded','returned','relaunch']or x.get('nm')in members and x['kind']=='price']
  if state.get('timestamps',{}).get('started'):dates.append(instant(state['timestamps']['started']).astimezone(ZoneInfo('Europe/Moscow')).date())
@@ -20,7 +20,9 @@ def assess_campaign(state,raw,economics,own,changes,days,observed,funding_refere
   if len(reference)!=3:
    available={d['date'][:10]for d in raw.get('days',[])}
    chosen=[d for d in(funding_reference_days or[])if d in days and d in available]
-   if not chosen or chosen!=funding_reference_days:return dict(result,status='unknown',evaluation_status='waiting',reason='Нет трёх завершённых дней исторического расхода для расчёта продолжения теста; нужен отдельный ограниченный стартовый бюджет.')
+   if not chosen:
+    chosen=[d for d in days if d in available]
+   if not chosen or funding_reference_days and chosen!=funding_reference_days:return dict(result,status='unknown',evaluation_status='waiting',reason='Нет завершённого исторического расхода для расчёта продолжения теста.')
    reference=chosen
    result.update(owner_manual_launch_day_continuation=True,reference_window='completed_calendar_day_partial_launch_traffic',not_three_full_test_days=True)
   wanted=reference
@@ -36,29 +38,48 @@ def assess_campaign(state,raw,economics,own,changes,days,observed,funding_refere
     nm=row['nmId'];bynm[nm]=bynm.get(nm,0)+row.get('orders',0)
  if sum(bynm.values())!=totals['orders']:return dict(result,reason='Сумма атрибуций SKU не совпадает с итогом РК.')
  models=economics.get('rows',{});own={int(r['nm_id']):r for r in own.get('rows',[])}
- covered=0;contribution=0;stressed=0;max_log=0;small=[];unknown=[]
+ covered=0;contribution=0;stressed=0;small=[];unknown=[]
+ associated={nm:n for nm,n in bynm.items()if nm not in members and n>0}
+ max_log=max((e.get('logistics_cny',0)+e.get('handling_rub',0)/e['fx_rub_per_cny'] for e in models.values()if finite(e.get('logistics_cny'))and finite(e.get('fx_rub_per_cny'))and e['fx_rub_per_cny']>0),default=0)
+ # Associated purchases are not proved incremental benefit. Charge their downside,
+ # retain their attribution counts, and never let a missing foreign SKU hide a no-fund result.
+ associated_reserve=0;associated_unknown=[]
+ direct_orders=sum(n for nm,n in bynm.items()if nm in members)
  for nm,orders in bynm.items():
-  if orders<=0:continue
+  if orders<=0 or nm not in members:continue
   e=models.get(str(nm),{});o=own.get(nm,{})
-  valid=e.get('sample_size',0)>0 and not e.get('buyout_fallback')and all(finite(e.get(k))for k in ['expected_margin_before_ads_cny','buyout','own_cogs_rub','seller_price_cny','fx_rub_per_cny','logistics_cny','commission_pct'])
+  buyout_ok=(e.get('sample_size',0)>0 and not e.get('buyout_fallback'))or(e.get('sample_size',0)==0 and e.get('buyout_fallback')and (bool(e.get('planned_buyout_source'))or e.get('buyout')==.5))
+  valid=buyout_ok and all(finite(e.get(k))for k in ['expected_margin_before_ads_cny','buyout','own_cogs_rub','seller_price_cny','fx_rub_per_cny','logistics_cny','commission_pct'])
   if not valid:unknown.append(nm);continue
   try:
    if any(not 0<=(instant(observed)-instant(e[k])).total_seconds()<=24*3600 for k in['observed_at','price_observed_at','stock_observed_at','published_stock_observed_at']):raise ValueError('Stale')
   except (KeyError,ValueError,TypeError):unknown.append(nm);continue
   fx=e['fx_rub_per_cny'];delivery=max(e['logistics_cny'],(o.get('average_delivery_cost')or 0)/fx);handling=e.get('handling_rub',10)/fx
-  reverse=(o.get('backwardlogisticsum')or 0)/e['sample_size']/fx
+  reverse=(o.get('backwardlogisticsum')or 0)/e['sample_size']/fx if e['sample_size'] else 0
   margin=e['expected_margin_before_ads_cny']-(delivery-e['logistics_cny'])-reverse
   stress=margin-.2*e['buyout']*(e['seller_price_cny']*(1-(e['commission_pct']+e.get('tax_pct',5))/100)-e['own_cogs_rub']/fx)
   covered+=orders;contribution+=orders*margin;stressed+=orders*stress;max_log=max(max_log,delivery+handling)
   if e['sample_size']<10 or e.get('commission_policy_fallback'):small.append(nm)
- coverage=covered/totals['orders']if totals['orders']else 0
- result.update(attributed_orders_by_nm={str(nm):n for nm,n in bynm.items()if n>0},period_from=wanted[0],period_to=wanted[-1],days=wanted,metrics=totals,covered_attributed_orders=covered,attributed_orders=totals['orders'],coverage=coverage,modeled_contribution_cny=contribution,modeled_after_ads_cny=contribution-totals['spend'],stress_after_ads_cny=stressed-totals['spend']-(totals['orders']-covered)*2*max_log,unknown_nm_ids=unknown,small_sample_nm_ids=small,own_cohort_after_change_verified=False)
+ coverage=covered/direct_orders if direct_orders else 0
+ # Preserve known downside; only unmodeled associated orders need the explicit
+ # two-logistics stress reserve already used by the recovery review.
+ for nm,n in associated.items():
+  e=models.get(str(nm),{})
+  try:
+   fresh=0<=(instant(observed)-instant(e['observed_at'])).total_seconds()<=24*3600
+  except (KeyError,ValueError,TypeError):fresh=False
+  if fresh and finite(e.get('expected_margin_before_ads_cny')):associated_reserve+=max(0,-e['expected_margin_before_ads_cny'])*n
+  else:associated_unknown.append(nm);associated_reserve+=2*max_log*n
+ result.update(direct_attributed_orders=direct_orders,associated_attributed_orders=sum(associated.values()),associated_orders_by_nm={str(nm):n for nm,n in associated.items()},associated_downside_reserve_cny=associated_reserve,associated_orders_not_incremental_profit=True)
+ result.update(attributed_orders_by_nm={str(nm):n for nm,n in bynm.items()if nm in members and n>0},period_from=wanted[0],period_to=wanted[-1],days=wanted,metrics=totals,covered_attributed_orders=covered,attributed_orders=totals['orders'],coverage=coverage,modeled_contribution_cny=contribution,modeled_after_ads_cny=contribution-totals['spend']-associated_reserve,stress_after_ads_cny=stressed-totals['spend']-(direct_orders-covered)*2*max_log-associated_reserve,unknown_nm_ids=unknown,small_sample_nm_ids=small,own_cohort_after_change_verified=False)
+ if direct_orders==0 and totals['spend']>0:return dict(result,status='review',reason='Не пополнять и не возобновлять: в завершённом окне нет прямых заказов текущего состава; сопутствующие атрибуции не доказывают окупаемость. Это не окончательный финансовый результат.')
  # Own history is a provisional buyout prior, never a closed post-change financial cohort.
  if coverage>=.999999 and covered>0 and contribution<=totals['spend']:return dict(result,status='review',reason='Предварительная модель РК не поддерживает дополнительный расход; малая выборка не скрывает финансовый риск.')
- if coverage<.9 or covered<3:return dict(result,reason='Собственная модель покрывает недостаточно рекламных атрибуций.')
- if contribution<=totals['spend']:return dict(result,status='review',reason='Предварительная модель РК не поддерживает дополнительный расход; это не доказанный убыток.')
+ if coverage<.9:return dict(result,reason='Собственная модель покрывает недостаточно прямых рекламных атрибуций.')
+ if result['modeled_after_ads_cny']<=0:return dict(result,status='review',reason='Не пополнять и не возобновлять: предварительная модель с расходами и резервом сопутствующих атрибуций не поддерживает продолжение; это не доказанный убыток.')
+ if associated_unknown and max_log<=0:return dict(result,reason='Не подтверждён резерв расходов сопутствующих атрибуций.')
  if result.get('evaluation_status')=='waiting':
-  if stressed-totals['spend']-(totals['orders']-covered)*2*max_log<=0:return dict(result,status='review',reason='Нет положительной стресс-модели для ограниченного продолжения теста.')
+  if result['stress_after_ads_cny']<=0:return dict(result,status='review',reason='Нет положительной стресс-модели для ограниченного продолжения теста.')
   return dict(result,status='positive',ready=True,reason='Ограниченное продолжение согласованного теста: исторический расход завершённых дней и текущая предварительная экономика. Полного дня после изменения ещё нет; прибыль и причинный эффект не доказаны.')
  return dict(result,status='positive',ready=True,reason='Предварительная собственная модель РК положительна. Малая выборка, пересечения атрибуций и неизвестные расходы сохраняются; только ограниченное пополнение после команды.')
 def attach(bundle,source,changes):
@@ -115,4 +136,6 @@ def validate_funding(io,item,before):
   if not finite(q)and st['price']/100>old['cost']:raise ValueError('Changed COGS with unknown own buyout; refresh review')
   if finite(q)and finite(fx)and fx>0:delta+=evidence['attributed_orders_by_nm'].get(nm,0)*q*(st['price']/100-old['cost'])/fx
  if evidence['modeled_after_ads_cny']-delta<=0:raise ValueError('Current COGS no longer supports provisional funding model')
+
+
 
