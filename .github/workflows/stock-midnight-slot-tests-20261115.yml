@@ -1,0 +1,37 @@
+name: Stock overnight evening scope offline regression
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stock-midnight-slot-tests-20261115.yml']
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: f2b7e29f5fab7354bea115b5bcf638d7c8cbeb20
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests==2.32.5 python-dotenv==1.1.1 aiogram==3.22.0 simplejson==4.2.0 'psycopg[binary]==3.2.9'
+      - name: Offline date recovery and idempotency tests with business network denied
+        env:
+          PYTHON_DOTENV_DISABLED: '1'
+        run: |
+          python - <<'PY'
+          import socket,unittest,sys,os
+          def denied(*a,**k):raise AssertionError('Business network disabled in offline regression')
+          socket.socket.connect=denied
+          socket.socket.connect_ex=denied
+          socket.create_connection=denied
+          assert not any(os.getenv(k) for k in ('WB_TOKEN_1','MOYSKLAD_API_TOKEN','TELEGRAM_BOT_TOKEN','SUPABASE_SECRET_KEY'))
+          names=['test_stock_schedule','test_stock_regular_service','test_stock_automatic_recovery','test_stock_live_capacity','test_stock_unposted_orders','test_stock_shared_requests','test_stock_approved_warehouses']
+          result=unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromNames(names))
+          sys.exit(not result.wasSuccessful())
+          PY
