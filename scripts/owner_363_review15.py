@@ -54,7 +54,7 @@ def main():
    def catalog(self):return[(str(r['nm_id']),r['article'])for r in v['prices']['rows']]
   from china_analytic_dialog import Analyst,reading
   if 'own'not in v:
-   with reading():v['own']=Analyst(Work(),dict(request_text='Экономика РК41296363, только чтение'),[]).live('products',ids,'2026-10-16','2026-11-14')
+   with reading():v['own']=Analyst(Work(),dict(request_text='Экономика РК41296363, только чтение'),[]).live('products',[],'2026-10-16','2026-11-14')
    v['own'].update(period_from='2026-10-16',period_to='2026-11-14');checkpoint()
   from china_intraday_analysis import rate
   if 'fx'not in v:v['fx']=rate(Work(),date(2026,11,15));checkpoint()

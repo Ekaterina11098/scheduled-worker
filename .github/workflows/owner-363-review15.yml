@@ -51,3 +51,5 @@ jobs:
           CHINA_TELEGRAM_BOT_TOKEN: ''
           PYTHONPATH: scripts:source
         run: python scripts/owner_363_review15.py
+
+# Resume only unfinished read stages; preserve collected exact inputs.
