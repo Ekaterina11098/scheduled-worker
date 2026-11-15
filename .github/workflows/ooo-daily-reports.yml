@@ -40,6 +40,7 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then python -u scripts/ooo_daily_reports.py; fi
       - name: Collect review render and deliver due report once
+        if: github.event_name != 'push'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
