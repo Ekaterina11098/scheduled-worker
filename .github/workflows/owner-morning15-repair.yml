@@ -58,4 +58,4 @@ jobs:
 
 # Resume only unfinished read stages; preserve collected exact inputs.
 
-# Preserve inherited state retry contract for checkpoint transport.
+# Resume from completed dated source and verify same-category minima before publication.

@@ -13,6 +13,15 @@ def expand(bundle,source,minima):
  labels={int(r['nmID']):r['vendorCode']for r in source.get('catalogue',{}).get('rows',[])}
  states={c['id']:c for b in source['batches'].values()for c in b['campaigns']['adverts']}
  stats={c['advertId']:c for b in source['batches'].values()for c in b['stats']}
+ # Owner-approved: identical subject/payment/placement shares the verified category minimum.
+ for cp in states.values():
+  grouped={}
+  for n in cp['nm_settings']:
+   key=str(cp['id'])+':'+str(n['nm_id']);sid=n.get('subject',{}).get('id')
+   if key in minima:grouped.setdefault(sid,set()).add(minima[key])
+  for n in cp['nm_settings']:
+   values=grouped.get(n.get('subject',{}).get('id'),set())
+   if len(values)==1:minima.setdefault(str(cp['id'])+':'+str(n['nm_id']),next(iter(values)))
  models=source.get('economics',{}).get('rows',{})
  def dateof(x):return datetime.fromisoformat(x.replace('Z','+00:00')).astimezone(MSK).date().isoformat()
  for c in out['campaigns']:
