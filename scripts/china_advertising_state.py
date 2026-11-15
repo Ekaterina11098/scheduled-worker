@@ -1,5 +1,5 @@
 """Retry only idempotent report-state traffic; never Telegram or marketplace writes."""
-import time
+import time,json
 import requests
 from china_price_apply import IO
 
@@ -25,7 +25,13 @@ class AdvertisingIO(IO):
         safe=method in ('GET','PATCH') and path.startswith('telegram_api_cache?')
         for attempt in range(3):
             try:
-                return super().db(path,method,body,prefer)
+                if not path.startswith('telegram_api_cache?'):return super().db(path,method,body,prefer)
+                # Large report checkpoints need bounded read time and compact UTF-8.
+                headers={**self.headers,**({'Prefer':prefer}if prefer else{})}
+                data=json.dumps(body,ensure_ascii=False,separators=(',',':')).encode('utf-8')if body is not None else None
+                r=requests.request(method,self.url+'/rest/v1/'+path,headers=headers,data=data,timeout=(10,90))
+                if not r.ok:raise RuntimeError('State HTTP '+str(r.status_code))
+                return r.json()if r.content else[]
             except (requests.Timeout,requests.ConnectionError,RuntimeError) as error:
                 transient=isinstance(error,(requests.Timeout,requests.ConnectionError)) or str(error) in {
                     "State HTTP 429","State HTTP 500","State HTTP 502","State HTTP 503","State HTTP 504"}

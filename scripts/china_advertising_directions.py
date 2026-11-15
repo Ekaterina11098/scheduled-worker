@@ -87,6 +87,19 @@ def campaign_table(bundle):
    if text not in c['direction_recommendations']:c['direction_recommendations'].append(text)
  for c in out['campaigns']:
   if c.get('financial_action'):c['direction_recommendations']=[c['financial_recommendation']]
+ # A no-action outcome must still explain a high-DRR campaign in its own row.
+ for c in out['campaigns']:
+  if c['direction_recommendations']or c.get('status')!=9:continue
+  p=c.get('period')or{};last=c.get('last')or{}
+  high=any(v.get('amount',0)>0 and v.get('spend',0)/v['amount']>.05 for v in(p,last))
+  if not high:continue
+  holds=[r['article']+': '+r['decision']for r in c.get('focus',[])if not r.get('action')and r.get('decision')and not r.get('growth')]
+  if holds:c['direction_recommendations']=holds[:2]
+  else:
+   e=c.get('campaign_budget_economics')or{}
+   if e.get('status')=='positive':c['direction_recommendations']=['Сохранить ставки до следующего полного дня: предварительная экономика положительна.']
+   elif e.get('status')=='review':c['direction_recommendations']=['Не пополнять. Предварительная экономика не поддерживает продолжение; проверить состав и ставки.']
+   else:c['direction_recommendations']=['Пока без изменений: для готового действия не завершена проверка экономики. Не пополнять автоматически.']
  # Unready research stays in the private Codex analysis journal.
  return out
 

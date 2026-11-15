@@ -47,7 +47,8 @@ def model_rows(inputs,policy,delivery):
 
 def apply(bundle,source,minima):
  """A high completed-day DRR at minimum CPC is reviewed now, not postponed indefinitely."""
- out=copy.deepcopy(bundle);states={c['id']:c for b in source['batches'].values() for c in b['campaigns']['adverts']}
+ from china_completed_cost_scan import expand
+ out=expand(bundle,source,minima);states={c['id']:c for b in source['batches'].values() for c in b['campaigns']['adverts']}
  economics=source.get('economics',{}).get('rows',{});clock=datetime.now(timezone.utc)
  def dated(at,hours):
   try:return 0<=(clock-datetime.fromisoformat(at.replace('Z','+00:00'))).total_seconds()<=hours*3600
