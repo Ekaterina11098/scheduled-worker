@@ -66,8 +66,10 @@ def worker(slot,day=None,verify=False,prepare_only=False):
   else:
    ids=[39605581,39605579,40385586,41515989,41516310,41516903,41517233,41517533,39605582]
    request={'read_only':True,'cabinet':'token_1','day':day,'campaign_ids':ids}
-   if not db.get(root+':request'):db.once(root+':request',request)
-   reader=assets['midreader'].replace('2026-11-11',day);execute(reader,R/'work/readmid.py');s=db.get(root+':read')or{}
+   if not verify and not db.get(root+':request'):db.once(root+':request',request)
+   reader=assets['midreader'].replace('2026-11-11',day)
+   if not verify:execute(reader,R/'work/readmid.py')
+   s=db.get(root+':read')or{}
    if not s.get('data')or not s.get('steps'):raise RuntimeError('Current-day source unavailable')
    s.update(day=day,observed_at=s['steps']['0']['observed_at'],status='partial',missing_ids=sorted(set(s['steps']['0']['requested_ids'])-{c['advertId']for c in s['data']}))
    (R/'work/ooo_midday11_current.json').write_text(json.dumps(s),encoding='utf-8');(R/'work/ooo_morning11_review.json').write_text(json.dumps({'actions':[],'funding':[]}),encoding='utf-8')
