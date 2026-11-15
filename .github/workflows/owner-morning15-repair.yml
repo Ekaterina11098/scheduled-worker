@@ -57,3 +57,5 @@ jobs:
         run: python scripts/owner_morning15_repair.py
 
 # Resume only unfinished read stages; preserve collected exact inputs.
+
+# Preserve inherited state retry contract for checkpoint transport.

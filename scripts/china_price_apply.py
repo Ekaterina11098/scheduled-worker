@@ -66,7 +66,11 @@ class IO:
         self.token=os.environ['WB_TOKEN_3']
         self.bot=os.environ['CHINA_TELEGRAM_BOT_TOKEN']
     def db(self,path,method='GET',body=None,prefer=None):
-        r=requests.request(method,self.url+'/rest/v1/'+path,headers={**self.headers,**({'Prefer':prefer} if prefer else {})},json=body,timeout=30)
+        options=dict(json=body,timeout=30)
+        if path.startswith('telegram_api_cache?')and getattr(self,'state_cache_compact_utf8',False):
+            options=dict(timeout=(10,getattr(self,'state_cache_read_timeout',30)))
+            if body is not None:options['data']=json.dumps(body,ensure_ascii=False,separators=(',',':')).encode('utf-8')
+        r=requests.request(method,self.url+'/rest/v1/'+path,headers={**self.headers,**({'Prefer':prefer} if prefer else {})},**options)
         if not r.ok:raise RuntimeError('State HTTP '+str(r.status_code))
         return r.json() if r.content else []
     def get(self,key):
