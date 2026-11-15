@@ -1,0 +1,102 @@
+name: Restore Elena exact latest approval on existing message
+on:
+  workflow_dispatch:
+  push:
+    paths: ['.github/workflows/review-elena-ui-repair-20261115.yml']
+permissions:
+  contents: read
+concurrency:
+  group: review-elena-ui-repair-20261115
+  cancel-in-progress: false
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /review-approval-preparation/
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install 'psycopg[binary]==3.2.10'
+      - name: Restore exact saved text and buttons without sending a new message
+        env:
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os,sys,json,hmac,hashlib,base64,time
+          sys.path.insert(0,'review-approval-preparation')
+          import psycopg
+          from review_telegram_approval import Approval,Repository,sha
+          from review_approval_bridge import SQLSource,DurableBridge
+          from review_telegram_runtime import TelegramTransport
+          from review_approval_process import acquire_ui_lock
+          RECOVERY='owner-ui-recovery:elena:20261115:v1'
+          OLD='10fe31154268e25744d898b69717614d'
+          EDIT='edit:5f58a2f3486f9f11f951b2ec2d9f90533ecedc6a134283c4846672d1e8e70c9c'
+          DRAFT='reviews:draft:6fffa92af53a4c69c7dafdd5c33f208db5e44b401752a285b09ac6e20507884b'
+          VERSION='china-two-hour-2026-11-15-f8d1cf8272ed-edit-7fd5ae83-edit-c2bcd4ee'
+          root=os.environ['SUPABASE_SECRET_KEY'].encode()
+          pw=hmac.new(root,b'veschi:review-approval-login:20261015:v1',hashlib.sha256).hexdigest()
+          secret=base64.b64encode(hmac.new(root,b'veschi:review-approval-ingress:20261015:v1',hashlib.sha256).digest()).decode()
+          with psycopg.connect(host='aws-0-eu-central-1.pooler.supabase.com',port=5432,dbname='postgres',user='review_approval_login_20261015.abxgjoqlddhtcmjcjwxw',password=pw,sslmode='require',autocommit=True,connect_timeout=15,options='-c statement_timeout=30000') as conn:
+           repo=Repository(conn,postgres=True);source=SQLSource(conn)
+           cfg=source.read('reviews:telegram-approval:config:v1')
+           if not all(cfg.get(k) for k in ('enabled','new_notices_enabled','destination_verified')):raise RuntimeError('UI disabled')
+           app=Approval(repo,secret,cfg['owner_id'],cfg['chat_id'],cfg['bot_id'],enabled=True)
+           if app.group_chat()!='-1003932246120':raise RuntimeError('Wrong group')
+           if not acquire_ui_lock(conn,wait_seconds=120):raise RuntimeError('UI busy')
+           try:
+            old=repo.get('cards',OLD);edit=repo.get('events',EDIT);draft=source.read(DRAFT)
+            assert old['item_id']=='8FYFh7IozspJzLyaxydk' and old['message_id']==1211 and old['source']['article']=='3-FurPanama-coffee'
+            assert edit['token']==OLD and edit['decision']=='revision_requested'
+            assert draft['version']==VERSION and draft['variants']==[edit['instruction'].strip()] and draft['confirmation_status']=='draft'
+            assert source.matching('token_3','feedbacks',old['item_id'],'reviews:draft:')[0]['version']==VERSION
+            intents=conn.execute("select count(*) from review_approval.intents where payload::jsonb->>'ref'=%s",(old['ref'],)).fetchone()[0]
+            if intents:raise RuntimeError('Publication already exists; do not change UI')
+            bridge=DurableBridge(app,source)
+            previous=repo.get('events',RECOVERY)
+            if previous and previous.get('status')=='confirmed':
+             print(json.dumps(dict(status='already_confirmed',message_id=1211)));sys.exit(0)
+            if previous:
+             token=previous['card_token'];card=repo.get('cards',token)
+            else:
+             assert old['status']=='rework'
+             item_state=repo.get('items',old['ref'])
+             assert item_state['token']==OLD and item_state['status']=='rework'
+             rows=source.matching('token_3','feedbacks',old['item_id'],'reviews:source:')
+             raw=next(r['item'] for r in rows if r.get('version')==VERSION)
+             assert sha(raw)==draft['source_sha256']
+             app.chat=app.group_chat()
+             with repo.transaction():
+              token,view=bridge.create(raw,'token_3','feedbacks',VERSION,1211)
+              repo.put('events',RECOVERY,dict(status='prepared',card_token=token,message_id=1211,old_card_token=OLD,version=VERSION,answer_sha256=sha(draft['variants'][0]),created_at=time.time(),send_message_calls=0,wb_calls=0))
+             card=repo.get('cards',token)
+            assert card['texts']==draft['variants'] and card['version']==VERSION and card['message_id']==1211 and card['status']=='awaiting'
+            view=app.view(token,card)
+            keyboard=view['reply_markup']['inline_keyboard']
+            assert keyboard[0][0]['text']=='Подтвердить публикацию' and token in keyboard[0][0]['callback_data']
+            assert draft['variants'][0] in view['text']
+            class EditOnly(TelegramTransport):
+             ALLOWED=frozenset(('editMessageText',))
+            result=EditOnly(os.environ['TELEGRAM_BOT_TOKEN']).call('editMessageText',dict(chat_id=app.group_chat(),message_id=1211,text=view['text'],reply_markup=view['reply_markup']))
+            if isinstance(result,dict):
+             assert result['message_id']==1211 and str(result['chat']['id'])==app.group_chat() and result['text']==view['text'] and result['reply_markup']==view['reply_markup']
+            assert conn.execute("select count(*) from review_approval.intents where payload::jsonb->>'ref'=%s",(old['ref'],)).fetchone()[0]==0
+            with repo.transaction():
+             receipt=repo.get('events',RECOVERY);receipt.update(status='confirmed',buttons='confirmed',checked_at=time.time(),run_id=os.environ.get('GITHUB_RUN_ID'))
+             repo.put('events',RECOVERY,receipt)
+             for key in ('new-notice:4c7c33ad151ca5780a724eec45da771dc9718fc923a9e3c73a5670a484b165b6','revision-delivery:c2bcd4ee8fe23664eab470c1bed1cf483f226cd2c1b7ceed49b537054a12dbd4'):
+              history=repo.get('events',key) or {}
+              history.update(reconciled_by=RECOVERY,reconciled_message_id=1211,reconciled_card_token=token,reconciliation_status='confirmed_existing_message',buttons='confirmed')
+              repo.put('events',key,history)
+            print(json.dumps(dict(status='confirmed',buttons='confirmed',message_id=1211,send_message_calls=0,wb_calls=0,publication_created=False)))
+           finally:
+            conn.execute("SELECT pg_advisory_unlock(hashtextextended('review-approval-process-ui-v1',0))")
+          
+          PY
