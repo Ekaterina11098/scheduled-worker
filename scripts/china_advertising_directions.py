@@ -27,7 +27,7 @@ def attach(bundle,source):
    if not key:continue
    signature=(key,c['id'],r['nm'])
    if signature in seen:continue
-   seen.add(signature);sections[key]['rows'].append(dict(article=r['article'],campaign_id=c['id'],decision=r['decision'],action=a,period=r.get('period'),economics=r.get('economics')or{},ready=True,nm_id=a.get('nm_id'),target_minor=a.get('target_minor'),bid_verified=a.get('exact_addition_quote')is True))
+   seen.add(signature);sections[key]['rows'].append(dict(article=r['article'],campaign_id=c['id'],decision=r['decision'],action=a,period=r.get('period'),evaluation_days=(r.get('comparison')or{}).get('to_days',[]),economics=r.get('economics')or{},ready=True,nm_id=a.get('nm_id'),target_minor=a.get('target_minor'),bid_verified=a.get('exact_addition_quote')is True))
  scan=source.get('addition_scan')or{};labels={r['nmID']:r['vendorCode']for r in source['catalogue']['rows']}
  growth=out.get('growth_review')or{}
  if growth.get('status')=='blocked':sections['raise'].update(status='unavailable',note='Подбор повышений не завершён: '+str(growth.get('reason','неполные данные'))+'. Это не отсутствие кандидатов.')
@@ -75,6 +75,7 @@ def campaign_table(bundle):
     text=('Тест: добавить'if a.get('manual_experiment')else'Добавить')+' · ставка '+str(r['target_minor']/100)+' CNY.'
    elif key=='exclude':text='Исключить из РК.'
    else:text=(('Тест: повысить'if a.get('manual_experiment')else'Повысить')if key=='raise'else'Снизить')+' '+str(a['old_minor']/100)+' → '+str(a['target_minor']/100)+' CNY.'
+   if key in('reduce','exclude')and len(r.get('evaluation_days',[]))==1:text+=' Ранняя оценка: 1 полный день.'
    c['direction_recommendations'].append(r['article']+': '+text)
  # Exact owner-selected proposals must remain visible in their actual campaign row.
  for c in out['campaigns']:
@@ -136,6 +137,7 @@ def overview(bundle):
    if a and r.get('ready'):actions.append(a)
   y+=25
  finish();return files
+
 
 
 

@@ -342,6 +342,8 @@ def recommend(c,n,ds,days,changes,minimum,price):
    postdays=[d for d in sorted(ds) if first.isoformat()<=d<=days[-1]][-3:]
    if postdays:
     post=sums(ds[d] for d in postdays);before_end=first-timedelta(days=2);prekeys=[(before_end-timedelta(days=i)).isoformat() for i in range(len(postdays))]
+    # Post-change evidence is valid even when the earlier comparison is unavailable.
+    comparison=dict(after=post,to_days=postdays)
     if all(d in ds for d in prekeys):
      pre=sums(ds[d] for d in prekeys);a=ratio(pre);b=ratio(post);comparison=dict(before=pre,after=post,from_days=prekeys,to_days=postdays)
      if b is not None and b<=5 and ratio(last) is not None and ratio(last)<=5:return None
@@ -641,6 +643,7 @@ def prepare(io,day):
    for r in c.get('focus',[]):r['action']=None;r['decision']='Без изменений.'
  from china_campaign_financial_review import apply as financial_review
  return financial_review(io,attach_new_campaign_reporting(io,result),s,minimums)
+
 
 
 

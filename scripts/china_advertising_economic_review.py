@@ -61,7 +61,9 @@ def apply(bundle,source,minima):
   for r in c.get('focus',[]):
    if r['nm'] not in settings:
     r['action']=None;r['already_excluded']=True;continue
-   if r.get('pending_first_day'):continue
+   if r.get('pending_first_day'):
+    r['action']=None
+    continue
    p=(r.get('comparison') or {}).get('after') or r['period'];spend=p['spend'];orders=p['orders'];amount=p['amount']
    risk=spend>0 and (orders==0 or amount<=0 or spend/amount>.05)
    existing=r.get('action')or{}
@@ -115,4 +117,5 @@ def apply(bundle,source,minima):
  out['economic_review_complete']=not any(r.get('data_blocker') for c in out['campaigns'] for r in c.get('focus',[]))
  out['economic_review_blockers']=[dict(campaign_id=c['id'],article=r['article'],blocker=r['data_blocker']) for c in out['campaigns'] for r in c.get('focus',[]) if r.get('data_blocker')]
  return out
+
 

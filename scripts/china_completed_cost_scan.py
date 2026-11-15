@@ -5,7 +5,12 @@ from zoneinfo import ZoneInfo
 def expand(bundle,source,minima):
  if not bundle.get('day')or not bundle.get('days'):return copy.deepcopy(bundle)
  from china_advertising_v2 import history
- out=copy.deepcopy(bundle);changes=history(source.get('executions',[]));MSK=ZoneInfo('Europe/Moscow')
+ out=copy.deepcopy(bundle);changes=history(source.get('executions',[]))+list(source.get('verified_composition_changes',[]));MSK=ZoneInfo('Europe/Moscow')
+ # Match the initial selection's price-change evidence; a missing baseline must not reuse old traffic.
+ for rec in source.get('experience',[]):
+  event=rec.get('payload',rec);act=event.get('action',{});at=event.get('started_at')
+  if act.get('kind')=='price_change'and at:
+   changes.extend(dict(nm=nm,cid=None,kind='price',at=at)for nm in act.get('nm_ids',[]))
  for cid,q in (source.get('full_growth_inputs',{}).get('minimums')or{}).items():
   for r in q.get('bids',[]):
    values=[v['value']for v in r['bids']if v.get('currency')=='CNY']
@@ -42,5 +47,6 @@ def expand(bundle,source,minima):
    if p['spend']<=0 or not(p['orders']==0 or p['amount']>0 and p['spend']/p['amount']>.05 or isinstance(margin,(int,float))and margin*p['orders']<p['spend']):continue
    c.setdefault('focus',[]).append(dict(nm=nm,article=labels.get(nm,'WB '+str(nm)),period=p,comparison=dict(after=p,to_days=[d['date'][:10]for d in days]),daily=[],period_drr=100*p['spend']/p['amount']if p['amount']else None,decision='Проверить расход по завершённым дням.',reason='',action=None,completed_cost_scan=True))
  return out
+
 
 
