@@ -1,0 +1,31 @@
+name: Exact WB IP 310043377 recovery
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/recover-ip-310043377.yml']
+permissions:
+  contents: read
+concurrency:
+  group: fbs-document-chain-production
+  cancel-in-progress: false
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run exact approved MS documents after live duplicate/stock checks
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_2 }}
+          FBS_EXECUTION_KIND: manual
+          FBS_OWNER_APPROVAL_ID: ip-310043377-20261116
+        run: python scripts/recover_ip_310043377.py
