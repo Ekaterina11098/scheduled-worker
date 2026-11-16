@@ -1,0 +1,33 @@
+name: Owner approved growth04658 apply16
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-growth04658-apply16.yml]
+permissions: {contents: read}
+concurrency:
+  group: china-confirmed-wb-advertising-writes
+  cancel-in-progress: false
+jobs:
+  read:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-growth04658-apply16] Apply two approved bids and 450 CNY once'
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5
+      - env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          OPENAI_API_KEY: ''
+        run: python scripts/owner_growth046_58_apply16.py
