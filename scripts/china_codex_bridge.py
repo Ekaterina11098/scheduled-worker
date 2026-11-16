@@ -96,6 +96,10 @@ def handle(w,job,cfg):
  from china_menu_analytics import prepare as prepare_menu
  prepare_menu(w,job,inbox)
  out=w.get(ROOT+'outbox:'+str(job['id'])) or {}
+ if not out and text.startswith('Конверсии магазина · запрос меню: '):
+  progress=w.get('china_agent:menu_analytics:v1:'+str(job['id']))or{}
+  if progress.get('status')=='collecting':
+   patch(dict(status='pending',lease_until=None,retry_at=progress['retry_at'],error=None));return 'shop_funnel_collecting'
  if not out:
   from china_no_paid import enabled,safe_answer
   if enabled(w):
@@ -140,6 +144,7 @@ def handle(w,job,cfg):
   patch(dict(status='done',answer=out['answer'],lease_until=None,error=None,completed_at=stamp()));return 'codex_bridge_delivered'
  patch(dict(status='pending' if outcome in ('waiting','rejected') else 'failed',lease_until=None,error='codex_bridge_delivery_'+outcome,retry_at=(now+timedelta(minutes=5)).isoformat()))
  return 'codex_bridge_delivery_'+outcome
+
 
 
 

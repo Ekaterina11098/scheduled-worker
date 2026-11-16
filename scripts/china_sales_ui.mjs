@@ -12,7 +12,7 @@ const pct=(v,b)=>!ok(v)||!ok(b)?'н/д':b===0?'нет базы':(v>=b?'+':'')+n(
 const amounts=t=>t?n(t.count)+' шт. · '+n(t.amount_cny)+' CNY':'нет сопоставимых данных';
 const change=(a,b)=>a&&b?'заказы '+pct(a.count,b.count)+' · сумма '+pct(a.amount_cny,b.amount_cny):'нет сопоставимых данных';
 const good=t=>t&&Number.isInteger(t.count)&&t.count>=0&&ok(t.amount_cny)&&t.amount_cny>=0;
-const summaryKeys=(sid)=>({inline_keyboard:[[{text:'Динамика по дням',callback_data:'csl1:'+sid+':days'}],[{text:'По товарам',callback_data:'csl1:'+sid+':products'}],[{text:'Другой период',callback_data:'csl1:'+sid+':period'}],[{text:'Главное меню',callback_data:'csl1:'+sid+':home'}]]});
+const summaryKeys=(sid)=>({inline_keyboard:[[{text:'Конверсии магазина',callback_data:'cmn1:shopconv'}],[{text:'Динамика продаж по дням',callback_data:'csl1:'+sid+':days'}],[{text:'По товарам',callback_data:'csl1:'+sid+':products'}],[{text:'Другой период',callback_data:'csl1:'+sid+':period'}],[{text:'Главное меню',callback_data:'csl1:'+sid+':home'}]]});
 export function aggregateRows(rows){
  if(!Array.isArray(rows))return null;const ids=new Set(),by={};let amount=0;
  for(const r of rows){if(!Number.isSafeInteger(r.id)||ids.has(r.id)||!Number.isSafeInteger(r.nmId)||r.convertedCurrencyCode!==156||!Number.isInteger(r.convertedPrice)||r.convertedPrice<0)return null;ids.add(r.id);amount+=r.convertedPrice;const k=String(r.nmId),x=by[k]||(by[k]={count:0,minor:0});x.count++;x.minor+=r.convertedPrice;}
@@ -231,3 +231,4 @@ export async function handleSalesPath(config,update,deps){
  if(ctx.view==='search'){const value={message_id:receipt.message_id,context:ctx,expires_at:new Date(now.getTime()+15*60000).toISOString()};const k=ROOT+'input:'+actor.id;if(await get(k))await put(k,value);else await insert(k,value);}
  return answer('');
 }
+

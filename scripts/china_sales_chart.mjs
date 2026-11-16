@@ -9,8 +9,8 @@ function crc(a){let c=0xffffffff;for(const b of a)c=table[(c^b)&255]^(c>>>8);ret
 function uint(n){return new Uint8Array([(n>>>24)&255,(n>>>16)&255,(n>>>8)&255,n&255]);}
 function join(parts){const a=new Uint8Array(parts.reduce((n,p)=>n+p.length,0));let i=0;for(const p of parts){a.set(p,i);i+=p.length;}return a;}
 function chunk(s,data){const type=new TextEncoder().encode(s),body=join([type,data]);return join([uint(data.length),body,uint(crc(body))]);}
-Object.assign(FONT,{'Д':['00110','01010','01010','01010','01010','11111','10001'],'Х':['10001','10001','01010','00100','01010','10001','10001'],'Л':['00111','01001','01001','01001','01001','01001','10001'],'И':['10001','10011','10101','10101','11001','10001','10001'],'О':['01110','10001','10001','10001','10001','10001','01110'],'Т':['11111','00100','00100','00100','00100','00100','00100'],'Р':['11110','10001','10001','11110','10000','10000','10000'],'Я':['01111','10001','10001','01111','00101','01001','10001'],'R':['11110','10001','10001','11110','10100','10010','10001'],'%':['11001','11010','00100','01000','10110','00110','00000']});
-export async function salesChart(points,labels=null){
+Object.assign(FONT,{'В':['11110','10001','10001','11110','10001','10001','11110'],'Н':['10001','10001','10001','11111','10001','10001','10001'],'Д':['00110','01010','01010','01010','01010','11111','10001'],'Х':['10001','10001','01010','00100','01010','10001','10001'],'Л':['00111','01001','01001','01001','01001','01001','10001'],'И':['10001','10011','10101','10101','11001','10001','10001'],'О':['01110','10001','10001','10001','10001','10001','01110'],'Т':['11111','00100','00100','00100','00100','00100','00100'],'Р':['11110','10001','10001','11110','10000','10000','10000'],'Я':['01111','10001','10001','01111','00101','01001','10001'],'R':['11110','10001','10001','11110','10100','10010','10001'],'%':['11001','11010','00100','01000','10110','00110','00000']});
+export async function salesChart(points,labels=null,options={}){
  const W=800,H=780,pixels=new Uint8Array(W*H*3).fill(255);
  const set=(x,y,c)=>{x=Math.round(x);y=Math.round(y);if(x<0||x>=W||y<0||y>=H)return;const i=(y*W+x)*3;pixels.set(c,i);};
  const rect=(x,y,w,h,c)=>{for(let j=y;j<y+h;j++)for(let i=x;i<x+w;i++)set(i,j,c);};
@@ -22,7 +22,7 @@ export async function salesChart(points,labels=null){
   text(28,top,labels?labels[chart]:chart?'СУММА, CNY':'ЗАКАЗЫ',4);
   const vals=points.map(p=>p[field]).filter(n=>typeof n==='number'&&Number.isFinite(n));
   const max=Math.max(1,...vals)*1.12;
-  for(let i=0;i<=4;i++){const y=y1-(y1-y0)*i/4;line(left,y,right,y,grid,1);text(8,y-9,String(labels&&chart?Math.round(max*i/4*100)/100:Math.round(max*i/4)),2,gray);}
+  for(let i=0;i<=4;i++){const y=y1-(y1-y0)*i/4;line(left,y,right,y,grid,1);text(8,y-9,String((options.precision===2||labels&&chart)?Math.round(max*i/4*100)/100:Math.round(max*i/4)),2,gray);}
   line(left,y0,left,y1,gray,2);line(left,y1,right,y1,gray,2);
   let prev=null;
   points.forEach((p,i)=>{
@@ -39,3 +39,4 @@ export async function salesChart(points,labels=null){
  const header=join([uint(W),uint(H),new Uint8Array([8,2,0,0,0])]);
  return join([new Uint8Array([137,80,78,71,13,10,26,10]),chunk('IHDR',header),chunk('IDAT',compressed),chunk('IEND',new Uint8Array())]);
 }
+

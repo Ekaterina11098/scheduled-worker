@@ -160,7 +160,7 @@ function transition(ctx,op,now){
 export async function handleAdvertisingPath(config,update,deps){
  const cb=update.callback_query,m=cb?.message||update.message,a=cb?.from||m?.from,match=/^cam1:([a-f0-9]{16}):([A-Za-z0-9]+)$/.exec(cb?.data||'');
  const input=update.message?.text?.trim(),possibleReply=!cb&&typeof input==='string'&&input.length<=80&&m?.reply_to_message?.from?.id===BOT;
- const initial=['cmn1:candidates','cmn1:conversions','cmn1:drrview'].includes(cb?.data);
+ const initial=['cmn1:candidates','cmn1:conversions','cmn1:drrview','cmn1:shopproduct'].includes(cb?.data);
  if(!initial&&!match&&!possibleReply)return null;
  if(config.active!==true||config.bot_id!==BOT||config.chat_id!==CHAT||!Number.isSafeInteger(update.update_id)||update.update_id<0||m?.chat?.id!==CHAT||!['supergroup','group'].includes(m.chat.type)||!Number.isSafeInteger(m.message_id)||!Number.isSafeInteger(a?.id)||a.id<=0||a.is_bot!==false||cb&&(m.from?.id!==BOT||!cb.id)||m.sender_chat||m.forward_origin)return new Response('OK');
  const get=async k=>(await deps.database('telegram_api_cache?cache_key=eq.'+encodeURIComponent(k)+'&select=payload&limit=1'))?.[0]?.payload;
@@ -170,7 +170,7 @@ export async function handleAdvertisingPath(config,update,deps){
  const member=await deps.telegram('getChatMember',{chat_id:CHAT,user_id:a.id});
  if(member?.user?.id!==a.id||member.user.is_bot!==false||!(['creator','administrator','member'].includes(member.status)||member.status==='restricted'&&member.is_member===true))return new Response('OK');
  const answer=text=>cb?Response.json({method:'answerCallbackQuery',callback_query_id:cb.id,...(text?{text,show_alert:true}:{})}):new Response('OK'),now=deps.now?deps.now():new Date();
- let ctx={view:cb?.data==='cmn1:candidates'?'candidates':cb?.data==='cmn1:drrview'?'objects':'types',kind:cb?.data==='cmn1:drrview'?'ad':'all',metric:cb?.data==='cmn1:drrview'?'drr':'cr',period:'range',start:shift(day(now),-7),end:shift(day(now),-1)};
+ let ctx={view:cb?.data==='cmn1:candidates'?'candidates':cb?.data==='cmn1:drrview'?'objects':cb?.data==='cmn1:shopproduct'?'search':'types',kind:cb?.data==='cmn1:drrview'?'ad':cb?.data==='cmn1:shopproduct'?'general':'all',metric:cb?.data==='cmn1:drrview'?'drr':'cr',period:'range',start:shift(day(now),-7),end:shift(day(now),-1)};
  if(match){const session=await get(ROOT+'session:'+match[1]);if(!session||session.actor!==a.id||session.message_id!==m.message_id||Date.parse(session.expires_at)<=now.getTime())return answer('Откройте раздел своей кнопкой меню.');try{ctx=transition(session.context,match[2],now);if(ctx.view==='candidates'&&!ctx.analysisDay)ctx.analysisDay=day(new Date(Date.parse(session.expires_at)-86400000));if(match[2].startsWith('pick')){const picked=session.context.matches?.find(r=>r.nm===ctx.nm);if(!picked)return answer('Повторите поиск товара.');ctx.article=picked.article;}}catch(e){return answer(e.message);}if(match[2]==='noop')return answer('');}
  else if(pending&&possibleReply&&pending.message_id===m.reply_to_message?.message_id){ctx={...pending.context,view:Date.parse(pending.expires_at)>now.getTime()?'matches':'search',query:input};}
  if(ctx.view==='candidates'&&!ctx.analysisDay)ctx.analysisDay=day(now);
@@ -256,3 +256,4 @@ export async function handleAdvertisingPath(config,update,deps){
  }catch(e){await put(key,{status:'uncertain',actor:a.id,context:ctx,error:'Menu preparation or Telegram result not verified',wb_writes:0});throw e;}
  return answer('');
 }
+

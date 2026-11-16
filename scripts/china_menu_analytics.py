@@ -4,9 +4,10 @@ from datetime import date,datetime,timedelta,timezone
 from zoneinfo import ZoneInfo
 ROOT='china_agent:codex_bridge:v1:'
 PREFIX='Общая воронка · запрос меню: '
+from china_shop_funnel import PREFIX as SHOP_PREFIX
 CANDIDATES='Предложи новых кандидатов для рекламы китайского кабинета. '
 LABELS={'add':'Добавление товаров','raise':'Повышение ставок','reduce':'Снижение ставок','exclude':'Исключение из РК'}
-def recognized(text):return text.startswith((PREFIX,CANDIDATES))
+def recognized(text):return text.startswith((PREFIX,CANDIDATES,SHOP_PREFIX))
 def directions(text):
  if 'Все четыре направления:' in text:return list(LABELS)
  mapping={'add':'Новые товары для добавления','raise':'Новые повышения ставок.','reduce':'Новые снижения ставок.','exclude':'Новые исключения товаров'}
@@ -190,11 +191,18 @@ def prepare(w,job,inbox):
  if not recognized(text):return False
  old=w.get(ROOT+'outbox:'+str(job['id']))
  if old:return True
- try:answer=funnel(w,job,text)if text.startswith(PREFIX)else candidate(w,job,text)
+ try:
+  if text.startswith(SHOP_PREFIX):
+   from china_shop_funnel import run as shop_funnel
+   answer=shop_funnel(w,job,text)
+  else:answer=funnel(w,job,text)if text.startswith(PREFIX)else candidate(w,job,text)
+ except __import__("china_shop_funnel").PendingShopData as e:
+  w.save("china_agent:menu_analytics:v1:"+str(job["id"]),dict(status="collecting",retry_at=e.retry_at,missing_days=e.missing,wb_writes=0,model_calls=0))
+  return True
  except Exception as e:
   import traceback
   w.save('china_agent:menu_analytics:v1:'+str(job['id']),dict(status='blocked',error_type=type(e).__name__,error=str(e),trace=traceback.format_exc()[-5000:],wb_writes=0,model_calls=0))
-  answer='Не удалось получить все данные для '+('общей воронки'if text.startswith(PREFIX)else'подбора кандидатов')+'. Готового результата нет; изменения не выполнялись. Запрос №'+str(job['id'])+'.'
+  answer='Не удалось получить все данные для '+('общей воронки'if text.startswith((PREFIX,SHOP_PREFIX))else'подбора кандидатов')+'. Готового результата нет; изменения не выполнялись. Запрос №'+str(job['id'])+'.'
  out=dict(status='ready',job_id=job['id'],chat_id=job['chat_id'],input_message_id=inbox['input_message_id'],thread_id=inbox['thread_id'],answer=answer,created_at=datetime.now(timezone.utc).isoformat(),source_channel='deterministic_menu',wb_action_permission=False,model_calls=0)
  if not w.save(ROOT+'outbox:'+str(job['id']),out,insert=True):raise ValueError('Concurrent menu outbox')
  return True

@@ -1,3 +1,4 @@
+import {handleStoreConversions} from './china_shop_conversions.mjs';
 import {handleInlineSearch} from './china_inline_search.mjs';
 import {handleAdvertisingPath} from './china_advertising_ui.mjs';
 import {handleSalesPath} from './china_sales_ui.mjs';
@@ -291,6 +292,8 @@ Deno.serve(async(request:Request):Promise<Response>=>{
       if(inlineResponse)return inlineResponse;
       const advertisingResponse=await handleAdvertisingPath(config,update,{database,telegram,requestAnalysis:async(text:string,u:any)=>{const c=u.callback_query;const r=await acceptCodex(config,{...c.message,from:c.from,reply_to_message:c.message},text,u.update_id,database,(job:number)=>launch(job,'dialog_free'));return r.response??new Response('Analysis route unavailable',{status:503});}});
       if(advertisingResponse)return advertisingResponse;
+      const storeResponse=await handleStoreConversions(config,update,{database,telegram,requestAnalysis:async(text:string,u:any)=>{const c=u.callback_query;const msg=c?{...c.message,from:c.from,reply_to_message:c.message}:u.message;const r=await acceptCodex(config,msg,text,u.update_id,database,(job:number)=>launch(job,'dialog_free'));return r.response??new Response('Collection unavailable',{status:503});}});
+      if(storeResponse)return storeResponse;
       const salesResponse=await handleSalesPath(config,update,{database,telegram});
       if(salesResponse)return salesResponse;
       const menuResponse=await handleMainMenu(config,update,{database,telegram});
@@ -311,6 +314,8 @@ Deno.serve(async(request:Request):Promise<Response>=>{
     if(parsed?.[2]&&parsed[2].toLowerCase()!==config.bot_username?.toLowerCase())return new Response('OK');
     const advertisingInputResponse=await handleAdvertisingPath(config,update,{database,telegram});
     if(advertisingInputResponse)return advertisingInputResponse;
+    const storeResponse=await handleStoreConversions(config,update,{database,telegram,requestAnalysis:async(text:string,u:any)=>{const r=await acceptCodex(config,u.message,text,u.update_id,database,(job:number)=>launch(job,'dialog_free'));return r.response??new Response('Collection unavailable',{status:503});}});
+    if(storeResponse)return storeResponse;
     const salesResponse=await handleSalesPath(config,update,{database,telegram});
     if(salesResponse)return salesResponse;
     const menuResponse=await handleMainMenu(config,update,{database,telegram});
@@ -351,3 +356,4 @@ Deno.serve(async(request:Request):Promise<Response>=>{
     return new Response('OK');
   }catch(error){console.error('china_webhook_error', ['Bot unavailable','State unavailable','Telegram verification failed','Dispatch pending','Price dispatch pending','Price dispatch unavailable','China catalogue unavailable','Approval readback mismatch'].includes(String(error?.message))?error.message:String(error?.name??'Unknown'));return new Response('Queue unavailable',{status:503});}
 });
+
