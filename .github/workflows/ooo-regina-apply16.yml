@@ -1,0 +1,26 @@
+name: OOO exact owner package 16 November
+on:
+  push:
+    branches: [main]
+    paths: ['scripts/ooo_regina_apply16.py', '.github/workflows/ooo-regina-apply16.yml']
+permissions: {contents: read}
+concurrency:
+  group: ooo-token1-owner-writes
+  cancel-in-progress: false
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, sparse-checkout: scripts}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5 --quiet
+      - run: python -m py_compile scripts/ooo_regina_apply16.py
+      - name: Execute exact private owner authorization and read back
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_1: ${{ secrets.WB_TOKEN_1 }}
+        run: python -u scripts/ooo_regina_apply16.py
