@@ -1,11 +1,37 @@
 """Deterministic review of every catalogue row; proposals only, no provider calls."""
 import collections,datetime,json
+
+def evaluate_funding(cid,cfg,campaign,balance,rows,missing_days):
+ """Evaluate active AND paused campaigns; return proposals, never resume permissions."""
+ members=[r for r in rows if any(m['cid']==int(cid)for m in r['members'])]
+ stocked=[r for r in members if isinstance(r.get('free_msk'),(int,float))and r['free_msk']>0 and(r.get('stock_wb')or{}).get('wb',0)>0]
+ positive=[r for r in stocked if(r.get('model_lower_before_ads_rub')or 0)>0]
+ last=campaign.get('day',{});three=campaign.get('three',{})
+ drr=lambda x:x.get('sum',0)/x['sum_price']*100 if x.get('sum_price',0)>0 else None
+ result={'cid':int(cid),'campaign_status':cfg.get('status'),'balance_kgs':balance,'decision':'not_needed','amount_kgs':None,'day_drr':drr(last),'three_drr':drr(three),'stocked_skus':len(stocked),'positive_scenario_skus':len(positive),'resume_authorized':False}
+ def stop(reason):result['decision']=reason;return result
+ if int(cid)in(41517533,39605582):return stop('owner_hold')
+ if cfg.get('status')not in(9,11):return stop('ineligible_campaign_status')
+ if missing_days:return stop('incomplete_recent_days')
+ if not isinstance(balance,(int,float)):return stop('unknown_budget')
+ if not positive:return stop('economics_or_stock_unconfirmed')
+ # Paused campaigns need actual recent traffic, not late attribution alone.
+ if cfg['status']==11:
+  if three.get('clicks',0)<30 or three.get('sum',0)<100:return stop('paused_recent_delivery_insufficient')
+  if len(positive)!=len(stocked):return stop('paused_composition_economics_review_required')
+ if drr(last)is None or drr(three)is None:return stop('drr_undefined')
+ if max(drr(last),drr(three))>5:return stop('drr_above_target')
+ if last.get('sum',0)<=balance:return stop('budget_sufficient')
+ gap=last['sum']-balance
+ result.update(decision='propose_topup',amount_kgs=1200 if gap<=1200 else int((gap+99)//100*100))
+ return result
+
 def review(a,e,day):
  yesterday=(datetime.date.fromisoformat(day)-datetime.timedelta(days=1)).isoformat()
  period=[(datetime.date.fromisoformat(day)-datetime.timedelta(days=i)).isoformat()for i in (3,2,1)]
  dates={str(c['advertId']):{d['date'][:10]for d in c['days']}for c in e['sources']['advertising14']['data']}
  missing={cid:[d for d in period if d not in dates.get(cid,set())]for cid in a['configurations']};missing={k:v for k,v in missing.items()if v}
- actions=[];checks=[];funding=[]
+ actions=[];checks=[];funding=[];funding_checks=[]
  for r in a['rows']:
   own=(r['funnel14']or{}).get('statistic',{}).get('selected',{})
   p=collections.Counter()
@@ -22,11 +48,9 @@ def review(a,e,day):
    if type(bid)is int and bid>minimum and v.get('clicks',0)>=30 and v.get('sum',0)>=100 and v.get('orders',0)==0 and last.get('orders',0)==0 and last.get('sum',0)>0:
     actions.append({'kind':'reduce_bid','cid':m['cid'],'nm':r['nm'],'article':r['article'],'placement':placement,'from_minor':bid,'to_minor':minimum})
  for cid,cfg in a['configurations'].items():
-  if cfg['status']!=9 or cid in missing or int(cid)in(41517533,39605582):continue
-  c=a['campaigns'][cid];last=c['day'];three=c['three'];balance=a['budgets'][cid]
-  drr=lambda x:x['sum']/x['sum_price']*100 if x.get('sum_price',0)>0 else None
-  positive=[r for r in a['rows']if any(m['cid']==int(cid)for m in r['members'])and(r['model_lower_before_ads_rub']or 0)>0 and(r['free_msk']or 0)>0 and(r['stock_wb']or{}).get('wb',0)>0]
-  if last.get('sum',0)>balance and drr(last)is not None and drr(three)is not None and max(drr(last),drr(three))<=5 and positive:
-   funding.append({'cid':int(cid),'amount_kgs':1200 if last['sum']-balance<=1200 else int((last['sum']-balance+99)//100*100)})
+  check=evaluate_funding(cid,cfg,a['campaigns'].get(cid,{}),a['budgets'].get(cid),a['rows'],missing.get(cid,[]))
+  funding_checks.append(check)
+  if check['decision']=='propose_topup':funding.append({'cid':int(cid),'amount_kgs':check['amount_kgs']})
  assert len(checks)==351
- return {'status':'reviewed_proposals_only','actions':actions,'funding':funding,'budgets':a['budgets'],'internal_analysis':{'catalogue':351,'sku_checks':checks,'missing_required_day':missing,'sources_at':a['sources_at'],'historical_coverage':e.get('advertising_coverage'),'rules':'No zero fill. DRR native campaign first; no averages. No automatic pause/exclusion from no orders. Bid reductions only unambiguous serving placement above cached minimum. No raise/add without robust placement evidence. Funding only actual one-day cash shortfall with native day/3d DRR<=5 and positive dated RUB-before-ad stock scenario; minimum1200 not authorization. No actual profit or FX conversion claimed. Recent minimum-bid changes never reissued.','economics':'RUB scenario before advertising only, mature cohort date explicit, no confirmed KGS/RUB FX or actual profit claim. Associated orders not proof of direct SKU efficacy.','wb_writes':0,'model_calls':0}}
+ return {'status':'reviewed_proposals_only','actions':actions,'funding':funding,'budgets':a['budgets'],'internal_analysis':{'catalogue':351,'sku_checks':checks,'funding_checks':funding_checks,'missing_required_day':missing,'sources_at':a['sources_at'],'historical_coverage':e.get('advertising_coverage'),'rules':'No zero fill. DRR native campaign first; no averages. No automatic pause/exclusion from no orders. Bid reductions only unambiguous serving placement above cached minimum. No raise/add without robust placement evidence. Active and paused campaigns both evaluated with recorded reasons; paused proposals require recent delivery and composition economics review, never authorize resume. Funding only actual one-day cash shortfall with native day/3d DRR<=5 and positive dated RUB-before-ad stock scenario; minimum1200 not authorization. No actual profit or FX conversion claimed. Recent minimum-bid changes never reissued.','economics':'RUB scenario before advertising only, mature cohort date explicit, no confirmed KGS/RUB FX or actual profit claim. Associated orders not proof of direct SKU efficacy.','wb_writes':0,'model_calls':0}}
+

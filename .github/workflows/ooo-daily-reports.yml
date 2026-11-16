@@ -31,7 +31,9 @@ jobs:
         with: {python-version: '3.12'}
       - run: pip install requests==2.32.5 Pillow==12.3.0 --quiet
       - name: Offline failure recovery checks without credentials
-        run: python scripts/test_ooo_report_recovery.py
+        run: |
+          python scripts/test_ooo_report_recovery.py
+          python scripts/test_ooo_funding.py
       - name: Verify current cached report rendering without delivery
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
