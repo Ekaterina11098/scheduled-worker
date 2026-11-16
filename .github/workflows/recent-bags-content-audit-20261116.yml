@@ -1,0 +1,55 @@
+name: Audit recent Celeste and Celinea content16Nov
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/recent-bags-content-audit-20261116.yml']
+permissions: {}
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5
+      - env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        shell: python
+        run: |
+          import os,requests,time,datetime
+          sb=os.environ['SUPABASE_URL'].rstrip('/');sk=os.environ['SUPABASE_SECRET_KEY'];sh={'apikey':sk,'Authorization':'Bearer '+sk};wh={'Authorization':os.environ['WB_TOKEN_3']}
+          def get(k):
+           r=requests.get(sb+'/rest/v1/telegram_api_cache',headers=sh,params={'cache_key':'eq.'+k,'select':'payload'},timeout=40);r.raise_for_status();a=r.json();return a[0]['payload'] if a else None
+          canonical=get('wb_content_protection:celeste:20261116:v1');expected={c['vendorCode']:c for c in canonical['cards']}
+          old=get('celinea_media:362:20261116:reference157:execution');assert old['status']=='verified';expected['362-CelineaBag-black']=old['after']
+          found={};cur={'limit':100}
+          for page in range(40):
+           r=requests.post('https://content-api.wildberries.cn/content/v2/get/cards/list',headers=wh,json={'settings':{'cursor':cur,'filter':{'withPhoto':-1}}},timeout=45);r.raise_for_status();j=r.json()
+           for c in j.get('cards',[]):
+            if c.get('vendorCode') in expected:found[c['vendorCode']]=c
+           if len(found)==len(expected):break
+           cu=j.get('cursor',{})
+           if cu.get('total',0)<100:break
+           cur={'limit':100,'updatedAt':cu['updatedAt'],'nmID':cu['nmID']};time.sleep(.7)
+          def eq(a,b):
+           if isinstance(a,list) and isinstance(b,list):return sorted(a)==sorted(b)
+           return a==b
+          diffs={}
+          for a,p in expected.items():
+           c=found.get(a,{})
+           d={}
+           for k in ('nmID','title','description','brand'):
+            if p.get(k)!=c.get(k):d[k]={'expected':p.get(k),'actual':c.get(k)}
+           for k,v in p.get('dimensions',{}).items():
+            if k=='isValid':continue
+            if c.get('dimensions',{}).get(k)!=v:d['dimensions.'+k]={'expected':v,'actual':c.get('dimensions',{}).get(k)}
+           attrs={x['id']:x for x in c.get('characteristics',[])}
+           for x in p['characteristics']:
+            actual=attrs.get(x['id'],{}).get('value')
+            if not eq(actual,x['value']):d['charc.'+str(x['id'])]={'name':attrs.get(x['id'],{}).get('name'),'expected':x['value'],'actual':actual}
+           diffs[a]=d
+          out={'status':'audit_complete','cards':found,'differences':diffs,'wb_writes':0,'observed_at':datetime.datetime.now(datetime.timezone.utc).isoformat()}
+          r=requests.post(sb+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**sh,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},json={'cache_key':'recent_bags_content_audit:20261116:v1','payload':out,'updated_at':out['observed_at'],'expires_at':'2099-01-01T00:00:00Z'},timeout=45);r.raise_for_status()
+          print('Read-only audit recorded privately')
