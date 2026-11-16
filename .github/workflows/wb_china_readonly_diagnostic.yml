@@ -1,12 +1,16 @@
 name: WB China read-only diagnostic
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/wb_china_readonly_diagnostic.yml']
 permissions: {}
 concurrency:
   group: wb-china-readonly-diagnostic
   cancel-in-progress: false
 jobs:
   read-only:
+    if: github.run_attempt == 1
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
