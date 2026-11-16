@@ -1,0 +1,47 @@
+name: Stock card activation offline regression
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stock-card-activation-tests-20261116.yml']
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            warehouse_id_patch.py
+            scripts/moysklad_warehouses.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: ed8ba748708a9242b931105ba929c818cfc05be3
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          persist-credentials: false
+          path: private-source
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests==2.32.5 python-dotenv==1.1.1 aiogram==3.22.0 simplejson==4.2.0 'psycopg[binary]==3.2.9'
+      - name: Verify existing warehouse binding remains applicable
+        run: python warehouse_id_patch.py private-source
+      - name: Full stock regression with business network disabled
+        working-directory: private-source
+        env:
+          PYTHON_DOTENV_DISABLED: '1'
+        run: |
+          python - <<'PY'
+          import os,socket,unittest,sys
+          def denied(*a,**k):raise AssertionError('Business network disabled during offline tests')
+          socket.socket.connect=denied;socket.socket.connect_ex=denied;socket.create_connection=denied
+          assert not any(os.getenv(k) for k in ('WB_TOKEN_1','TELEGRAM_BOT_TOKEN','MOYSKLAD_API_TOKEN','SUPABASE_SECRET_KEY'))
+          suite=unittest.defaultTestLoader.discover('.',pattern='test_stock_*.py')
+          suite.addTests(unittest.defaultTestLoader.loadTestsFromNames(['test_owner_low_rule','test_order_demand']))
+          result=unittest.TextTestRunner(verbosity=2).run(suite)
+          sys.exit(not result.wasSuccessful())
+          PY
