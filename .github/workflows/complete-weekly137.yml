@@ -51,7 +51,24 @@ jobs:
            for p in ps:c[norm(p['assortment'])]+=p['quantity']
            return c
           def write(kind,body,i=None):
-           auth();return t.request(m.MS,'entity/'+kind+('/'+i if i else ''),'PUT' if i else 'POST',body)
+           auth()
+           if kind!='salesreturn' or i:return t.request(m.MS,'entity/'+kind+('/'+i if i else ''),'PUT' if i else 'POST',body)
+           import urllib.request,urllib.error,json,os,gzip
+           class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self,*a,**k):raise RuntimeError('Redirect blocked')
+           req=urllib.request.Request(m.MS+'entity/salesreturn',data=json.dumps(body,ensure_ascii=False).encode(),method='POST',headers={'Authorization':'Bearer '+os.environ['MOYSKLAD_API_TOKEN'],'Content-Type':'application/json','Accept-Encoding':'gzip'})
+           try:
+            with urllib.request.build_opener(NoRedirect).open(req,timeout=45) as response:
+             raw=response.read()
+             if response.headers.get('Content-Encoding')=='gzip':raw=gzip.decompress(raw)
+             return json.loads(raw)
+           except urllib.error.HTTPError as e:
+            raw=e.read()
+            if e.headers.get('Content-Encoding')=='gzip':raw=gzip.decompress(raw)
+            diagnostic=raw.decode(errors='replace')
+            for key in ('MOYSKLAD_API_TOKEN','SUPABASE_SECRET_KEY'):diagnostic=diagnostic.replace(os.environ[key],'[REDACTED]')
+            db.put(ROOT+'return_error:v1',{'http':e.code,'body':diagnostic,'at':m.now()})
+            raise m.Stop('Return API rejected request; diagnostic saved privately') from None
           auth();inp=db.get(ROOT+'input:v1');p=db.get(ROOT+'prepare:v1');proof=db.get(ROOT+'source_proof:v1')
           assert proof['pagination_exhausted'] and inp['source_complete'] and p['source_complete'] and p['status']=='prepared'
           assert not p['stock_exceptions'] and not p['missing_basis'] and not p['missing_costs']
@@ -59,7 +76,7 @@ jobs:
           base={k:m.meta(p[k]) for k in ('organization','agent','store')};base['rate']=p['rate']
           flt='organization='+norm(p['organization'])+';agent='+norm(p['agent'])+';store='+norm(p['store'])
           def relevant(d):return any(s in d.get('name','')+' '+d.get('description','') for s in inp['report_ids']) or '0(137)' in d.get('description','')
-          existing={k:[d for d in rows('entity/'+k,{'filter':flt}) if relevant(d)] for k in ('customerorder','demand','salesreturn')}
+          existing={k:[d for d in rows('entity/'+k,{'filter':flt+';moment>=2026-11-01 00:00:00'}) if relevant(d)] for k in ('customerorder','demand','salesreturn')}
           out['duplicate_preflight']={k:[d['id'] for d in v] for k,v in existing.items()};save()
           assert all(d.get('externalCode','').startswith('weekly137-') for v in existing.values() for d in v),'Unrecognized existing document requires reconciliation'
           def ensure(kind,code,body):
@@ -119,7 +136,7 @@ jobs:
            assert d['applicable'] and norm(d['demand']).endswith('/'+ident) and qty(pos('salesreturn',d['id']))==qty(positions(amounts))
           final=[]
           for kind in ('customerorder','demand','salesreturn'):
-           ds=[d for d in rows('entity/'+kind,{'filter':flt}) if relevant(d)]
+           ds=[d for d in rows('entity/'+kind,{'filter':flt+';moment>=2026-11-01 00:00:00'}) if relevant(d)]
            assert len(ds)==(len(groups) if kind=='salesreturn' else 1)
            for d in ds:
             detail=get(kind,d['id']);pp=pos(kind,d['id']);assert detail['applicable'] and all(x['price']==0 for x in pp)
