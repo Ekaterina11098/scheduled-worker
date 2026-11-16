@@ -12,7 +12,7 @@ def protected_repeats(worker,rows):
   m=re.match(r'^Повышение · (.+?) Продавец: ([0-9.,]+) → ([0-9.,]+) [¥￥]',line)
   if not m or m[1]not in by_article:continue
   nm,r=by_article[m[1]]
-  if str(nm)in('1473245494','1473245510')or r.get('action')!='raise'or r.get('raise_kind')!='repeat'or r.get('orders_stable')is not True or r.get('conversion_held')is not True or r.get('full_days',0)<4:continue
+  if str(nm)in('1473245494','1473245510')or r.get('action')!='raise'or r.get('raise_kind')!='repeat'or r.get('orders_stable')is not True or r.get('conversion_held')is not True or r.get('full_days',0)<3:continue
   days=r.get('orders_each_day');p=state.get('price_history',{}).get(nm,{}).get('price',{})
   if not isinstance(days,list)or len(days)!=4 or any(type(n)is not int or n<1 for n in days):continue
   try:

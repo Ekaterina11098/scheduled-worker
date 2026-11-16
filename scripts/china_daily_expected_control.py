@@ -4,7 +4,7 @@ from decimal import Decimal
 import json,os,base64,re,time
 
 def comparison_windows(detected,today):
- n=min(4,max(0,(today-detected).days-1))
+ n=min(3,max(0,(today-detected).days-1))
  if not n:return None
  end=today-timedelta(days=1)
  return ((detected-timedelta(days=4),detected-timedelta(days=1)),(end-timedelta(days=n-1),end))
@@ -185,7 +185,7 @@ def build(worker,candidate_review=False):
    for label,(a,b) in zip(('before','after'),pair):outcomes[label]=order_outcomes(wb_raw,outcome_rows[nm],nm,article,str(a),str(b))
   base=outcomes.get('before',{})
   resolved=buyout_from_product(params)
-  item=dict(nm_id=nm,article=article,detected_at=str(detected),before_price=(change.get('before_price') or {}).get('current_cny'),after_price=(change.get('after_price') or {}).get('current_cny'),buyout_percent=resolved['percent'],buyout_sample=resolved['sample_size'],buyout_fallback=resolved['source']=='fallback',buyout_period_from=str(rate_start),buyout_period_to=str(end),buyout_note=resolved['note'],assessment_date=str(detected+timedelta(days=5)))
+  item=dict(nm_id=nm,article=article,detected_at=str(detected),before_price=(change.get('before_price') or {}).get('current_cny'),after_price=(change.get('after_price') or {}).get('current_cny'),buyout_percent=resolved['percent'],buyout_sample=resolved['sample_size'],buyout_fallback=resolved['source']=='fallback',buyout_period_from=str(rate_start),buyout_period_to=str(end),buyout_note=resolved['note'],assessment_date=str(detected+timedelta(days=4)))
   if not pair:item.update(status='zero_full_days',result_action='Нет завершённых дней после изменения; ждём первый полный день.');output.append(item);continue
   retention=None
   if params:
@@ -238,7 +238,7 @@ def build(worker,candidate_review=False):
   progress=state.setdefault('price_review_progress',{})
   for product in output:
    nm=str(product['nm_id']);change=state['price_history'][nm].get('last_price_change') or state['price_history'][nm].get('increase') or {}
-   progress[nm]=dict(detected_at=change.get('detected_at'),assessed_at=datetime.now(MSK).isoformat(),complete=product.get('full_days',0)>=4 and product.get('result',{}).get('status') in ('positive','mixed','observe'))
+   progress[nm]=dict(detected_at=change.get('detected_at'),assessed_at=datetime.now(MSK).isoformat(),complete=product.get('full_days',0)>=3 and product.get('result',{}).get('status') in ('positive','mixed','observe'))
   worker.save(demand.STATE_KEY,state)
  worker.save(('china_agent:daily_expected_candidates:' if candidate_review else 'china_agent:daily_expected_control:')+str(worker.day)+(':verify' if getattr(worker,'control_preview',False) else ''),value)
  return value
@@ -271,7 +271,7 @@ def render_item(item):
  if b['advertising']>a['advertising']:lines.append('Рост рекламных расходов учитываем отдельно; ухудшение не доказывает влияние цены.')
  if item.get('zero_buyout_signal',{}).get('message'):lines.append(item['zero_buyout_signal']['message'])
  if item.get('delivery_model_note'):lines.append(item['delivery_model_note'])
- if item['full_days']<4:lines.append('Промежуточно. Первая четырёхдневная оценка — '+item['assessment_date']+'.')
+ if item['full_days']<3:lines.append('Промежуточно. Первая трёхдневная оценка — '+item['assessment_date']+'.')
  return '\n'.join(lines)
 
 def model_notes():
@@ -316,7 +316,7 @@ def render_candidates(worker):
   nm=str(price['nmID']);r=assessed.get(nm,{})
   if nm in held or nm not in targets or not r.get('has_previous_increase'):continue
   values=[daily[str(d)][nm]['orders'] for d in wanted]
-  if (r.get('full_days',0)>=4 and all(v>=1 for v in values)
+  if (r.get('full_days',0)>=3 and all(v>=1 for v in values)
       and r.get('conversion_held') is True
       and r.get('period_from')==str(wanted[0]) and r.get('period_to')==str(wanted[-1])):
    proposal=demand.offer(price)

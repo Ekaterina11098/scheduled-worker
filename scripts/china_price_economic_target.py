@@ -115,7 +115,7 @@ def choose_target(previous,current,before,after,*,buyout_probability,retention,c
                         predicted_orders_per_day=None,predicted_profit_per_day=None,
                         expected_profit_advantage_per_day=None,
                         demand_recovery='unidentified_not_claimed',
-                        evaluation='one_full_MSK_day_early_diagnostic_four_full_days_normal_review',
+                        evaluation='one_full_MSK_day_early_diagnostic_three_full_days_normal_review',
                         assumptions=['positive preliminary own unit economics after counted costs',
                                      'no demand or former daily profit restoration is claimed',
                                      'own buyout sample uncertainty and unknown shared/reverse costs remain'])

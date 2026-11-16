@@ -72,7 +72,7 @@ def choose(worker,preview=False):
             full_days=max(0,(worker.day-changed).days-1);result['full_days']=full_days
             a=changed-timedelta(days=4);b=changed-timedelta(days=1)
             prior=[e['day'] for e in events.get(nm,[]) if a<=e['day']<=b]
-            if full_days>=4 and not prior:
+            if full_days>=3 and not prior:
                 before=cr(nm,a,b);after_cr=cr(nm,start,end)
                 result.update(conversion_before=before,conversion_after=after_cr,baseline_from=str(a),baseline_to=str(b),period_from=str(start),period_to=str(end))
                 eligible=before is not None and after_cr is not None and after_cr>=before

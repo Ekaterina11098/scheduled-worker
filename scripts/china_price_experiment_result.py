@@ -24,7 +24,7 @@ def experiment_result(before_profit,after_profit,before_views,before_orders,afte
   return result
  p=conversion_test(before_views,before_orders,after_views,after_orders)
  result['conversion_fisher_p']=p
- if delta<0 and full_days>=4:
+ if delta<0 and full_days>=3:
   text='Прогноз прибыли в день снизился — проверяем экономику возврата прежней цены. Падение конверсии не является обязательным условием; причина ухудшения не установлена.';status='rollback_review'
  elif p is None or before_orders+after_orders==0:
   text='Недостаточно наблюдений для решения — продолжаем сбор данных.';status='insufficient_observations'
@@ -35,7 +35,7 @@ def experiment_result(before_profit,after_profit,before_views,before_orders,afte
          and before_views>=100 and after_views>=100 and before_orders+after_orders>=30
          and buyout_sample is not None and buyout_sample>=10)
   result['early_review_criteria_met']=early
-  if delta<0 and (full_days>=4 or early):
+  if delta<0 and (full_days>=3 or early):
    text='Прогноз прибыли в день снизился — предлагается проверить экономику возврата прежней цены. Причина ухудшения не установлена; автоматического изменения нет.'
    status='rollback_review'
   elif strong and delta<0:
@@ -49,7 +49,7 @@ def experiment_result(before_profit,after_profit,before_views,before_orders,afte
    text='Ожидаемая прибыль снизилась — проверяем число заказов, трафик и расходы; причина пока не установлена.';status='investigate'
   else:
    text='Рост ожидаемой прибыли не подтверждён — продолжаем наблюдение.';status='observe'
- if full_days<4:text+=' Промежуточно: '+str(full_days)+' из 4 полных дней.'
+ if full_days<3:text+=' Промежуточно: '+str(full_days)+' из 3 полных дней.'
  if buyout_sample and buyout_sample<10:text+=' Процент выкупа основан на '+str(buyout_sample)+' завершённых заказах; оценка неустойчива.'
  result.update(status=status,result_action=text)
  return result
