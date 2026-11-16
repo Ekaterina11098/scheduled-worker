@@ -1,7 +1,5 @@
 name: Inspect Guangzhou New warehouse
 on:
-  push:
-    paths: ['.github/workflows/guangzhou-new-inspect-20261116.yml']
   workflow_dispatch:
 permissions:
   contents: read
