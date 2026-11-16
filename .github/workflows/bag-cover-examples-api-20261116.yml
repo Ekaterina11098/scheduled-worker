@@ -1,0 +1,40 @@
+name: Read other bag cover examples via API16Nov
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/bag-cover-examples-api-20261116.yml']
+permissions: {}
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5
+      - env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        shell: python
+        run: |
+          import os,requests,time,datetime,base64
+          wanted={'025-MadisonBag-zblack','157-CelineaBag-black','338-CristineBag-ebony','340-ElodieBag-darkred','343-ColetteBag-black','345-AurelieBag-black','354-OdetteBag-black','356-NoemiBag-black'}
+          found={};cur={'limit':100}
+          for page in range(40):
+           r=requests.post('https://content-api.wildberries.cn/content/v2/get/cards/list',headers={'Authorization':os.environ['WB_TOKEN_3']},json={'settings':{'cursor':cur,'filter':{'withPhoto':-1}}},timeout=45);r.raise_for_status();j=r.json()
+           for c in j.get('cards',[]):
+            if c.get('vendorCode') in wanted:found[c['vendorCode']]=c
+           if len(found)==len(wanted):break
+           cu=j.get('cursor',{})
+           if cu.get('total',0)<100:break
+           cur={'limit':100,'updatedAt':cu['updatedAt'],'nmID':cu['nmID']};time.sleep(.7)
+          images=[]
+          for a,c in found.items():
+           for n,p in enumerate(c.get('photos',[])[:2],1):
+            url=p.get('c516x688') or p['big'];r=requests.get(url,timeout=40);r.raise_for_status()
+            images.append({'article':a,'nmID':c['nmID'],'position':n,'source_url':url,'base64':base64.b64encode(r.content).decode()})
+          sb=os.environ['SUPABASE_URL'].rstrip('/');sk=os.environ['SUPABASE_SECRET_KEY']
+          out={'status':'read','images':images,'wb_writes':0}
+          r=requests.post(sb+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={'apikey':sk,'Authorization':'Bearer '+sk,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},json={'cache_key':'bag_cover_examples_api:20261116:v1','payload':out,'updated_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'expires_at':'2099-01-01T00:00:00Z'},timeout=60);r.raise_for_status()
+          print('Cover examples downloaded from content API supplied URLs; no browser')
