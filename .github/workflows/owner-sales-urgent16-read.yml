@@ -1,0 +1,50 @@
+name: Owner urgent evening sales read16
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-sales-urgent16-read.yml]
+permissions: {contents: read}
+concurrency:
+  group: bot-mpstats-data
+  cancel-in-progress: false
+jobs:
+  read:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-sales-urgent16] Read evening orders and exact proposal preflight'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: b90b5e83efd7c691d6a3d24b1d17b35c0e7da99c
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          path: source
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /analytics/
+            /business_agents/
+            /advertising_agent/
+            /china_agent/
+            /*.py
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5 pillow==11.3.0 python-dotenv simplejson==4.2.0 openai==3.42.1
+      - env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          MPSTATS_API_TOKEN: ${{ secrets.MPSTATS_API_TOKEN }}
+          OPENAI_API_KEY: ''
+          PYTHONPATH: scripts:source
+        run: python scripts/owner_sales_urgent16_read.py
