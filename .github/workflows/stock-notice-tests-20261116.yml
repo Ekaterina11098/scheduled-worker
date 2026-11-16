@@ -1,0 +1,40 @@
+name: Stock notification and manual resume tests
+on:
+  push:
+    paths: ['.github/workflows/stock-notice-tests-20261116.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: bot-stock
+  cancel-in-progress: false
+jobs:
+  stock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            content_group_destination.py
+            stock_deploy_support.py
+            warehouse_id_patch.py
+            scripts/moysklad_warehouses.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: 51267a93635d3f668fa3f7bd2c66cf0930ed6e9b
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          persist-credentials: false
+          path: private-source
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests==2.32.5 python-dotenv==1.1.1 aiogram==3.22.0 simplejson==4.2.0 'psycopg[binary]==3.2.9' cryptography > "$RUNNER_TEMP/daily-install.log" 2>&1
+      - name: Offline notification and delivery recovery regression tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}/private-source
+        working-directory: private-source
+        run: python -m unittest test_stock_failure_notice test_stock_regular_service test_stock_live_capacity
