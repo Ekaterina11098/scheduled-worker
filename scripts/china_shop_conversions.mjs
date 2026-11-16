@@ -42,7 +42,7 @@ export async function storeView(data,start,end,sid,mode='summary',page=0){
 function nav(sid){return {inline_keyboard:[[{text:'Изменить период',callback_data:'csc1:'+sid+':period'}],[{text:'Найти товар',callback_data:'cmn1:shopproduct'}],[{text:'‹ Продажи',callback_data:'cmn1:sales'}],[{text:'Главное меню',callback_data:'cmn1:home'}]]};}
 export async function handleStoreConversions(config,update,deps){
  const cb=update.callback_query,m=cb?.message||update.message,actor=cb?.from||m?.from;
- const initial=cb?.data==='cmn1:shopconv',match=/^csc1:([a-f0-9]{16}):(period|custom|range1|range7|range14|range30|show|summary|daily|graph|next|prev)$/.exec(cb?.data||'');
+ const initial=cb?.data==='cmn1:shopconv',match=/^csc1:([a-f0-9]{16}):(period|custom|range1|range7|range14|range30|show|retry|summary|daily|graph|next|prev)$/.exec(cb?.data||'');
  const text=update.message?.text?.trim(),possibleReply=!cb&&typeof text==='string'&&text.length<=70&&m?.reply_to_message?.from?.id===BOT;
  if(!initial&&!match&&!possibleReply)return null;
  if(config.active!==true||config.chat_id!==CHAT||config.bot_id!==BOT||m?.chat?.id!==CHAT||!['group','supergroup'].includes(m.chat.type)||!Number.isSafeInteger(update.update_id)||update.update_id<0||!Number.isSafeInteger(actor?.id)||actor.id<=0||actor.is_bot!==false||m.sender_chat||m.forward_origin||(cb&&m.from?.id!==BOT))return new Response('OK');
@@ -63,7 +63,7 @@ export async function handleStoreConversions(config,update,deps){
   ctx={...old.context};const op=match[2];
   if(op==='period'||op==='custom')ctx.view=op;
   else if(op.startsWith('range')){const n=Number(op.slice(5));ctx={view:'report',start:shift(today(now),-n),end:shift(today(now),-1)};}
-  else {ctx.view='report';if(['summary','daily','graph'].includes(op)){ctx.mode=op;ctx.page=0;}if(op==='next')ctx.page=Math.min(3,(ctx.page||0)+1);if(op==='prev')ctx.page=Math.max(0,(ctx.page||0)-1);}
+  else {ctx.view='report';if(op==='retry')ctx.retry=true;if(['summary','daily','graph'].includes(op)){ctx.mode=op;ctx.page=0;}if(op==='next')ctx.page=Math.min(3,(ctx.page||0)+1);if(op==='prev')ctx.page=Math.max(0,(ctx.page||0)-1);}
  }else if(possibleReply&&pending?.message_id===m.reply_to_message.message_id){
   if(Date.parse(pending.expires_at)<=now.getTime())return new Response('OK');
   try{ctx={view:'report',...parsePeriod(text,now)};}catch(e){ctx={view:'custom',error:e.message};}
@@ -77,7 +77,14 @@ export async function handleStoreConversions(config,update,deps){
   const data=await get(DATA+ctx.start+':'+ctx.end);
   if(data?.status==='complete'&&data.version===2)view=await storeView(data,ctx.start,ctx.end,sid,ctx.mode,ctx.page);
   else{
-   const key=ROOT+'request:'+actor.id+':'+ctx.start+':'+ctx.end;let claim=await get(key);
+   const baseKey=ROOT+'request:'+actor.id+':'+ctx.start+':'+ctx.end;let key=baseKey+(ctx.retryJob?':retry:'+ctx.retryJob:'');let claim=await get(key),failed=false;
+   if(claim?.job_id){
+    const jobs=await deps.database('business_agent_jobs?id=eq.'+claim.job_id+'&agent_id=eq.china&chat_id=eq.'+CHAT+'&sender_id=eq.'+actor.id+'&select=id,status&limit=1');
+    const progress=await get('china_agent:menu_analytics:v1:'+claim.job_id);
+    failed=jobs?.length===1&&(jobs[0].status==='failed'||progress?.status==='blocked');
+    if(failed&&ctx.retry){ctx.retryJob=claim.job_id;key=baseKey+':retry:'+ctx.retryJob;claim=await get(key);failed=false;}
+   }
+   delete ctx.retry;
    if(!claim){
     if(!await insert(key,{status:'requesting',created_at:now.toISOString(),wb_writes:0}))throw Error('Store funnel request claimed');
     if(typeof deps.requestAnalysis!=='function')throw Error('Store funnel collection unavailable');
@@ -87,7 +94,7 @@ export async function handleStoreConversions(config,update,deps){
     if(jobs?.length!==1)throw Error('Exact store funnel job missing');
     claim={status:'accepted',job_id:jobs[0].id,created_at:now.toISOString(),wb_writes:0};await put(key,claim);
    }
-   view={text:'Конверсии магазина · '+ctx.start+' — '+ctx.end+'\nСбор сохранён · №'+(claim.job_id||'уточняется')+'. Готовая таблица PNG будет отдельным ответом после проверки всех страниц WB. Сейчас результат ещё не доставлен.',reply_markup:{inline_keyboard:[[b('Показать готовый PNG','show')],...nav(sid).inline_keyboard]}};
+   view={text:failed?'Расчёт конверсий №'+claim.job_id+' не завершён. Можно повторить досбор. Изменений нет.':'Конверсии магазина · '+ctx.start+' — '+ctx.end+'\nСбор сохранён · №'+(claim.job_id||'уточняется')+'. Готовая таблица PNG будет отдельным ответом после проверки всех страниц WB. Сейчас результат ещё не доставлен.',reply_markup:{inline_keyboard:[...(failed?[[b('Повторить досбор','retry')]]:[[b('Показать готовый PNG','show')]]),...nav(sid).inline_keyboard]}};
   }
  }
  if(!await insert(ROOT+'session:'+sid,{actor:actor.id,context:ctx,expires_at:new Date(now.getTime()+86400000).toISOString()}))throw Error('Session claimed');

@@ -170,7 +170,7 @@ export async function handleAdvertisingPath(config,update,deps){
  const member=await deps.telegram('getChatMember',{chat_id:CHAT,user_id:a.id});
  if(member?.user?.id!==a.id||member.user.is_bot!==false||!(['creator','administrator','member'].includes(member.status)||member.status==='restricted'&&member.is_member===true))return new Response('OK');
  const answer=text=>cb?Response.json({method:'answerCallbackQuery',callback_query_id:cb.id,...(text?{text,show_alert:true}:{})}):new Response('OK'),now=deps.now?deps.now():new Date();
- let ctx={view:cb?.data==='cmn1:candidates'?'candidates':cb?.data==='cmn1:drrview'?'objects':cb?.data==='cmn1:shopproduct'?'search':'types',kind:cb?.data==='cmn1:drrview'?'ad':cb?.data==='cmn1:shopproduct'?'general':'all',metric:cb?.data==='cmn1:drrview'?'drr':'cr',period:'range',start:shift(day(now),-7),end:shift(day(now),-1)};
+ let ctx={originShop:cb?.data==='cmn1:shopproduct',view:cb?.data==='cmn1:candidates'?'candidates':cb?.data==='cmn1:drrview'?'objects':cb?.data==='cmn1:shopproduct'?'search':'types',kind:cb?.data==='cmn1:drrview'?'ad':cb?.data==='cmn1:shopproduct'?'general':'all',metric:cb?.data==='cmn1:drrview'?'drr':'cr',period:'range',start:shift(day(now),-7),end:shift(day(now),-1)};
  if(match){const session=await get(ROOT+'session:'+match[1]);if(!session||session.actor!==a.id||session.message_id!==m.message_id||Date.parse(session.expires_at)<=now.getTime())return answer('Откройте раздел своей кнопкой меню.');try{ctx=transition(session.context,match[2],now);if(ctx.view==='candidates'&&!ctx.analysisDay)ctx.analysisDay=day(new Date(Date.parse(session.expires_at)-86400000));if(match[2].startsWith('pick')){const picked=session.context.matches?.find(r=>r.nm===ctx.nm);if(!picked)return answer('Повторите поиск товара.');ctx.article=picked.article;}}catch(e){return answer(e.message);}if(match[2]==='noop')return answer('');}
  else if(pending&&possibleReply&&pending.message_id===m.reply_to_message?.message_id){ctx={...pending.context,view:Date.parse(pending.expires_at)>now.getTime()?'matches':'search',query:input};}
  if(ctx.view==='candidates'&&!ctx.analysisDay)ctx.analysisDay=day(now);
@@ -237,6 +237,7 @@ export async function handleAdvertisingPath(config,update,deps){
   }
   if(!requestedFunnel)view=await conversionView(cache,ctx,sid,now);
  }
+ if(ctx.originShop&&view.reply_markup?.inline_keyboard)view.reply_markup.inline_keyboard.push([{text:'‹ Конверсии магазина',callback_data:'cmn1:shopconv'}]);
  if(!await insert(ROOT+'session:'+sid,{actor:a.id,context:ctx,expires_at:new Date(now.getTime()+86400000).toISOString()}))throw Error('Advertising session claimed');
  const base={chat_id:CHAT,reply_markup:view.reply_markup};let receipt;
  if(deps.forceNewMessage)receipt=await deps.telegram('sendMessage',{...base,text:view.text});
