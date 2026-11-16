@@ -1,5 +1,5 @@
-name: Owner two campaign cost review16
-# Current owner clarification: act on the campaign 5% target; proposal only.
+name: Owner campaign cost and growth review16
+# Current owner clarification: cost control and justified additions proceed together.
 on:
   push:
     branches: [main]
@@ -36,4 +36,4 @@ jobs:
           WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
           CHINA_TELEGRAM_BOT_TOKEN: ${{ secrets.CHINA_TELEGRAM_BOT_TOKEN }}
           PYTHONPATH: scripts
-        run: python scripts/owner_risk16_target5.py
+        run: python scripts/owner_risk169_report.py

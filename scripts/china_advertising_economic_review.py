@@ -59,6 +59,9 @@ def apply(bundle,source,minima):
   settings={r['nm_id']:r for r in state['nm_settings']}
   zone='search' if state['settings']['placements'].get('search') else 'recommendations'
   for r in c.get('focus',[]):
+   if r['nm']in(1473245494,1473245510):
+    r['action']=None
+    continue
    if r['nm'] not in settings:
     r['action']=None;r['already_excluded']=True;continue
    if r.get('pending_first_day'):
@@ -90,6 +93,18 @@ def apply(bundle,source,minima):
    if e.get('buyout_fallback'):r['reason']+=f" Нет завершённой собственной выборки: выкуп{e['buyout']*100:g}% — допущение, не факт."
    base=dict(id=str(c['id'])+':'+str(r['nm']),campaign_id=c['id'],nm_id=r['nm'],placement=zone,old_minor=old,article=r['article'])
    own_model=e.get('sample_size',0)>=5 and not e.get('buyout_fallback') and not e.get('commission_policy_fallback')
+   decision_days=(r.get('comparison')or{}).get('to_days')or out.get('days',[])
+   last_day=(out.get('days')or[None])[-1]
+   raw=next((z for batch in source['batches'].values()for z in batch.get('stats',[])if z['advertId']==c['id']),{})
+   latest_rows=[n for d in raw.get('days',[])if d['date'][:10]==last_day and last_day in decision_days for app in d.get('apps',[])for n in app.get('nms',[])if n['nmId']==r['nm']]
+   latest={k:sum(n.get(f,0)for n in latest_rows)for k,f in [('spend','sum'),('orders','orders'),('amount','sum_price'),('clicks','clicks')]}
+   latest_zero_loss=own_model and latest['orders']==0 and latest['clicks']>=100 and latest['spend']>=max(model_before,e['seller_price_cny']*.05)
+   zero_order_overrun=own_model and len(decision_days)>=2 and orders==0 and p['clicks']>=100 and spend>=e['seller_price_cny']*.05
+   latest_drr=100*latest['spend']/latest['amount']if latest['amount']>0 else None
+   deterioration=own_model and old>minimum and latest['clicks']>=100 and latest_drr is not None and drr is not None and latest_drr>max(5,drr*1.2)
+   if latest_zero_loss or zero_order_overrun or deterioration:
+    r['completed_cost_guard']=dict(latest_day=last_day,latest=latest,zero_order_overrun=zero_order_overrun,latest_zero_loss=latest_zero_loss,deterioration=deterioration)
+    r['reason']+=' Последний завершённый день: '+f"{latest['spend']:.2f} ¥; {int(latest['clicks'])} кликов; {int(latest['orders'])} прямых заказов."
    meaningful=(p['clicks']>=100 or own_model and model_before<=0 and p['clicks']>=30) and spend>=max(0,model_before,e['seller_price_cny']*.05)
    # A reliable negative unit model cannot be repaired by buying more clicks.
    # This still requires completed post-change traffic and fresh own inputs above.
@@ -97,12 +112,12 @@ def apply(bundle,source,minima):
    meaningful=meaningful or negative_own_unit
    bounded_loss=orders==0 and p['clicks']>=30 and own_model and model_before>0 and spend>=max(model_before,e['seller_price_cny']*.05)
    positive_own_model=(orders>0 and r['model_profit_for_attributed_orders_cny']>0 and not e.get('buyout_fallback') and not e.get('commission_policy_fallback') and e.get('sample_size',0)>=5)
-   if positive_own_model:
+   if positive_own_model and not(latest_zero_loss or deterioration):
     # A target DRR is not a break-even threshold; preserve uncertainty and a finite review.
     r['action']=None
     r['decision']=f'Сохранить {old/100:g} ¥ до оценки следующего полного дня: предварительная экономика положительна.'
     r['reason']+=' Расчёт не доказывает закрытую прибыль; превышение цели ДРР само по себе не основание для снижения или исключения.'
-   elif old>minimum and (meaningful or bounded_loss):
+   elif old>minimum and (meaningful or bounded_loss or deterioration or latest_zero_loss or zero_order_overrun):
     r['action']=dict(base,kind='ad_set_bid',target_minor=minimum)
     r['decision']=f'Снизить {old/100:g} → {minimum/100:g} ¥ (минимум WB).'
    elif old==minimum and orders>0 and drr is not None and 5<drr<=6 and r['model_profit_for_attributed_orders_cny']>0:
@@ -111,7 +126,7 @@ def apply(bundle,source,minima):
     r['test_proposal']=dict(days=1,max_additional_spend_cny=limit,requires_separate_approval=True,execution_authorized=False)
     r['decision']=f'Оставить минимум {old/100:g} ¥ только как отдельно согласованный тест на 1 полный день; лимит допрасхода {limit:g} ¥; без пополнения.'
     r['reason']+=' Цель5% превышена незначительно; это предложение исключения из лимита на один день, не разрешение продолжать автоматически.'
-   elif old==minimum and (meaningful or bounded_loss) and len(state['nm_settings'])>1 and state.get('restrictions',{}).get('can_change_nms') is True:
+   elif old==minimum and (meaningful or bounded_loss or latest_zero_loss or zero_order_overrun) and len(state['nm_settings'])>1 and state.get('restrictions',{}).get('can_change_nms') is True:
     r['action']=dict(base,kind='ad_exclude_sku');r['decision']='Исключить из этой РК: ставка уже на минимуме WB.'
    else:
     r['action']=None

@@ -1,10 +1,10 @@
-"""Current owner correction: restore an economically checked proposal, no WB calls."""
+"""Owner-authorized same-message report revisions; no WB mutations or model calls."""
 import copy,json,base64,hashlib
 from datetime import datetime,timezone
 ROOT='china_agent:owner_two_campaign_cost_review:2026-11-16:v3';DAY='2026-11-16';NM=1473243903;CID=41332083
 SLOT='cost-review-two16-current';EXPECTED_ADDED={'41332083:add:1473243903'};EXPECTED_REMOVED=set()
 OWNER_REQUEST='нет у меня таких распоряжений не возвращать отдельные арт'
-PREFLIGHT=None;ALLOW_UMBRELLA_READS=False
+PREFLIGHT=None;ALLOW_UMBRELLA_READS=False;READ_CAMPAIGN_IDS={41325637}
 
 def restore(current,prior):
  out=copy.deepcopy(current)
@@ -34,7 +34,10 @@ def main():
  original=requests.sessions.Session.request
  def guard(session,method,url,**kw):
   u=urlparse(url)
-  read_ok=ALLOW_UMBRELLA_READS and u.hostname=='advert-api.wildberries.ru'and(method.upper()=='GET'and u.path=='/api/advert/v2/adverts'and u.query=='ids=41325637'or method.upper()=='POST'and u.path=='/api/advert/v1/bids/min'and(kw.get('json')or{}).get('advert_id')==41325637)
+  from urllib.parse import parse_qs
+  query_ids=parse_qs(u.query).get('ids',[''])[0].split(',')
+  ids_ok=bool(query_ids)and all(x.isdigit()and int(x)in READ_CAMPAIGN_IDS for x in query_ids)
+  read_ok=ALLOW_UMBRELLA_READS and u.hostname=='advert-api.wildberries.ru'and(method.upper()=='GET'and u.path=='/api/advert/v2/adverts'and ids_ok or method.upper()=='POST'and u.path=='/api/advert/v1/bids/min'and(kw.get('json')or{}).get('advert_id')in READ_CAMPAIGN_IDS)
   assert read_ok or url.startswith(io.url+'/rest/v1/')or u.hostname=='api.telegram.org'and method.upper()=='POST'and u.path.rsplit('/',1)[-1]=='editMessageMedia','No WB mutations, model or unrelated calls'
   return original(session,method,url,**kw)
  requests.sessions.Session.request=guard
