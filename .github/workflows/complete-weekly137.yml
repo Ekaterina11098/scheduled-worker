@@ -131,7 +131,22 @@ jobs:
              # Even draft returns reserve the basis against accidental duplication.
              used.update(qty(pos('salesreturn',rd['id'])))
             wanted=qty(positions(amounts));assert all(capacity[k]-used[k]>=q for k,q in wanted.items()),'Return basis capacity changed'
-            d=ensure('salesreturn',code,{**base,'moment':moment,'applicable':True,'demand':m.meta(basis),'description':'рыжие возвраты из '+inp['comment'],'positions':positions(amounts)})
+            template=t.request(m.MS,'entity/salesreturn/new','PUT',{'demand':m.meta(basis)})
+            template_positions=template['positions']['rows'] if isinstance(template['positions'],dict) else template['positions']
+            selected=[];remaining=dict(wanted)
+            for row in template_positions:
+             key=norm(row['assortment'])
+             if remaining.get(key,0)<=0:continue
+             take=min(row['quantity'],remaining[key]);remaining[key]-=take
+             assert row.get('price',0)==0,'Return basis has nonzero price; cannot change prior document'
+             rp={k:row[k] for k in ('assortment','price','discount','vat','vatEnabled','pack') if k in row}
+             rp['quantity']=take;selected.append(rp)
+            assert all(q==0 for q in remaining.values()),'Template return capacity insufficient'
+            db.put(ROOT+'return_template:'+ident,{'selected':selected,'vatEnabled':template.get('vatEnabled'),'vatIncluded':template.get('vatIncluded'),'at':m.now()})
+            body={**base,'moment':moment,'applicable':True,'demand':m.meta(basis),'description':'рыжие возвраты из '+inp['comment'],'positions':selected}
+            for field in ('vatEnabled','vatIncluded'):
+             if field in template:body[field]=template[field]
+            d=ensure('salesreturn',code,body)
            else:d=already[0]
            assert d['applicable'] and norm(d['demand']).endswith('/'+ident) and qty(pos('salesreturn',d['id']))==qty(positions(amounts))
           final=[]
