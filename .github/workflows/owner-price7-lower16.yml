@@ -1,0 +1,33 @@
+name: Owner seven exact price reductions16
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-price7-lower16.yml]
+permissions: {contents: read}
+concurrency:
+  group: china-confirmed-wb-price-writes
+  cancel-in-progress: false
+jobs:
+  apply:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-price7-lower16] Apply seven approved exact seller prices without Telegram'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: /scripts/
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5
+      - name: Verify existing durable exact-price engine
+        run: PYTHONPATH=scripts python -m unittest discover -s scripts -p test_china_price_apply.py
+      - name: Apply exact owner selection and read back WB
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+        run: PYTHONPATH=scripts python scripts/owner_price7_lower16.py
