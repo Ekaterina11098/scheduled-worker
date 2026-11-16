@@ -1,8 +1,5 @@
 name: Owner read-only order dates lookup
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/owner-order-date-lookup-20261116.yml']
   workflow_dispatch:
 permissions:
   contents: read
