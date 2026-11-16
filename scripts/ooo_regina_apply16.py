@@ -91,7 +91,10 @@ def run():
  if auth.get('campaign')!=39605581 or set(auth.get('keep_nm_ids',[]))!={851230666,1140798740,863222656}or auth.get('search_minor')!=325 or auth.get('recommendations_minor')!=325 or auth.get('deposit_kgs')!=1200 or auth.get('resume')is not True or set(auth.get('archive_ids',[]))!={41515989,41516310,41516903,41517233,41517533,39605582}:raise Stop('Scope mismatch')
  s=db.get(TASK+':execution')
  if s and s.get('status')=='verified':print('Already verified; no replay');return
- if s and s.get('status')=='attention':raise Stop('Attention requires reconciliation, no replay')
+ if s and s.get('status')=='attention':
+  if s.get('safe_error')!='Transport outcome uncertain; no automatic replay'or any(x.get('status')!='accepted'for x in s.get('steps',{}).values()):raise Stop('Attention requires reconciliation, no replay')
+  s.update(status='recovering_read_transport',prior_safe_error=s.pop('safe_error'),read_recovery_at=stamp())
+  db.update(TASK+':execution',s)
  if not s:
   s={'status':'preflight','steps':{},'authorization_sha256':hashlib.sha256(canonical(auth).encode()).hexdigest(),'started_at':stamp(),'run_id':os.environ['GITHUB_RUN_ID'],'telegram_calls':0,'model_calls':0}
   db.once(TASK+':execution',s)
