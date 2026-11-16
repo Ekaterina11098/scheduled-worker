@@ -412,6 +412,36 @@ class Worker:
         self.db.put(key, state)
         return meta(doc)
 
+    def ip_picking_categories(self, positions):
+        """Identify every IP item from the WB picking-list-linked MS product record."""
+        if not positions:
+            raise Stop("IP picking list has no products for category detection")
+        categories = set()
+        for pos in positions:
+            product_href = href(pos.get("assortment", {}))
+            if not product_href.startswith(MS + "entity/product/"):
+                raise Stop("IP picking list has ambiguous product identity")
+            product = self.t.request(MS, "entity/product/" + product_href.split("/")[-1])
+            if product.get("archived") or not isinstance(product.get("name"), str):
+                raise Stop("IP product unavailable for category detection")
+            name = product["name"].casefold()
+            article = (product.get("article") or "").casefold()
+            # Distinct KIZY product type has priority if several product words overlap.
+            if any(token in name or token in article for token in ("кизы", "kizy", "kizi")):
+                categories.add("КИЗЫ")
+            elif any(token in name for token in ("сумка", "сумки", "клатч", "рюкзак")) or "bag" in article:
+                categories.add("Сумки")
+            elif "зонт" in name or "zont" in article:
+                categories.add("Зонты")
+            else:
+                raise Stop("IP product category unknown; owner manual review required: " + str(product.get("article")))
+        ordered = [label for label in ("Сумки", "Зонты", "КИЗЫ") if label in categories]
+        if len(ordered) == 1:
+            return ordered[0]
+        if len(ordered) == 2:
+            return ordered[0] + " и " + ordered[1].lower() if ordered[1] != "КИЗЫ" else ordered[0] + " и КИЗЫ"
+        return ", ".join(ordered[:-1]) + " и " + ordered[-1]
+
     def order_annotation(self, supply, route=None):
         rule = self.c.get("order_annotation")
         if not rule:
@@ -421,6 +451,9 @@ class Worker:
         if len(states) != 1:
             raise Stop("Required customer order completion state missing or ambiguous")
         label = " ".join(supply.get("name", "").split())
+        if self.c.get("cabinet") == "token_2" and label.casefold() == "ип":
+            positions = getattr(self, "_annotation_positions", None)
+            label = self.ip_picking_categories(positions)
         cabinet_word = rule.get("cabinet_word", "Китай")
         if cabinet_word != "Китай":
             label = " ".join(word for word in label.split() if word != cabinet_word)
@@ -505,6 +538,7 @@ class Worker:
             self.db.put(key, state)
         self.validate_source(state)
         route = self.china_warehouse_routing(state, key)
+        self._annotation_positions = state["positions"]
         annotation = self.order_annotation(supply, state.get("warehouse_routing") if route else None)
         # Preflight the exact source warehouse before writing the first document.
         if route:
