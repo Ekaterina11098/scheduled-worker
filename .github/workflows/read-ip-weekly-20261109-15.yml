@@ -36,7 +36,7 @@ jobs:
            def redirect_request(self,*args,**kwargs):raise RuntimeError("Redirect blocked")
           op=urllib.request.build_opener(NoRedirect)
           request=db.get(ROOT+"request:v1") or {}
-          if request.get("source_requests_authorized") is not True:
+          if request.get("source_requests_authorized") is not True or request.get("writes_authorized") is not True:
            print("Owner report request is disabled; no source request.");sys.exit(0)
           proof=db.get(ROOT+"source_proof:v1") or {"status":"requested","dateFrom":"2026-11-09","dateTo":"2026-11-15","cabinet":"ip","secret_name":"WB_FINANCE_TOKEN_2","chunks":[],"pages":[],"rows":0}
           now=dt.datetime.now(dt.timezone.utc)
@@ -104,3 +104,5 @@ jobs:
           db.put(ROOT+"source_proof:v1",proof)
           print("Requested financial source page saved privately; pagination and account cooldown recorded.")
 
+
+# Continue authorized report 137 after cooldown 2026-11-17
