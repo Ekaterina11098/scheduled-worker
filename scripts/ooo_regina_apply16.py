@@ -34,8 +34,11 @@ class Executor:
    if step:s['steps'][step]={'status':'submitting','path':path,'method':method,'body':body,'params':params,'submitted_at':stamp()};save()
    try:r=self.request(method,'https://advert-api.wildberries.ru'+path,headers={'Authorization':self.token},json=body,params=params,timeout=(10,60),allow_redirects=False)
    except requests.RequestException:
-    if step:s['steps'][step]['status']='uncertain';save()
-    raise Stop('Transport outcome uncertain; no automatic replay')from None
+    if step:
+     s['steps'][step]['status']='uncertain';save()
+     raise Stop('Transport outcome uncertain; no automatic replay')from None
+    s.update(resume_after=time.time()+15,waiting_path=path,read_transport_retry_at=stamp());save()
+    raise Deferred()from None
    try:data=r.json()
    except ValueError:data={'response_text':r.text[:2000]}
    raw=r.headers.get('Retry-After')or r.headers.get('X-Ratelimit-Retry')or r.headers.get('X-Ratelimit-Reset')
@@ -92,7 +95,9 @@ def run():
  s=db.get(TASK+':execution')
  if s and s.get('status')=='verified':print('Already verified; no replay');return
  if s and s.get('status')=='attention':
-  if s.get('safe_error')!='Transport outcome uncertain; no automatic replay'or any(x.get('status')!='accepted'for x in s.get('steps',{}).values()):raise Stop('Attention requires reconciliation, no replay')
+  safe_read=s.get('safe_error')=='Transport outcome uncertain; no automatic replay'
+  owner_reconciles=auth.get('owner_started_manually')is True and(db.get(TASK+':owner_started')or{}).get('skip_start')is True and s.get('safe_error')in('Authorization changed','Accepted deposit needs reconciliation, never replay')
+  if not(safe_read or owner_reconciles)or any(x.get('status')!='accepted'for x in s.get('steps',{}).values()):raise Stop('Attention requires reconciliation, no replay')
   s.update(status='recovering_read_transport',prior_safe_error=s.pop('safe_error'),read_recovery_at=stamp())
   db.update(TASK+':execution',s)
  if not s:
@@ -127,15 +132,19 @@ def run():
     for n in target['nm_settings']:n['bids_kopecks'].update(search=325,recommendations=325)
     for cid in auth['archive_ids']:expected[str(cid)]['status']=7
     s.update(before=before,expected=expected,baseline_observed_at=stamp(),delete_nm_ids=sorted({n['nm_id']for n in main['nm_settings']}-keep),bid_changes=[{'nm_id':n['nm_id'],'placement':p,'bid_kopecks':325}for n in main['nm_settings']if n['nm_id']in keep for p in ['search','recommendations']if n['bids_kopecks'].get(p)!=325]);save()
-   if s['before']['39605581']['status']==9:call('GET','/adv/v0/pause',params={'id':39605581},step='pause_main')
+   if s['before']['39605581']['status']==9 and not auth.get('owner_started_manually'):call('GET','/adv/v0/pause',params={'id':39605581},step='pause_main')
    if s['delete_nm_ids']:call('PATCH','/adv/v0/auction/nms',{'nms':[{'advert_id':39605581,'nms':{'add':[],'delete':s['delete_nm_ids']}}]},step='memberships')
    if s['bid_changes']:call('PATCH','/api/advert/v1/bids',{'bids':[{'advert_id':39605581,'nm_bids':s['bid_changes']}]},step='bids')
    ex.fund(s,save,{'cid':39605581,'amount_kgs':1200},'deposit_39605581_1200')
    if not s.get('funding_verified_at'):
     b=call('POST','/api/advert/v2/budget',{'advertIds':[39605581]})['adverts']
-    if len(b)!=1 or b[0].get('advertId')!=39605581 or b[0].get('currency')!='KGS'or b[0].get('total',-1)<s['funding_before_by_campaign']['39605581']['total']+1200:raise Stop('Accepted deposit needs reconciliation, never replay')
+    owner_started=auth.get('owner_started_manually')is True and(db.get(TASK+':owner_started')or{}).get('skip_start')is True
+    receipt=s['steps']['deposit_39605581_1200']['response'];expected_total=s['funding_before_by_campaign']['39605581']['total']+1200
+    if len(b)!=1 or b[0].get('advertId')!=39605581 or b[0].get('currency')!='KGS'or b[0].get('total',-1)<0 or receipt.get('total')!=expected_total or(not owner_started and b[0]['total']<expected_total):raise Stop('Accepted deposit needs reconciliation, never replay')
     s.update(funding_after=b[0],funding_verified_at=stamp());save()
-   call('GET','/adv/v0/start',params={'id':39605581},step='start_main')
+   if auth.get('owner_started_manually')is True and(db.get(TASK+':owner_started')or{}).get('skip_start')is True:
+    s.update(owner_started_manually=True,owner_start_acknowledged_at=stamp());save()
+   else:call('GET','/adv/v0/start',params={'id':39605581},step='start_main')
    for cid in auth['archive_ids']:
     if s['before'][str(cid)]['status']!=7:call('GET','/adv/v0/stop',params={'id':cid},step='archive_'+str(cid))
    after=configs()
