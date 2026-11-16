@@ -451,7 +451,8 @@ class Worker:
         if len(states) != 1:
             raise Stop("Required customer order completion state missing or ambiguous")
         label = " ".join(supply.get("name", "").split())
-        if self.c.get("cabinet") == "token_2" and label.casefold() == "ип":
+        inferred_ip = self.c.get("cabinet") == "token_2" and label.casefold() == "ип"
+        if inferred_ip:
             positions = getattr(self, "_annotation_positions", None)
             label = self.ip_picking_categories(positions)
         cabinet_word = rule.get("cabinet_word", "Китай")
@@ -467,6 +468,8 @@ class Worker:
         if not label or label == "Китай":
             raise Stop("Supply category missing for customer order comment")
         date = stamp(supply["closedAt"]).astimezone(dt.timezone(dt.timedelta(hours=3))).strftime("%d %m %y")
+        if inferred_ip:
+            return {"description": date + " ИП " + label, "state": meta(states[0])}
         if self.c.get("cabinet") == "token_3" and route and route.get("source_store") == "Гуанджоу":
             return {"description": date + " Китай Гуанджоу", "state": meta(states[0])}
         return {"description": date + "  " + rule.get("comment_prefix", "Гонконг") + " " + label, "state": meta(states[0])}
