@@ -1,0 +1,113 @@
+name: WB China one-time read-only photo diagnostic
+on:
+  push:
+    paths:
+      - '.github/workflows/wb-china-readonly-photo-diagnostic-20261116.yml'
+permissions:
+  contents: read
+jobs:
+  check_card:
+    if: github.event_name == 'push' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Read WB China card and one photo (no writes)
+        shell: bash
+        env:
+          WB_TOKEN: \${{ secrets.WB_TOKEN_3 }}
+        run: |
+          python - <<'PY'
+          import os
+          import json
+          import urllib.request
+          import urllib.error
+
+          token = os.getenv("WB_TOKEN", "").strip()
+          if not token:
+              raise SystemExit("FAIL: WB_TOKEN_3 secret missing or empty")
+          endpoint = "https://content-api.wildberries.cn/content/v2/get/cards/list"
+          expected_vendor = "157-CelineaBag-black"
+          cursor = {"limit": 100}
+          card = None
+          seen = set()
+          http_status = None
+          scanned = 0
+
+          for page in range(300):
+              body = json.dumps({"settings": {"cursor": cursor, "filter": {"withPhoto": -1}}}).encode("utf-8")
+              req = urllib.request.Request(
+                  endpoint, data=body, method="POST",
+                  headers={"Authorization": token, "Content-Type": "application/json", "Accept": "application/json"}
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as response:
+                      http_status = response.status
+                      result = json.load(response)
+              except urllib.error.HTTPError as exc:
+                  raise SystemExit("FAIL: WB cards/list HTTP " + str(exc.code) + " (response body withheld)")
+              except Exception as exc:
+                  raise SystemExit("FAIL: WB cards/list transport " + type(exc).__name__ + " (details withheld)")
+              batch = result.get("cards") or []
+              scanned += len(batch)
+              for row in batch:
+                  if str(row.get("vendorCode", "")).lower() == expected_vendor.lower():
+                      card = row
+                      break
+              if card is not None:
+                  break
+              if len(batch) < cursor["limit"]:
+                  break
+              next_cursor = result.get("cursor") or {}
+              updated = next_cursor.get("updatedAt")
+              nm_id = next_cursor.get("nmID")
+              marker = (str(updated), str(nm_id))
+              if not updated or not nm_id or marker in seen:
+                  raise SystemExit("FAIL: WB pagination missing or repeated cursor")
+              seen.add(marker)
+              cursor = {"limit": 100, "updatedAt": updated, "nmID": nm_id}
+          print("wb_cards_http_status:", http_status)
+          print("cards_scanned:", scanned)
+          if card is None:
+              raise SystemExit("FAIL: reference card not found; exact seller identity not established")
+          print("vendorCode:", card.get("vendorCode"))
+          print("nmID:", card.get("nmID"))
+          print("description_present:", bool(card.get("description")))
+          print("characteristics_count:", len(card.get("characteristics") or []))
+          dimensions = card.get("dimensions") or {}
+          print("dimensions_present:", bool(dimensions))
+          print("packaging_has_length_width_height:", all(dimensions.get(k) is not None for k in ("length", "width", "height")))
+          print("packaging_has_weight:", dimensions.get("weightBrutto") is not None)
+          sizes = card.get("sizes") or []
+          print("sizes_count:", len(sizes))
+          print("barcode_count:", sum(len(s.get("skus") or []) for s in sizes))
+          photos = card.get("photos") or []
+          print("photos_count:", len(photos))
+          if not photos:
+              raise SystemExit("FAIL: target card has no photos")
+          photo_url = next(
+              (p.get("big") or p.get("c516x688") or p.get("square")
+               for p in photos if isinstance(p, dict) and (p.get("big") or p.get("c516x688") or p.get("square"))),
+              None
+          )
+          if not photo_url or not photo_url.startswith("https://"):
+              raise SystemExit("FAIL: no usable HTTPS photo URL returned")
+          try:
+              photo_req = urllib.request.Request(photo_url, headers={"User-Agent": "VESCHI-readonly-check/1.0"})
+              with urllib.request.urlopen(photo_req, timeout=45) as response:
+                  photo_status = response.status
+                  photo_type = response.headers.get("Content-Type", "").split(";")[0]
+                  data = response.read(12 * 1024 * 1024 + 1)
+          except urllib.error.HTTPError as exc:
+              raise SystemExit("FAIL: photo HTTP " + str(exc.code) + " (URL withheld)")
+          except Exception as exc:
+              raise SystemExit("FAIL: photo transport " + type(exc).__name__ + " (URL withheld)")
+          if len(data) > 12 * 1024 * 1024:
+              raise SystemExit("FAIL: photo size exceeds 12 MiB diagnostic safety limit")
+          if not (data.startswith(bytes.fromhex("ffd8ff")) or data.startswith(bytes.fromhex("89504e470d0a1a0a"))):
+              raise SystemExit("FAIL: photo content is not a recognized JPEG/PNG image")
+          print("photo_http_status:", photo_status)
+          print("photo_content_type:", photo_type)
+          print("photo_bytes:", len(data))
+          print("photo_header_valid:", True)
+          print("PASS: read-only card and complete photo retrieved; no media writes attempted")
+          PY
