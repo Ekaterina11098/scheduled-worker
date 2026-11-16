@@ -1,0 +1,178 @@
+name: Apply owner-approved China bag groups 20261116
+on:
+  push:
+    branches: ['review/china-bag-groups-20261116']
+    paths: ['.github/workflows/china-bag-groups-apply-approved-20261116.yml']
+permissions: {}
+concurrency:
+  group: china-approved-card-group-application-20261116
+  cancel-in-progress: false
+jobs:
+  apply:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5 cryptography
+      - name: Apply exactly twenty-eight approved membership changes
+        shell: python
+        env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+        run: |
+          import os,json,time,requests,hashlib,gzip,base64,secrets,traceback
+          from datetime import datetime,timezone
+          from cryptography.hazmat.primitives import serialization,hashes
+          from cryptography.hazmat.primitives.asymmetric import padding
+          from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+          OPS=json.loads("[{\"kind\":\"Перенести прежнюю\",\"model\":\"Rae\",\"article\":\"632-RaeBag-cream\",\"nmID\":1473242572,\"from\":\"Связка 5\",\"fromIMT\":4218260420,\"to\":\"Связка 4\",\"toIMT\":4014568397},{\"kind\":\"Перенести прежнюю\",\"model\":\"Rae\",\"article\":\"633-RaeBag-brown\",\"nmID\":1473242573,\"from\":\"Связка 5\",\"fromIMT\":4218260420,\"to\":\"Связка 4\",\"toIMT\":4014568397},{\"kind\":\"Перенести прежнюю\",\"model\":\"Rae\",\"article\":\"634-RaeBag-grey\",\"nmID\":1473242574,\"from\":\"Связка 5\",\"fromIMT\":4218260420,\"to\":\"Связка 4\",\"toIMT\":4014568397},{\"kind\":\"Перенести прежнюю\",\"model\":\"Fiore\",\"article\":\"656-FioreBag-cream\",\"nmID\":1473246053,\"from\":\"Связка 6\",\"fromIMT\":4014568670,\"to\":\"Связка 8\",\"toIMT\":4014564758},{\"kind\":\"Перенести прежнюю\",\"model\":\"Fiore\",\"article\":\"657-FioreBag-grey\",\"nmID\":1473246054,\"from\":\"Связка 6\",\"fromIMT\":4014568670,\"to\":\"Связка 8\",\"toIMT\":4014564758},{\"kind\":\"Перенести прежнюю\",\"model\":\"Fiore\",\"article\":\"658-FioreBag-brown\",\"nmID\":1473246055,\"from\":\"Связка 6\",\"fromIMT\":4014568670,\"to\":\"Связка 8\",\"toIMT\":4014564758},{\"kind\":\"Перенести прежнюю\",\"model\":\"Fiore\",\"article\":\"659-FioreBag-green\",\"nmID\":1473246056,\"from\":\"Связка 6\",\"fromIMT\":4014568670,\"to\":\"Связка 8\",\"toIMT\":4014564758},{\"kind\":\"Добавить новинку\",\"model\":\"Cristine\",\"article\":\"338-CristineBag-ebony\",\"nmID\":2245828178,\"from\":\"Отдельно\",\"fromIMT\":4497552346,\"to\":\"Связка 6\",\"toIMT\":4014568670},{\"kind\":\"Добавить новинку\",\"model\":\"Cristine\",\"article\":\"339-CristineBag-black\",\"nmID\":2245828255,\"from\":\"Отдельно\",\"fromIMT\":4497552417,\"to\":\"Связка 6\",\"toIMT\":4014568670},{\"kind\":\"Добавить новинку\",\"model\":\"Elodie\",\"article\":\"340-ElodieBag-darkred\",\"nmID\":2245828303,\"from\":\"Отдельно\",\"fromIMT\":4497552453,\"to\":\"Связка 3\",\"toIMT\":4014567571},{\"kind\":\"Добавить новинку\",\"model\":\"Elodie\",\"article\":\"341-ElodieBag-black\",\"nmID\":2245828292,\"from\":\"Отдельно\",\"fromIMT\":4497552442,\"to\":\"Связка 3\",\"toIMT\":4014567571},{\"kind\":\"Добавить новинку\",\"model\":\"Elodie\",\"article\":\"342-ElodieBag-coffee\",\"nmID\":2245828097,\"from\":\"Отдельно\",\"fromIMT\":4497552292,\"to\":\"Связка 3\",\"toIMT\":4014567571},{\"kind\":\"Добавить новинку\",\"model\":\"Colette\",\"article\":\"343-ColetteBag-black\",\"nmID\":2245828151,\"from\":\"Отдельно\",\"fromIMT\":4497552327,\"to\":\"Связка 4\",\"toIMT\":4014568397},{\"kind\":\"Добавить новинку\",\"model\":\"Colette\",\"article\":\"344-ColetteBag-darkred\",\"nmID\":2245828095,\"from\":\"Отдельно\",\"fromIMT\":4497552290,\"to\":\"Связка 4\",\"toIMT\":4014568397},{\"kind\":\"Добавить новинку\",\"model\":\"Aurelie\",\"article\":\"345-AurelieBag-black\",\"nmID\":2245828175,\"from\":\"Отдельно\",\"fromIMT\":4497552343,\"to\":\"Связка 6\",\"toIMT\":4014568670},{\"kind\":\"Добавить новинку\",\"model\":\"Aurelie\",\"article\":\"346-AurelieBag-coffee\",\"nmID\":2245828147,\"from\":\"Отдельно\",\"fromIMT\":4497552323,\"to\":\"Связка 6\",\"toIMT\":4014568670},{\"kind\":\"Добавить новинку\",\"model\":\"Odette\",\"article\":\"354-OdetteBag-black\",\"nmID\":2245828190,\"from\":\"Отдельно\",\"fromIMT\":4497552358,\"to\":\"Связка 4\",\"toIMT\":4014568397},{\"kind\":\"Добавить новинку\",\"model\":\"Odette\",\"article\":\"355-OdetteBag-coffee\",\"nmID\":2245828159,\"from\":\"Отдельно\",\"fromIMT\":4497552336,\"to\":\"Связка 4\",\"toIMT\":4014568397},{\"kind\":\"Добавить новинку\",\"model\":\"Noemi\",\"article\":\"356-NoemiBag-black\",\"nmID\":2245828209,\"from\":\"Отдельно\",\"fromIMT\":4497552376,\"to\":\"Связка 8\",\"toIMT\":4014564758},{\"kind\":\"Добавить новинку\",\"model\":\"Noemi\",\"article\":\"357-NoemiBag-coffee\",\"nmID\":2245828150,\"from\":\"Отдельно\",\"fromIMT\":4497552326,\"to\":\"Связка 8\",\"toIMT\":4014564758},{\"kind\":\"Добавить новинку\",\"model\":\"Celeste\",\"article\":\"358-CelesteBag-green\",\"nmID\":2245828179,\"from\":\"Отдельно\",\"fromIMT\":4497552347,\"to\":\"Связка 9\",\"toIMT\":4218260498},{\"kind\":\"Добавить новинку\",\"model\":\"Celeste\",\"article\":\"359-CelesteBag-darkred\",\"nmID\":2245828192,\"from\":\"Отдельно\",\"fromIMT\":4497552360,\"to\":\"Связка 9\",\"toIMT\":4218260498},{\"kind\":\"Добавить новинку\",\"model\":\"Celeste\",\"article\":\"360-CelesteBag-coffee\",\"nmID\":2245828213,\"from\":\"Отдельно\",\"fromIMT\":4497552381,\"to\":\"Связка 9\",\"toIMT\":4218260498},{\"kind\":\"Добавить новинку\",\"model\":\"Celeste\",\"article\":\"361-CelesteBag-black\",\"nmID\":2245828182,\"from\":\"Отдельно\",\"fromIMT\":4497552350,\"to\":\"Связка 9\",\"toIMT\":4218260498},{\"kind\":\"Добавить новинку\",\"model\":\"Celinea\",\"article\":\"362-CelineaBag-black\",\"nmID\":2245828239,\"from\":\"Отдельно\",\"fromIMT\":4497552408,\"to\":\"Связка 5\",\"toIMT\":4218260420},{\"kind\":\"Добавить новинку\",\"model\":\"Celinea\",\"article\":\"363-CelineaBag-darkred\",\"nmID\":2245828341,\"from\":\"Отдельно\",\"fromIMT\":4497552496,\"to\":\"Связка 5\",\"toIMT\":4218260420},{\"kind\":\"Добавить новинку\",\"model\":\"Celinea\",\"article\":\"364-CelineaBag-coffee\",\"nmID\":2245828148,\"from\":\"Отдельно\",\"fromIMT\":4497552324,\"to\":\"Связка 5\",\"toIMT\":4218260420},{\"kind\":\"Добавить новинку\",\"model\":\"Celinea\",\"article\":\"365-CelineaBag-green\",\"nmID\":2245828173,\"from\":\"Отдельно\",\"fromIMT\":4497552341,\"to\":\"Связка 5\",\"toIMT\":4218260420}]")
+          DIGESTS=json.loads("{\"4014564758\":\"2effd69a9847b9b32869fa632ac8b027b9e56b77801ba3d5f3bd35baa967a76c\",\"4014567571\":\"b5f8e6b6c0d6fb7b5c1c0c8dbf1cf64a2e04966d5a65c62143a4e5aba682dbe4\",\"4014568397\":\"1c193a6977682e01f0dc1f8b357ffb8671e66d813340578d0e481fcdf3afa3e2\",\"4014568670\":\"12929d870fcb1df73efdc250df9f90cc69fb8e489e85756311b051c55a018bf8\",\"4218260420\":\"850ce273f7d82e6d9146f234f4464cba8706ce3d800319636a70f791dbbadea0\",\"4218260498\":\"43365fa449c812c2e39ba5c621c0b748028c6305399e5fe20babee983f5d7101\"}")
+          PUBLIC_KEY="-----BEGIN PUBLIC KEY-----\nMIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAqZNUrOvZ4UeO29b+p61F\niH/TYX0CFHtnqndnmHR4leDh/pqkTFqC+EryTPqjLJBylfgeqPqc0Bywo7WeHNxe\nvbOmih5rb9wRTYgJRBx7ruUJaWiJLP0yp2KwLMf8Vc0tRxRBIfXV/CHQjVIIc0rY\nOEW8+gwrAgsqFgs0944OpliDwm0aI9UX+j4gCTCmktk5swzFuqyxcDUH7fOUDKe1\nOOSqDB/lODw3333K6mjuHxRcDUD69EdTOS+hJb+ZqQOCT9JGtE2b6H9+Uf6B9cYs\nKu7JDPUD/5ETgxz3Oa3YgM7XPWwamcn5MYq8HMJ2e4F2B1x/mxSpUk6RFDR8hW/W\nFpqmg+JxpZpKwuSgBhegRpWwJ1+gS0z0h31a58XweTDtA8nd7WJjhiegbmSwItLM\npC3FVE8HzAeP6h8C+7l2r/Vl81y59CE+VHvgSmUobNRmHdY+laFAU2v8PfuebV5C\nDku+Uuz+AjUYKOtflqUc8HQQHGldtkkXG1iafKKIpZyTAgMBAAE=\n-----END PUBLIC KEY-----\n"
+          GROUPS={1:4014566293,2:4218260337,3:4014567571,4:4014568397,5:4218260420,6:4014568670,7:4014568011,8:4014564758,9:4218260498,10:4014566306}
+          EXPECTED={3:29,4:29,5:30,6:30,8:27,9:22}
+          TOKEN=os.environ['WB_TOKEN_3']
+          HOST='https://content-api.wildberries.cn'
+          R={'status':'started','verified':False,'requests':[],'operations':OPS,'changes':[]}
+          def now():return datetime.now(timezone.utc).isoformat()
+          def seal(tag,value):
+              raw=gzip.compress(json.dumps(value,ensure_ascii=False,default=str).encode())
+              key=secrets.token_bytes(32);nonce=secrets.token_bytes(12)
+              pub=serialization.load_pem_public_key(PUBLIC_KEY.encode())
+              wrapped=pub.encrypt(key,padding.OAEP(mgf=padding.MGF1(hashes.SHA256()),algorithm=hashes.SHA256(),label=None))
+              b=lambda x:base64.b64encode(x).decode()
+              encoded=b(json.dumps({'key':b(wrapped),'nonce':b(nonce),'ciphertext':b(AESGCM(key).encrypt(nonce,raw,None))}).encode())
+              for i in range(0,len(encoded),18000):print(tag+' '+str(i//18000)+' '+encoded[i:i+18000],flush=True)
+          def read_page(body):
+              for attempt in range(4):
+                  time.sleep(.85)
+                  try:r=requests.post(HOST+'/content/v2/get/cards/list',headers={'Authorization':TOKEN},json=body,timeout=60)
+                  except requests.RequestException:
+                      if attempt==3:raise RuntimeError('Catalog network failure')
+                      time.sleep(2);continue
+                  if r.status_code==429:
+                      wait=int(float(r.headers.get('X-Ratelimit-Retry') or r.headers.get('Retry-After') or 65))+2
+                      assert wait<=180,'Read cooldown exceeds execution budget'
+                      time.sleep(wait);continue
+                  if not r.ok:raise RuntimeError('Catalog HTTP '+str(r.status_code))
+                  data=r.json()
+                  if not isinstance(data.get('cards'),list):data=data.get('data',{})
+                  assert isinstance(data.get('cards'),list) and isinstance(data.get('cursor'),dict),'Incomplete catalog'
+                  return data
+              raise RuntimeError('Read retries exhausted')
+          def catalog():
+              for attempt in range(3):
+                  cards=[];cursor={'limit':100};seen=set()
+                  for page in range(50):
+                      data=read_page({'settings':{'sort':{'ascending':True},'cursor':cursor,'filter':{'withPhoto':-1}}})
+                      cards.extend(data['cards'])
+                      if len(data['cards'])<100:break
+                      marker=(data['cursor'].get('updatedAt'),data['cursor'].get('nmID'))
+                      assert all(marker) and marker not in seen,'Catalog cursor unstable'
+                      seen.add(marker);cursor={'limit':100,'updatedAt':marker[0],'nmID':marker[1]}
+                  else:raise RuntimeError('Pagination limit')
+                  if cards and len({c['nmID'] for c in cards})==len(cards):return cards
+                  time.sleep(3)
+              raise RuntimeError('Duplicate catalog pages')
+          def members(cards):return [{k:c.get(k) for k in ('nmID','imtID','vendorCode','subjectID','subjectName')} for c in cards]
+          def digest(cards,imt):
+              values=sorted([[c['nmID'],c['vendorCode'].lower()] for c in cards if c['imtID']==imt],key=lambda v:v[0])
+              return hashlib.sha256(json.dumps(values,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+          def protected(c):
+              fields=('nmID','nmUUID','subjectID','subjectName','vendorCode','brand','title','description','sizes','photos','video','characteristics','dimensions','kizMarked','needKiz')
+              out={k:c.get(k) for k in fields}
+              out['characteristics']=sorted(out.get('characteristics') or [],key=lambda x:x.get('id',0))
+              out['sizes']=sorted(out.get('sizes') or [],key=lambda x:x.get('chrtID',0))
+              if isinstance(out.get('dimensions'),dict):out['dimensions']={k:v for k,v in out['dimensions'].items() if k!='isValid'}
+              return out
+          def move(op):
+              assert op in OPS and isinstance(op['nmID'],int) and op['toIMT'] in GROUPS.values()
+              payload={'targetIMT':op['toIMT'],'nmIDs':[op['nmID']]}
+              for attempt in range(4):
+                  time.sleep(.95)
+                  record={'article':op['article'],'nmID':op['nmID'],'toIMT':op['toIMT'],'at':now()}
+                  R['requests'].append(record)
+                  try:r=requests.post(HOST+'/content/v2/cards/moveNm',headers={'Authorization':TOKEN},json=payload,timeout=60)
+                  except requests.RequestException:
+                      record['status']='network_outcome_unknown'
+                      return
+                  record['http']=r.status_code
+                  if r.status_code==429:
+                      record['status']='rate_limited'
+                      wait=int(float(r.headers.get('X-Ratelimit-Retry') or r.headers.get('Retry-After') or 65))+2
+                      assert wait<=180,'Write cooldown exceeds execution budget'
+                      time.sleep(wait);continue
+                  try:answer=r.json()
+                  except ValueError:
+                      record['status']='response_outcome_unknown';return
+                  record['response']=answer
+                  record['status']='accepted' if r.ok and not answer.get('error') else 'rejected'
+                  assert record['status']=='accepted','Move rejected for '+op['article']
+                  return
+              raise RuntimeError('Write retry limit')
+          def wait_for(selected):
+              for attempt in range(18):
+                  time.sleep(6)
+                  current=catalog();R['membershipLatest']=members(current)
+                  index={c['nmID']:c for c in current}
+                  if all(op['nmID'] in index and index[op['nmID']]['imtID']==op['toIMT'] for op in selected):return current
+              raise RuntimeError('Requested membership not yet confirmed')
+          try:
+              assert TOKEN and len(OPS)==28 and len({o['nmID'] for o in OPS})==28
+              before=catalog();bi={c['nmID']:c for c in before}
+              selected_ids={op['nmID'] for op in OPS}
+              R['membershipBefore']=members(before);R['beforeCount']=len(before)
+              R['before']=[bi[nm] for nm in selected_ids if nm in bi]
+              assert len(R['before'])==28,'Selected card missing'
+              for imt,expected in DIGESTS.items():assert digest(before,int(imt))==expected,'Approved group composition changed: '+imt
+              for op in OPS:
+                  c=bi[op['nmID']]
+                  assert c['vendorCode'].lower()==op['article'].lower(),'Article identity changed'
+                  assert c['imtID']==op['fromIMT'],'Selected card moved since review: '+op['article']
+                  if op['from']=='Отдельно':assert sum(x['imtID']==c['imtID'] for x in before)==1
+                  anchor=next(x for x in before if x['imtID']==op['toIMT'])
+                  assert c['subjectID']==anchor['subjectID'],'Subcategory mismatch'
+              expected_groups={c['nmID']:c['imtID'] for c in before}
+              for op in OPS:expected_groups[op['nmID']]=op['toIMT']
+              for imt in GROUPS.values():assert sum(v==imt for v in expected_groups.values())<=30,'Planned group exceeds limit'
+              R['status']='preflight_passed';R['startedAt']=now()
+              seal('GROUP_APPLY_BACKUP',{'membershipBefore':R['membershipBefore'],'before':R['before'],'operations':OPS})
+              print('PREFLIGHT_VERIFIED',flush=True)
+              old=[o for o in OPS if o['kind']=='Перенести прежнюю']
+              new=[o for o in OPS if o['kind']=='Добавить новинку']
+              assert len(old)==7 and len(new)==21
+              for op in old:move(op)
+              intermediate=wait_for(old)
+              for imt in (GROUPS[5],GROUPS[6]):assert sum(c['imtID']==imt for c in intermediate)==26,'Places not freed'
+              print('PREVIOUS_MODELS_TRANSFERRED_7',flush=True)
+              for op in new:move(op)
+              after=wait_for(OPS);ai={c['nmID']:c for c in after}
+              R['membershipAfter']=members(after);R['afterCount']=len(after);R['after']=[ai[nm] for nm in selected_ids]
+              assert set(bi).issubset(ai),'Cards disappeared from active list'
+              unrelated=[nm for nm,c in bi.items() if nm not in selected_ids and ai[nm]['imtID']!=c['imtID']]
+              R['unexpectedMembershipChanges']=unrelated
+              assert not unrelated,'Unapproved membership changed'
+              diffs=[]
+              for op in OPS:
+                  old_card=bi[op['nmID']];new_card=ai[op['nmID']]
+                  a=protected(old_card);b=protected(new_card)
+                  fields=[k for k in a if a[k]!=b[k]]
+                  R['changes'].append({**op,'actualIMT':new_card['imtID'],'contentEqual':not fields,'differentFields':fields,'verifiedAt':now()})
+                  if fields:diffs.append({'article':op['article'],'fields':fields})
+              R['contentDifferences']=diffs
+              for group,imt in GROUPS.items():
+                  expected_members={nm for nm,value in expected_groups.items() if value==imt}
+                  actual_members={c['nmID'] for c in after if c['imtID']==imt}
+                  assert actual_members==expected_members,'Final composition mismatch '+str(group)
+                  assert len(actual_members)<=30
+              R['counts']=[{'group':group,'imtID':imt,'before':sum(c['imtID']==imt for c in before),'after':sum(c['imtID']==imt for c in after)} for group,imt in GROUPS.items()]
+              for group,count in EXPECTED.items():assert sum(c['imtID']==GROUPS[group] for c in after)==count
+              assert not diffs,'Protected card content differs after membership changes'
+              R.update(status='verified',verified=True,allCardsPreserved=True,unrelatedGroupsPreserved=True)
+              print('ALL_28_OPERATIONS_VERIFIED',flush=True)
+          except Exception as exc:
+              R.update(status='incomplete',error={'type':type(exc).__name__,'message':str(exc),'trace':traceback.format_exc()})
+          finally:
+              R['finishedAt']=now();seal('GROUP_APPLY_RESULT',R)
+              print('APPROVED_GROUP_APPLICATION_FINISHED',flush=True)
+          
