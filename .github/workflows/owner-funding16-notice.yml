@@ -1,0 +1,30 @@
+name: Complete the verified funding result notice16
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-funding16-notice.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-funding16-notice] Edit only the verified final result without marketplace requests'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5
+      - env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          CHINA_TELEGRAM_BOT_TOKEN: ${{ secrets.CHINA_TELEGRAM_BOT_TOKEN }}
+          OPENAI_API_KEY: ''
+        run: python scripts/owner_funding_notice16.py
+
