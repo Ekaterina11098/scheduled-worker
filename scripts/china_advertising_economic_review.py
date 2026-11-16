@@ -68,7 +68,9 @@ def apply(bundle,source,minima):
     r['action']=None
     continue
    p=(r.get('comparison') or {}).get('after') or r['period'];spend=p['spend'];orders=p['orders'];amount=p['amount']
-   risk=spend>0 and (orders==0 or amount<=0 or spend/amount>.05)
+   candidate_model=economics.get(str(r['nm']),{})
+   margin=candidate_model.get('expected_margin_before_ads_cny')
+   risk=spend>0 and (orders==0 or amount<=0 or spend/amount>.05 or finite(margin) and orders*margin<spend)
    existing=r.get('action')or{}
    cost_action=existing.get('kind')=='ad_exclude_sku' or (existing.get('kind')=='ad_set_bid' and existing.get('target_minor',0)<existing.get('old_minor',0))
    if not risk and not cost_action:continue
@@ -120,6 +122,10 @@ def apply(bundle,source,minima):
    if planned_overrun:
     bounded_loss=True
     r['completed_planned_test_guard']=dict(working_spend_cny=min(model_before,e['seller_price_cny']*.05),decision_days=decision_days,actual_buyout_proven=False)
+   economic_overrun=(own_model or planned_test) and orders>0 and p['clicks']>=30 and r['model_profit_for_attributed_orders_cny']<0 and spend>=max(orders*max(0,model_before),e['seller_price_cny']*.05)
+   if economic_overrun:
+    bounded_loss=True
+    r['completed_economic_overrun']=dict(decision_days=decision_days,modeled_after_ads_cny=r['model_profit_for_attributed_orders_cny'],preliminary=True)
    positive_own_model=(orders>0 and r['model_profit_for_attributed_orders_cny']>0 and not e.get('buyout_fallback') and not e.get('commission_policy_fallback') and e.get('sample_size',0)>=5)
    if positive_own_model and not(latest_zero_loss or deterioration):
     # A target DRR is not a break-even threshold; preserve uncertainty and a finite review.
@@ -137,6 +143,11 @@ def apply(bundle,source,minima):
     r['reason']+=' Цель5% превышена незначительно; это предложение исключения из лимита на один день, не разрешение продолжать автоматически.'
    elif old==minimum and (meaningful or bounded_loss or latest_zero_loss or zero_order_overrun) and len(state['nm_settings'])>1 and state.get('restrictions',{}).get('can_change_nms') is True:
     r['action']=dict(base,kind='ad_exclude_sku');r['decision']='Исключить из этой РК: ставка уже на минимуме WB.'
+   elif old==minimum and (meaningful or bounded_loss or latest_zero_loss or zero_order_overrun) and len(state['nm_settings'])==1:
+    r['action']=dict(id='pause:'+str(c['id']),kind='pause_campaign',campaign_id=c['id'],status_before=9,nm_ids=sorted(settings))
+    r['decision']='Приостановить РК: единственный товар исчерпал допустимый расход на минимуме WB.'
+    c['financial_action']=copy.deepcopy(r['action']);c['financial_recommendation']=r['decision']
+    c['budget_action']=None;c['budget_recommendation']='Не пополнять. Решение по РК — в рекламном PNG.'
    else:
     r['action']=None
     r['decision']=f'Сохранить {old/100:g} ¥: малая выборка; повторная оценка после следующего полного дня.'
@@ -145,6 +156,7 @@ def apply(bundle,source,minima):
  out['economic_review_complete']=not any(r.get('data_blocker') for c in out['campaigns'] for r in c.get('focus',[]))
  out['economic_review_blockers']=[dict(campaign_id=c['id'],article=r['article'],blocker=r['data_blocker']) for c in out['campaigns'] for r in c.get('focus',[]) if r.get('data_blocker')]
  return out
+
 
 
 
