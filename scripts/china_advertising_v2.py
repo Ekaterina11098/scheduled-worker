@@ -14,9 +14,19 @@ def http(io,path,method='GET',body=None):
  import requests
  allowed=(method=='GET' and path.split('?')[0] in ['/adv/v1/promotion/count','/api/advert/v2/adverts','/adv/v3/fullstats','/api/advert/v1/config']) or (method=='POST' and path in ['/api/advert/v2/budget','/api/advert/v1/bids/min'])
  if not allowed:raise ValueError('Daily generator is read-only')
- time.sleep(1.5);r=requests.request(method,'https://advert-api.wildberries.ru'+path,headers={'Authorization':io.token},json=body,timeout=60)
- if not r.ok:raise RuntimeError('China advertising read HTTP '+str(r.status_code))
- return r.json() if r.content else {}
+ # The allowlist above contains reads only, including POST budget/minimum queries.
+ # Retry transient reads once; connection stalls must not consume the delivery window.
+ for attempt in range(2):
+  time.sleep(1.5 if attempt==0 else 4)
+  try:
+   r=requests.request(method,'https://advert-api.wildberries.ru'+path,headers={'Authorization':io.token},json=body,timeout=(10,60))
+  except (requests.Timeout,requests.ConnectionError):
+   if attempt==1:raise
+   continue
+  if not r.ok:
+   if attempt==0 and r.status_code in (502,503,504):continue
+   raise RuntimeError('China advertising read HTTP '+str(r.status_code))
+  return r.json() if r.content else {}
 def compact_execution_records(records):
  """Keep exactly the receipt fields consumed by history() and verified funding summaries."""
  fields=('status','kind','amount_cny','before','after','verified_at','completed_at','items','groups','campaigns','readback','selection','request','cid','nm','old','target','steps')
