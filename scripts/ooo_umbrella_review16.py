@@ -40,8 +40,9 @@ def run():
   pausekey='wb-pause:'+hashlib.sha256((token+HOST+path).encode()).hexdigest()
   for attempt in range(4):
    pause=db.get(pausekey)or{};wait=float(pause.get('until',0))-time.time()
-   if wait>240:raise RuntimeError('Shared quota pending, saved stages retained')
-   if wait>0:time.sleep(wait+1)
+   if wait>7200:raise RuntimeError('Shared quota exceeds authorized read window')
+   while wait>0:
+    time.sleep(min(30,wait+1));wait=float((db.get(pausekey)or{}).get('until',0))-time.time()
    r=requests.get('https://'+HOST+path,params={'dateFrom':'2026-10-05T00:00:00','flag':0},headers={'Authorization':token},timeout=(10,90),allow_redirects=False)
    try:delay=float(r.headers.get('Retry-After')or r.headers.get('X-Ratelimit-Retry')or 60)
    except ValueError:delay=60
@@ -66,7 +67,10 @@ def run():
 def read_today():
  db=DB();key=ROOT+':today'
  if(db.get(key)or{}).get('status')=='complete':return
- token=os.environ['WB_TOKEN_1'];host='advert-api.wildberries.ru';path='/adv/v3/fullstats';pausekey='wb-pause:'+hashlib.sha256((token+host+path).encode()).hexdigest()
+ token=os.environ['WB_TOKEN_1'];claims=json.loads(base64.urlsafe_b64decode(token.split('.')[1]+'==='))
+ identity=db.api('GET','analytics_snapshots',{'cabinet':'eq.token_1','source':'eq.seller_identity','status':'eq.complete','select':'payload','limit':100})
+ if claims.get('exp',0)<time.time()or {r['payload'].get('sid')for r in identity}!={claims.get('sid')}:raise PermissionError('OOO identity mismatch')
+ host='advert-api.wildberries.ru';path='/adv/v3/fullstats';pausekey='wb-pause:'+hashlib.sha256((token+host+path).encode()).hexdigest()
  for attempt in range(4):
   pause=db.get(pausekey)or{};wait=float(pause.get('until',0))-time.time()
   if wait>240:raise RuntimeError('Advertising shared quota pending')
@@ -84,6 +88,6 @@ def read_today():
   if not isinstance(rows,list)or any(x.get('currency')!='KGS'or x.get('advertId')!=39605579 for x in rows):raise RuntimeError('Advertising coverage/currency invalid')
   db.once(key,{'status':'complete'if rows else'missing_not_zero','observed_at':stamp(),'data':rows,'wb_writes':0});return
  raise RuntimeError('Advertising retry pending')
-if __name__=='__main__':run();read_today()
+if __name__=='__main__':read_today();run()
 
 
