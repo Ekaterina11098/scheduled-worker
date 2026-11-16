@@ -6,7 +6,7 @@ concurrency: {group: ip-archive-owner, cancel-in-progress: false}
 jobs:
   archive:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 180
     steps:
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
@@ -29,7 +29,14 @@ jobs:
           def req(path,params=None):
            return requests.get('https://advert-api.wildberries.ru'+path,headers={'Authorization':os.environ['WB_TOKEN_2']},params=params,timeout=60)
           def read():
-           r=req('/api/advert/v2/adverts',{'ids':','.join(map(str,ids))});r.raise_for_status()
+           for attempt in range(4):
+           r=req('/api/advert/v2/adverts',{'ids':','.join(map(str,ids))})
+           if r.status_code!=429:break
+           delay=int(r.headers.get('X-Ratelimit-Retry')or r.headers.get('Retry-After')or 720)+3
+           save(ROOT+':waiting',{'stage':'read','seconds':delay})
+           if delay>3603:raise RuntimeError('Cooldown exceeds bound')
+           time.sleep(delay)
+          r.raise_for_status()
            a=r.json()['adverts'];return {int(x['id']):x for x in a}
           p=get(ROOT+':approval')
           assert p and p['status']=='approved'
@@ -38,12 +45,24 @@ jobs:
           results={}
           for cid in ids:
            k=ROOT+':item:'+str(cid)
-           if get(k):results[str(cid)]={'state':'existing_claim_not_repeated'};continue
+           old=get(k)
+           if old and old.get('http')!=429:results[str(cid)]={'state':'existing_claim_not_repeated'};continue
            st=before.get(cid,{}).get('status')
            if st==7:results[str(cid)]={'state':'already_archived'};continue
            if st!=11:results[str(cid)]={'state':'skipped_not_paused','status':st};continue
-           if not save(k,{'state':'attempting','id':cid},True):continue
-           r=req('/adv/v0/stop',{'id':cid})
+           if not old and not save(k,{'state':'attempting','id':cid},True):continue
+           if old:
+            fresh=read()
+            if fresh.get(cid,{}).get('status')!=11:continue
+           for attempt in range(3):
+            r=req('/adv/v0/stop',{'id':cid})
+            if r.status_code!=429:break
+            delay=int(r.headers.get('X-Ratelimit-Retry')or r.headers.get('Retry-After')or 720)+3
+            save(k,{'http':429,'state':'waiting_definite_429','seconds':delay})
+            if delay>3603:raise RuntimeError('Cooldown exceeds bound')
+            time.sleep(delay)
+            fresh=read()
+            if fresh.get(cid,{}).get('status')!=11:break
            result={'http':r.status_code,'state':'accepted' if r.ok else 'uncertain_or_rejected','retry_after':r.headers.get('Retry-After')}
            save(k,result);results[str(cid)]=result
            time.sleep(13)
