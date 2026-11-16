@@ -27,12 +27,12 @@ with runtime_db() as lock:
     data['from_date']=first;data.setdefault('sources',{})
     wanted=req['identifier'].casefold()
     for kind in ('orders','sales'):
-     if data['sources'].get(kind,{}).get('complete'):continue
+     if data['sources'].get(kind,{}).get('complete') and data['sources'][kind].get('identifier_match_mode')=='embedded_uid':continue
      rows=g.api('GET',g.WB_STATS+'/api/v1/supplier/'+kind,g.cabinet_tokens()[0],params={'dateFrom':first,'flag':0},retry_read_network=True)
      if not isinstance(rows,list):raise RuntimeError('Statistics response is not a list')
      if len(rows)>=80000:raise RuntimeError('Statistics row limit requires pagination')
-     matches=[r for r in rows if any(str(r.get(k,'')).casefold()==wanted for k in ('srid','rid','rId','requestId'))]
-     data['sources'][kind]={'complete':True,'observed_at':time.time(),'rows_scanned':len(rows),'matches':matches};save()
+     matches=[r for r in rows if any(wanted in str(r.get(k,'')).casefold() for k in ('srid','rid','rId','requestId','orderUid','orderId'))]
+     data['sources'][kind]={'complete':True,'observed_at':time.time(),'rows_scanned':len(rows),'matches':matches,'identifier_match_mode':'embedded_uid'};save()
     data['status']='complete';data['completed_at']=time.time();save();seal('order-date-lookup',data)
     print(json.dumps({'status':'complete','order_matches':len(data['sources']['orders']['matches']),'sales_matches':len(data['sources']['sales']['matches'])}))
    except Exception as exc:
