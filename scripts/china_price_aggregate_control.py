@@ -30,6 +30,14 @@ def ensure_fresh_cards(worker):
     worker.audit['linked_cards_observed_at']=current['observed_at']
     return current
 
+def membership_override(worker, context):
+    policy=worker.get('china_agent:price_review_policy:v1') or {}
+    return (context.get('status')=='membership_changed'
+            and policy.get('changed_membership_veto') is False
+            and policy.get('owner_source')=='codex_owner_2026-11-16'
+            and policy.get('scope')=='price_recommendations')
+
+
 def build(worker):
     ensure_fresh_cards(worker)
     from china_agent.morning_pair import tracked_rows
@@ -170,7 +178,7 @@ def build(worker):
                 context=exact_linked_period(context,datasets,period_markers,{r['article']:r['cost']for r in costs.values()if r.get('cost')is not None})
                 qualified=qualify(dict(action='lower'),context,baseline_known=bool((e.get('increase') or {}).get('baseline_group',{}).get('available')))
                 item['linked_context']=qualified['linked_context']
-                if qualified['action']=='lower':
+                if qualified['action']=='lower' or membership_override(worker, item['linked_context']):
                     item['economic_target']=choose_target(c['before_price'],c['after_price'],before,after,buyout_probability=q['probability'],retention=retention,cost=cost,dispatch=dispatch,fx=fx)
             item.update(status='expected_model',buyout_source=q['source'],unknown_reverse_and_shared_costs=True,
                         own_cogs_rub=cost,economics_note='Own completed buyout, dated CBR, COGS/tax/commission and historical logistics. Unknown reverse/shared expenses are not zero; not settled profit.',model_source='china_agent:advertising_full_growth:'+str(worker.day)+':v1:inputs')
