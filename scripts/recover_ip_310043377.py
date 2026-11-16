@@ -28,7 +28,7 @@ if decision:raise m.Stop(decision["reason"])
 if w._execution_permit.get("supply_ids")!={SID}:raise m.Stop("Approval outside exact supply")
 key=m.PREFIX+SID
 existing=db.get(key)
-if existing and (existing.get("inflight") or existing.get("documents") or existing.get("positions") or existing.get("status")=="complete"):
+if existing and (existing.get("inflight") or existing.get("documents") or existing.get("status") not in ("prepared", "discovered")):
  raise m.Stop("Existing journal requires reconciliation")
 supplies=[s for s in w.supplies() if s.get("id")==SID]
 if len(supplies)!=1 or not supplies[0].get("done") or supplies[0].get("name")!="ИП":
@@ -39,6 +39,8 @@ if day!="2026-11-13":raise m.Stop("WB date mismatch")
 positions,ids=w.positions(supply)
 if len(ids)!=1 or len(positions)!=1 or positions[0]["quantity"]!=1:
  raise m.Stop("Source one-item scope differs")
+if existing and (existing.get("positions") != positions or existing.get("order_ids") != ids):
+ raise m.Stop("Previously frozen WB pick list has changed")
 p=t.request(m.MS,"entity/product/"+m.href(positions[0]["assortment"]).rsplit("/",1)[-1])
 if p.get("article")!=ARTICLE or p.get("archived") or "сумка" not in p.get("name","").casefold():
  raise m.Stop("Category/product identity changed")
@@ -48,7 +50,7 @@ for kind in m.TYPES:
   raise m.Stop("Existing MS "+kind+" document, manual reconciliation needed")
 if w.ms_rows("entity/customerorder",{"filter":"name="+SID}):
  raise m.Stop("Existing MS order found")
-state={"supply":supply,"status":"discovered","discovered_at":m.now()}
+state=copy.deepcopy(existing) if existing else {"supply":supply,"status":"discovered","discovered_at":m.now()}
 # Check exact stock BEFORE creating even the customer order.
 stock=copy.deepcopy(c["templates"]["demand"]);stock["positions"]=positions
 w.require_available_stock(stock,state)
