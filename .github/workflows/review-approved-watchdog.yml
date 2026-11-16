@@ -2,7 +2,7 @@ name: Keep approved review and question publishing alive
 on:
   workflow_dispatch:
   workflow_run:
-    workflows: ['Publish only confirmed Telegram review answers']
+    workflows: ['Publish only confirmed Telegram review answers', 'China reviews and questions every two hours']
     types: [completed]
     branches: [main]
   push:
@@ -23,6 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          filter: blob:none
           sparse-checkout: |
             review_approved_watchdog.py
             review_approved_worker.py
