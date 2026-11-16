@@ -137,3 +137,5 @@ jobs:
           
           out["status"]="prepared";out["completed_at"]=m.now();save()
           print("Read-only preflight finished; private results saved.")
+
+# Fresh preflight after confirmed pagination November 17
