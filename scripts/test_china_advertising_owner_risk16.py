@@ -1,17 +1,22 @@
 import copy,unittest
-from unittest.mock import patch
-from owner_risk16_report import reviewed,EXPECTED,HELD_NM
-class Holds(unittest.TestCase):
- def test_same_report_review_keeps_two_cost_actions_once_and_removes_owner_held_addition(self):
-  rows=[dict(nm=nm,article=str(nm),decision='Исключить',period={},economics={},action=dict(id=str(cid)+':'+str(nm),campaign_id=cid,nm_id=nm,kind='ad_exclude_sku'))for cid,nm in EXPECTED]
-  held=dict(nm=HELD_NM,article='534',action=dict(kind='ad_add_sku',nm_id=HELD_NM,campaign_id=41332083))
-  b=dict(campaigns=[dict(id=41325637,focus=[]),dict(id=41332083,focus=rows+[held])],recommendation_directions={k:dict(rows=[])for k in ('raise','reduce','add','exclude')})
-  b['recommendation_directions']['add']['rows']=[dict(nm_id=HELD_NM,campaign_id=41332083,ready=True)]
-  b['recommendation_directions']['exclude']['rows']=[dict(nm_id=nm,campaign_id=cid,ready=True)for cid,nm in EXPECTED]
-  with patch('china_advertising_economic_review.apply',side_effect=lambda b,s,m:copy.deepcopy(b)):
-   r=reviewed(b,{},{});
-  self.assertEqual(len(r['recommendation_directions']['exclude']['rows']),2)
-  self.assertEqual(r['recommendation_directions']['add']['rows'],[])
-  self.assertFalse(any(x['nm']==HELD_NM for c in r['campaigns']for x in c['focus']))
-  self.assertEqual(len(b['campaigns'][1]['focus']),3)
+from datetime import datetime,timezone
+from owner_risk16_restore import restore,NM,CID
+
+class CurrentOwner(unittest.TestCase):
+ def fixture(self):
+  e=dict(expected_margin_before_ads_cny=31,stock_free=700,published_stock=42,buyout_fallback=False,observed_at=datetime.now(timezone.utc).isoformat())
+  row=dict(nm=NM,article='534',action=dict(kind='ad_add_sku',campaign_id=CID,nm_id=NM,growth_evidence=e))
+  c=dict(id=CID,focus=[dict(nm=1473246032,action=dict(kind='ad_exclude_sku'))],attention=[])
+  current=dict(campaigns=[c],recommendation_directions={'add':dict(rows=[])},owner_cost_review=dict(held_nm_excluded=NM))
+  prior=dict(campaigns=[dict(id=CID,focus=[row])],recommendation_directions={'add':dict(rows=[dict(nm_id=NM,campaign_id=CID,ready=True)])})
+  return current,prior
+ def test_owner_correction_restores_checked_proposal_and_keeps_cost_action(self):
+  c,p=self.fixture();before=copy.deepcopy(c);r=restore(c,p)
+  self.assertEqual(len(r['campaigns'][0]['focus']),2)
+  self.assertEqual(r['campaigns'][0]['focus'][0]['action']['kind'],'ad_exclude_sku')
+  self.assertEqual(r['recommendation_directions']['add']['rows'][0]['nm_id'],NM)
+  self.assertNotIn('held_nm_excluded',r['owner_cost_review']);self.assertEqual(c,before)
+ def test_unready_economics_cannot_be_restored_as_ready(self):
+  c,p=self.fixture();p['campaigns'][0]['focus'][0]['action']['growth_evidence']['expected_margin_before_ads_cny']=-1
+  with self.assertRaises(AssertionError):restore(c,p)
 if __name__=='__main__':unittest.main()

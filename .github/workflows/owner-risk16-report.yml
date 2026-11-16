@@ -1,5 +1,5 @@
 name: Owner two campaign cost review16
-# Revision2 preserves the standing owner hold on SKU534; no repeated WB actions.
+# Current owner correction: no no-return restriction for SKU534; proposal only.
 on:
   push:
     branches: [main]
@@ -36,4 +36,4 @@ jobs:
           WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
           CHINA_TELEGRAM_BOT_TOKEN: ${{ secrets.CHINA_TELEGRAM_BOT_TOKEN }}
           PYTHONPATH: scripts
-        run: python scripts/owner_risk16_report.py
+        run: python scripts/owner_risk16_restore.py
