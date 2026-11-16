@@ -1,0 +1,135 @@
+name: Trash three owner-approved China singletons 20261116
+on:
+  push:
+    branches: ['review/china-bag-groups-20261116']
+    paths: ['.github/workflows/china-trash-three-approved-20261116.yml']
+permissions: {}
+concurrency:
+  group: china-approved-singleton-trash-20261116
+  cancel-in-progress: false
+jobs:
+  apply:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5 cryptography
+      - name: Trash only three approved singleton IDs and verify
+        shell: python
+        env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+        run: |
+          import os,json,time,requests,collections,gzip,base64,secrets,traceback
+          from datetime import datetime,timezone
+          from cryptography.hazmat.primitives import serialization,hashes
+          from cryptography.hazmat.primitives.asymmetric import padding
+          from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+          TARGETS={1556488190:'23-Zont-pink',1473243932:'400-CymeBag-brown',1473243457:'616-MayaBag-black'}
+          PUBLIC_KEY="-----BEGIN PUBLIC KEY-----\nMIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAqZNUrOvZ4UeO29b+p61F\niH/TYX0CFHtnqndnmHR4leDh/pqkTFqC+EryTPqjLJBylfgeqPqc0Bywo7WeHNxe\nvbOmih5rb9wRTYgJRBx7ruUJaWiJLP0yp2KwLMf8Vc0tRxRBIfXV/CHQjVIIc0rY\nOEW8+gwrAgsqFgs0944OpliDwm0aI9UX+j4gCTCmktk5swzFuqyxcDUH7fOUDKe1\nOOSqDB/lODw3333K6mjuHxRcDUD69EdTOS+hJb+ZqQOCT9JGtE2b6H9+Uf6B9cYs\nKu7JDPUD/5ETgxz3Oa3YgM7XPWwamcn5MYq8HMJ2e4F2B1x/mxSpUk6RFDR8hW/W\nFpqmg+JxpZpKwuSgBhegRpWwJ1+gS0z0h31a58XweTDtA8nd7WJjhiegbmSwItLM\npC3FVE8HzAeP6h8C+7l2r/Vl81y59CE+VHvgSmUobNRmHdY+laFAU2v8PfuebV5C\nDku+Uuz+AjUYKOtflqUc8HQQHGldtkkXG1iafKKIpZyTAgMBAAE=\n-----END PUBLIC KEY-----\n"
+          TOKEN=os.environ['WB_TOKEN_3'];HOST='https://content-api.wildberries.cn'
+          R={'verified':False,'status':'started','targets':[{'nmID':n,'article':a} for n,a in TARGETS.items()],'requests':[],'authorization':'нулевые отправь в корзину','stockEvidenceWasPartial':True,'stockReviewAt':'2026-11-16T11:55:44.732622+00:00'}
+          def now():return datetime.now(timezone.utc).isoformat()
+          def seal(tag,obj):
+              pub=serialization.load_pem_public_key(PUBLIC_KEY.encode());key=secrets.token_bytes(32);nonce=secrets.token_bytes(12)
+              b=lambda v:base64.b64encode(v).decode()
+              env={'key':b(pub.encrypt(key,padding.OAEP(mgf=padding.MGF1(hashes.SHA256()),algorithm=hashes.SHA256(),label=None))),'nonce':b(nonce),'ciphertext':b(AESGCM(key).encrypt(nonce,gzip.compress(json.dumps(obj,ensure_ascii=False,default=str).encode()),None))}
+              encoded=b(json.dumps(env).encode())
+              for i in range(0,len(encoded),18000):print(tag+' '+str(i//18000)+' '+encoded[i:i+18000],flush=True)
+          def read(path,body):
+              assert path in ('/content/v2/get/cards/list','/content/v2/get/cards/trash')
+              for attempt in range(4):
+                  time.sleep(.85)
+                  try:r=requests.post(HOST+path,headers={'Authorization':TOKEN},json=body,timeout=60)
+                  except requests.RequestException:
+                      if attempt==3:raise RuntimeError('Read network failure '+path)
+                      time.sleep(2);continue
+                  if r.status_code==429:
+                      wait=int(float(r.headers.get('X-Ratelimit-Retry') or r.headers.get('Retry-After') or 65))+2
+                      assert wait<=180,'Read cooldown exceeds task budget'
+                      time.sleep(wait);continue
+                  if not r.ok:raise RuntimeError('Read HTTP '+str(r.status_code)+' '+path)
+                  d=r.json()
+                  if not isinstance(d.get('cards'),list):d=d.get('data',{})
+                  assert isinstance(d.get('cards'),list) and isinstance(d.get('cursor'),dict),'Incomplete card response'
+                  return d
+              raise RuntimeError('Read retry limit')
+          def catalog():
+              for attempt in range(3):
+                  cards=[];cursor={'limit':100};seen=set()
+                  for page in range(50):
+                      d=read('/content/v2/get/cards/list',{'settings':{'sort':{'ascending':True},'cursor':cursor,'filter':{'withPhoto':-1}}})
+                      cards.extend(d['cards'])
+                      if len(d['cards'])<100:break
+                      mark=(d['cursor'].get('updatedAt'),d['cursor'].get('nmID'))
+                      assert all(mark) and mark not in seen
+                      seen.add(mark);cursor={'limit':100,'updatedAt':mark[0],'nmID':mark[1]}
+                  else:raise RuntimeError('Catalog pagination limit')
+                  if cards and len({c['nmID'] for c in cards})==len(cards):return cards
+                  time.sleep(3)
+              raise RuntimeError('Unstable active catalog')
+          def trash_find(wanted):
+              found={};cursor={'limit':100};seen=set()
+              for page in range(100):
+                  d=read('/content/v2/get/cards/trash',{'settings':{'sort':{'ascending':False},'cursor':cursor}})
+                  for c in d['cards']:
+                      if c['nmID'] in wanted:found[c['nmID']]=c
+                  if wanted.issubset(found) or len(d['cards'])<100:return found
+                  mark=(d['cursor'].get('trashedAt'),d['cursor'].get('nmID'))
+                  assert all(mark) and mark not in seen,'Trash pagination incomplete'
+                  seen.add(mark);cursor={'limit':100,'trashedAt':mark[0],'nmID':mark[1]}
+              raise RuntimeError('Trash pagination limit')
+          def membership(cards):return [{k:c.get(k) for k in ('nmID','vendorCode','imtID','subjectName','subjectID')} for c in cards]
+          def send_to_trash(ids):
+              assert ids and set(ids).issubset(TARGETS) and len(ids)<=3
+              for attempt in range(4):
+                  time.sleep(.9)
+                  entry={'nmIDs':ids,'at':now()};R['requests'].append(entry)
+                  try:r=requests.post(HOST+'/content/v2/cards/delete/trash',headers={'Authorization':TOKEN},json={'nmIDs':ids},timeout=60)
+                  except requests.RequestException:
+                      entry['status']='network_outcome_unknown';return
+                  entry['http']=r.status_code
+                  if r.status_code==429:
+                      entry['status']='rate_limited'
+                      wait=int(float(r.headers.get('X-Ratelimit-Retry') or r.headers.get('Retry-After') or 65))+2
+                      assert wait<=180,'Trash cooldown exceeds task budget'
+                      time.sleep(wait);continue
+                  try:answer=r.json()
+                  except ValueError:entry['status']='response_outcome_unknown';return
+                  entry['response']=answer
+                  entry['status']='accepted' if r.ok and not answer.get('error') else 'rejected'
+                  assert entry['status']=='accepted','WB rejected trash request'
+                  return
+              raise RuntimeError('Trash request retry limit')
+          try:
+              before=catalog();bi={c['nmID']:c for c in before};sizes=collections.Counter(c['imtID'] for c in before)
+              R['membershipBefore']=membership(before);R['beforeCount']=len(before)
+              absent=set(TARGETS)-set(bi);already=trash_find(absent) if absent else {}
+              for n in absent:assert n in already and already[n]['vendorCode'].lower()==TARGETS[n].lower(),'Target absent from active catalog and not verified in trash'
+              live=[]
+              for n,art in TARGETS.items():
+                  if n not in bi:continue
+                  assert bi[n]['vendorCode'].lower()==art.lower(),'Card identity mismatch'
+                  assert sizes[bi[n]['imtID']]==1,'Target is no longer singleton'
+                  live.append(n)
+              R['before']=[bi[n] for n in live];R['alreadyInTrash']=list(already)
+              seal('APPROVED_TRASH_BACKUP',{'before':R['before'],'membershipBefore':R['membershipBefore'],'targets':R['targets']})
+              print('TRASH_PREFLIGHT_VERIFIED',flush=True)
+              if live:send_to_trash(live)
+              for attempt in range(18):
+                  time.sleep(8)
+                  after=catalog();ai={c['nmID']:c for c in after};R['membershipLatest']=membership(after)
+                  if not set(TARGETS).intersection(ai):break
+              else:raise RuntimeError('Selected cards remain in active catalog')
+              found=trash_find(set(TARGETS))
+              for n,art in TARGETS.items():assert n in found and found[n]['vendorCode'].lower()==art.lower(),'Card presence in trash not confirmed'
+              assert set(ai)==set(bi)-set(live),'Unexpected active card set changed'
+              unexpected=[n for n in ai if ai[n]['imtID']!=bi[n]['imtID']]
+              assert not unexpected,'Unrelated group membership changed'
+              R.update(status='verified',verified=True,afterCount=len(after),membershipAfter=membership(after),trashCards=[found[n] for n in TARGETS],finishedAt=now(),unrelatedGroupsPreserved=True,remainingSingletons=[membership([c])[0] for c in after if sum(x['imtID']==c['imtID'] for x in after)==1])
+              print('THREE_CARDS_CONFIRMED_IN_TRASH',flush=True)
+          except Exception as exc:R.update(status='incomplete',error={'type':type(exc).__name__,'message':str(exc),'trace':traceback.format_exc()})
+          finally:
+              R['finishedAt']=now();seal('APPROVED_TRASH_RESULT',R);print('TRASH_TASK_FINISHED',flush=True)
+          
