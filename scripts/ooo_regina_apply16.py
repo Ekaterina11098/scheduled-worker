@@ -137,7 +137,10 @@ def run():
    if s['bid_changes']:call('PATCH','/api/advert/v1/bids',{'bids':[{'advert_id':39605581,'nm_bids':s['bid_changes']}]},step='bids')
    ex.fund(s,save,{'cid':39605581,'amount_kgs':1200},'deposit_39605581_1200')
    if not s.get('funding_verified_at'):
-    b=call('POST','/api/advert/v2/budget',{'advertIds':[39605581]})['adverts']
+    prior_budget=s.get('last_http',{}).get('/api/advert/v2/budget',{})
+    deposit_at=s['steps']['deposit_39605581_1200']['accepted_at']
+    reusable=prior_budget.get('http_status')==200 and prior_budget.get('observed_at','')>deposit_at and time.time()-datetime.datetime.fromisoformat(prior_budget['observed_at']).timestamp()<120
+    b=prior_budget['response']['adverts']if reusable else call('POST','/api/advert/v2/budget',{'advertIds':[39605581]})['adverts']
     owner_started=auth.get('owner_started_manually')is True and(db.get(TASK+':owner_started')or{}).get('skip_start')is True
     receipt=s['steps']['deposit_39605581_1200']['response'];expected_total=s['funding_before_by_campaign']['39605581']['total']+1200
     if len(b)!=1 or b[0].get('advertId')!=39605581 or b[0].get('currency')!='KGS'or b[0].get('total',-1)<0 or receipt.get('total')!=expected_total or(not owner_started and b[0]['total']<expected_total):raise Stop('Accepted deposit needs reconciliation, never replay')
