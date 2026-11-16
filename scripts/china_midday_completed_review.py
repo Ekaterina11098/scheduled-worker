@@ -53,7 +53,11 @@ def merge_completed(bundle,review,source_ref):
  for row in out['recommendation_directions'].get('add',{}).get('rows',[]):
   campaign=next((c for c in out['campaigns']if c['id']==row.get('campaign_id')),None)
   if campaign and row.get('bid_verified')is True:
-   campaign['addition_review_notes'].append(row['article']+': кандидат на добавление; требуется отдельный точный план.')
+   nm=(row.get('action')or{}).get('nm_id')or row.get('nm_id')or row.get('nm')
+   ready=any((r.get('action')or{}).get('kind')=='ad_add_sku'
+             and (((r.get('action')or{}).get('nm_id')==nm)if nm is not None else r.get('article')==row['article'])
+             for r in campaign.get('attention',[]))
+   if not ready:campaign['addition_review_notes'].append(row['article']+': кандидат на добавление; требуется отдельный точный план.')
 
  out['economic_review_complete']=review.get('economic_review_complete')is True
  out['recommendation_basis']='completed_days_with_fresh_economics_and_current_state'
