@@ -1,0 +1,31 @@
+name: Owner two campaign cost review16
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-risk16-report.yml]
+permissions: {contents: read}
+concurrency:
+  group: owner-risk16-report
+  cancel-in-progress: false
+jobs:
+  review:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-risk16-report] Complete two campaign cost review in the existing report'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, fetch-depth: 1}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5 pillow==11.3.0 python-dotenv simplejson==4.2.0
+      - name: Offline advertising safeguards
+        run: PYTHONPATH=scripts python -m unittest discover -s scripts -p 'test_china_advertising_*.py'
+      - name: Current readbacks and same report edit only, no WB writes or paid model
+        env:
+          OPENAI_API_KEY: ''
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          CHINA_TELEGRAM_BOT_TOKEN: ${{ secrets.CHINA_TELEGRAM_BOT_TOKEN }}
+          PYTHONPATH: scripts
+        run: python scripts/owner_risk16_report.py

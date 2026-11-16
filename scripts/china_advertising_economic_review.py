@@ -91,6 +91,10 @@ def apply(bundle,source,minima):
    base=dict(id=str(c['id'])+':'+str(r['nm']),campaign_id=c['id'],nm_id=r['nm'],placement=zone,old_minor=old,article=r['article'])
    own_model=e.get('sample_size',0)>=5 and not e.get('buyout_fallback') and not e.get('commission_policy_fallback')
    meaningful=(p['clicks']>=100 or own_model and model_before<=0 and p['clicks']>=30) and spend>=max(0,model_before,e['seller_price_cny']*.05)
+   # A reliable negative unit model cannot be repaired by buying more clicks.
+   # This still requires completed post-change traffic and fresh own inputs above.
+   negative_own_unit=own_model and e.get('sample_reliable')is True and e.get('sample_size',0)>=20 and model_before<=0 and spend>0
+   meaningful=meaningful or negative_own_unit
    bounded_loss=orders==0 and p['clicks']>=30 and own_model and model_before>0 and spend>=max(model_before,e['seller_price_cny']*.05)
    positive_own_model=(orders>0 and r['model_profit_for_attributed_orders_cny']>0 and not e.get('buyout_fallback') and not e.get('commission_policy_fallback') and e.get('sample_size',0)>=5)
    if positive_own_model:
@@ -107,7 +111,7 @@ def apply(bundle,source,minima):
     r['test_proposal']=dict(days=1,max_additional_spend_cny=limit,requires_separate_approval=True,execution_authorized=False)
     r['decision']=f'Оставить минимум {old/100:g} ¥ только как отдельно согласованный тест на 1 полный день; лимит допрасхода {limit:g} ¥; без пополнения.'
     r['reason']+=' Цель5% превышена незначительно; это предложение исключения из лимита на один день, не разрешение продолжать автоматически.'
-   elif old==minimum and meaningful and len(state['nm_settings'])>1 and state.get('restrictions',{}).get('can_change_nms') is True:
+   elif old==minimum and (meaningful or bounded_loss) and len(state['nm_settings'])>1 and state.get('restrictions',{}).get('can_change_nms') is True:
     r['action']=dict(base,kind='ad_exclude_sku');r['decision']='Исключить из этой РК: ставка уже на минимуме WB.'
    else:
     r['action']=None
