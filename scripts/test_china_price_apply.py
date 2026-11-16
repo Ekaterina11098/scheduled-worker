@@ -57,10 +57,13 @@ class Tests(unittest.TestCase):
     def test_wrong_day(self):
         f=Fake();f.cache[f.key]['report_date']='2026-01-01'
         with self.assertRaises(ValueError):self.runio(f)
-    def test_exact_discount_rollback(self):
+    def test_oversized_first_discount_rollback_is_rejected(self):
         f=Fake();s=dict(f.s,action='Снижение',current_cny='106.6',target_cny='82',base_cny=164,seller_discount=35)
         p=dict(f.p,discount=35,sizes=[dict(price=164,discountedPrice=106.6)])
-        self.assertEqual(plan(s,p),dict(nmID=1,price=164,discount=50))
+        with self.assertRaisesRegex(ValueError,'5%'):plan(s,p)
+    def test_first_decrease_within_five_preserves_seller_discount(self):
+        f=Fake();s=dict(f.s,action='Снижение',target_cny='95')
+        self.assertEqual(plan(s,f.p),dict(nmID=1,price=190,discount=50))
     def test_no_approximate(self):
         f=Fake();s=dict(f.s,target_cny='110.123')
         with self.assertRaises(ValueError):plan(s,f.p)
