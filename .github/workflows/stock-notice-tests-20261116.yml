@@ -1,7 +1,5 @@
 name: Stock notification and manual resume tests
 on:
-  push:
-    paths: ['.github/workflows/stock-notice-tests-20261116.yml']
   workflow_dispatch:
 permissions:
   contents: read
