@@ -14,7 +14,7 @@ jobs:
       - name: Read WB China card and one photo (no writes)
         shell: bash
         env:
-          WB_TOKEN: \${{ secrets.WB_TOKEN_3 }}
+          WB_TOKEN: ${{ secrets.WB_TOKEN_3 }}
         run: |
           python - <<'PY'
           import os
