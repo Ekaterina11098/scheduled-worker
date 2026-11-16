@@ -85,7 +85,7 @@ def main():
  pic=pics[0]['bytes']if isinstance(pics[0],dict)else pics[0]
  c.put(ROOT+':review',updated)
  c.put(ROOT+':preflight',dict(prices=live,stock=stocks,published_stock=wb,observed_at=stamp(),wb_writes=0))
- c.put(ROOT+':prepared',dict(answer=answer,answer_sha256=scope,offers=offers,reply_markup=markup,button_registry=registry,png_sha256=hashlib.sha256(pic).hexdigest(),selection_count=9,execution_authorized=False))
+ c.put(ROOT+':prepared',dict(answer=answer,answer_sha256=scope,offers=offers,reply_markup=markup,button_registry=registry,png_sha256=hashlib.sha256(pic).hexdigest(),selection_count=9,buyer_basis=buyer,execution_authorized=False))
  # Recheck pending human work immediately before changing any binding.
  assert len(io.db('business_agent_jobs?agent_id=eq.china&id=gt.'+str(JOB)+'&select=id&limit=1'))==0
  oldreg=original['button_registry'];prior=c.get(oldreg['key']);assert prior['status']=='active'

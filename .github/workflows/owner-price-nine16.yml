@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   review:
-    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-price-nine16] Recalculate nine and update the combined price report without WB changes'
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-price-nine16-ready] Complete direct buyer-price forecasts and update one report'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

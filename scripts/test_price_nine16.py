@@ -1,9 +1,21 @@
 import unittest
+from datetime import date
 from types import SimpleNamespace
 from china_price_aggregate_control import membership_override
 from china_price_economic_target import choose_target
 
 class PriceMembershipPolicy(unittest.TestCase):
+ def test_buyer_anchor_uses_matching_direct_price_not_display_spp(self):
+  from china_buyer_price_forecast import build,forecast
+  raw=dict(nm_id=1,sa_name='sku',price_final=1004,price_after_spp=1004,price_after_discount=1130,price_spp=17)
+  marker=dict(id=1,collected_at='2026-11-16T07:32:54+00:00',period_from='2026-11-15',period_to='2026-11-15')
+  cat=dict(cabinet='token_3',observed_at='2026-11-16T07:31:00+00:00',rows=[dict(nmID=1,vendorCode='sku',currencyIsoCode4217='CNY',sizes=[dict(discountedPrice=93.6)])])
+  basis=build([raw],marker,cat,date(2026,11,16))
+  self.assertIn('1',basis['display_spp_conflicts'])
+  self.assertIsNone(basis['rows']['1']['spp_percent'])
+  self.assertEqual(forecast(basis,'1','sku',93.6,89.28,date(2026,11,16)),958)
+  raw['price_final']=1005
+  self.assertNotIn('1',build([raw],marker,cat,date(2026,11,16))['rows'])
  def worker(self,policy):return SimpleNamespace(get=lambda key:policy)
  def test_no_implicit_override(self):
   self.assertFalse(membership_override(self.worker({}),{'status':'membership_changed'}))

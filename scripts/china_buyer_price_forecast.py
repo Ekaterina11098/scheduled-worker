@@ -42,8 +42,13 @@ def build(rows,marker,catalogue,day):
    # Whole-percent MPStats display has unknown rounding/truncation mode.
    # Validate at most one percentage point; forecast uses matching exact
    # price_after_spp/price_final values, never the displayed percent.
-   if abs(before_spp*(1-spp/100)-rub)>max(Decimal(2),spp_rounding):continue
-   result['rows'][nm]=dict(article=raw['sa_name'],current_cny=str(cny),buyer_rub=str(rub),spp_percent=str(spp))
+   spp_consistent=abs(before_spp*(1-spp/100)-rub)<=max(Decimal(2),spp_rounding)
+   # Direct matching buyer-price fields establish the forecast anchor. The
+   # displayed discount can be stale relative to that price; never recompute
+   # or replace the observed buyer price from it, or claim an exact SPP rate.
+   if not spp_consistent:
+    result.setdefault('display_spp_conflicts',[]).append(nm)
+   result['rows'][nm]=dict(article=raw['sa_name'],current_cny=str(cny),buyer_rub=str(rub),spp_percent=str(spp) if spp_consistent else None,display_spp_consistent=spp_consistent)
   except (KeyError,TypeError,ValueError,InvalidOperation):continue
  return result
 
