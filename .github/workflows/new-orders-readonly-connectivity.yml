@@ -1,7 +1,6 @@
-name: New orders - read-only API connectivity
+name: New orders - MoySklad read-only connectivity
 
 on:
-  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -17,62 +16,56 @@ concurrency:
 jobs:
   verify:
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.head_commit.message == 'diagnostic: one-time new orders connectivity 2026-11-16'
-    name: Verify WB and MoySklad (read only)
+      github.run_attempt == 1 &&
+      github.event.head_commit.message == 'diagnostic: one-time MoySklad gzip read check 2026-11-16'
+    name: Verify MoySklad read only
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 4
     env:
-      WB_TOKEN_1: ${{ secrets.WB_TOKEN_1 }}
-      WB_TOKEN_2: ${{ secrets.WB_TOKEN_2 }}
-      WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
       MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
     steps:
-      - name: Read-only HTTP checks (no product changes)
+      - name: Read one MoySklad product
         shell: bash
         run: |
           python3 - <<'PY'
-          import json, os, sys, urllib.request, urllib.error
+          import gzip
+          import json
+          import os
+          import sys
+          import urllib.error
+          import urllib.request
 
-          def request(label, url, token, body=None):
-              if not token:
-                  print(f"{label}: NOT_CHECKED (secret not configured)")
-                  return False
-              headers = {"Authorization": ("Bearer " + token if label == "MOYSKLAD" else token), "Accept": "application/json"}
-              if body is not None:
-                  headers["Content-Type"] = "application/json"
-              req = urllib.request.Request(
-                  url, data=json.dumps(body).encode("utf-8") if body is not None else None,
-                  headers=headers, method="POST" if body is not None else "GET"
-              )
-              try:
-                  with urllib.request.urlopen(req, timeout=20) as resp:
-                      # Only read a bounded JSON response; never print response bodies or headers.
-                      raw = resp.read(1_000_000)
-                      data = json.loads(raw)
-                      if label.startswith("WB"):
-                          records = data.get("cards")
-                      else:
-                          records = data.get("rows")
-                      if not isinstance(records, list):
-                          print(f"{label}: HTTP {resp.status}, unexpected JSON structure")
-                          return False
-                      print(f"{label}: HTTP {resp.status}, records={len(records)}")
-                      return True
-              except urllib.error.HTTPError as e:
-                  print(f"{label}: HTTP {e.code} (response body suppressed)")
-              except Exception as e:
-                  print(f"{label}: {type(e).__name__} (details suppressed)")
-              return False
-
-          payload = {"settings": {"cursor": {"limit": 1}, "filter": {"withPhoto": -1}}}
-          checks = [
-              ("WB_TOKEN_1 (RU host)", "https://content-api.wildberries.ru/content/v2/get/cards/list", "WB_TOKEN_1", payload),
-              ("WB_TOKEN_2 (RU host)", "https://content-api.wildberries.ru/content/v2/get/cards/list", "WB_TOKEN_2", payload),
-              ("WB_TOKEN_3 (CN host)", "https://content-api.wildberries.cn/content/v2/get/cards/list", "WB_TOKEN_3", payload),
-              ("MOYSKLAD", "https://api.moysklad.ru/api/remap/1.2/entity/product?limit=1", "MOYSKLAD_API_TOKEN", None),
-          ]
-          results = [request(label, url, os.environ.get(secret, ""), body) for label, url, secret, body in checks]
-          print(f"READ_ONLY_SUMMARY: {sum(results)}/{len(results)} checks succeeded")
-          sys.exit(0 if all(results) else 1)
+          token = os.environ.get("MOYSKLAD_API_TOKEN", "")
+          if not token:
+              print("MOYSKLAD: NOT_CHECKED (secret missing)")
+              sys.exit(1)
+          request = urllib.request.Request(
+              "https://api.moysklad.ru/api/remap/1.2/entity/product?limit=1",
+              method="GET",
+              headers={
+                  "Authorization": "Bearer " + token,
+                  "Accept": "application/json;charset=utf-8",
+                  "Accept-Encoding": "gzip",
+              },
+          )
+          try:
+              with urllib.request.urlopen(request, timeout=25) as response:
+                  if response.status != 200:
+                      print(f"MOYSKLAD: HTTP {response.status}")
+                      sys.exit(1)
+                  raw = response.read(1048576)
+                  if response.headers.get("Content-Encoding", "").lower() == "gzip":
+                      raw = gzip.decompress(raw)
+                  payload = json.loads(raw)
+                  rows = payload.get("rows") if isinstance(payload, dict) else None
+                  if not isinstance(rows, list):
+                      print("MOYSKLAD: HTTP 200, unexpected JSON structure")
+                      sys.exit(1)
+                  print(f"MOYSKLAD: HTTP 200, records={len(rows)}, read_only=verified")
+          except urllib.error.HTTPError as error:
+              print(f"MOYSKLAD: HTTP {error.code} (body suppressed)")
+              sys.exit(1)
+          except Exception as error:
+              print(f"MOYSKLAD: {type(error).__name__} (details suppressed)")
+              sys.exit(1)
           PY
