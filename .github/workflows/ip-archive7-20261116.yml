@@ -1,0 +1,55 @@
+name: Archive exact owner approved paused IP campaigns
+on:
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency: {group: ip-archive-owner, cancel-in-progress: false}
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5 > /dev/null 2>&1
+      - shell: python
+        env:
+          WB_TOKEN_2: ${{ secrets.WB_TOKEN_2 }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          import os,json,time,requests,datetime
+          ROOT='ip_agent:archive7:2026-11-16'
+          u=os.environ['SUPABASE_URL'].rstrip('/')+'/rest/v1/telegram_api_cache'
+          h={'apikey':os.environ['SUPABASE_SECRET_KEY'],'Authorization':'Bearer '+os.environ['SUPABASE_SECRET_KEY']}
+          def get(k):
+           r=requests.get(u,headers=h,params={'cache_key':'eq.'+k,'select':'payload'},timeout=45);r.raise_for_status();return r.json()[0]['payload'] if r.json() else None
+          def save(k,p,claim=False):
+           hh=dict(h,Prefer='resolution=ignore-duplicates,return=representation' if claim else 'resolution=merge-duplicates')
+           r=requests.post(u,headers=hh,params={'on_conflict':'cache_key'},json={'cache_key':k,'payload':p,'updated_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'expires_at':'2027-11-16T00:00:00Z'},timeout=45);r.raise_for_status();return bool(r.json()) if claim else None
+          def req(path,params=None):
+           return requests.get('https://advert-api.wildberries.ru'+path,headers={'Authorization':os.environ['WB_TOKEN_2']},params=params,timeout=60)
+          def read():
+           r=req('/api/advert/v2/adverts',{'ids':','.join(map(str,ids))});r.raise_for_status()
+           a=r.json()['adverts'];return {int(x['id']):x for x in a}
+          p=get(ROOT+':approval')
+          assert p and p['status']=='approved'
+          ids=p['ids'];assert len(ids)==7
+          before=read();save(ROOT+':before',before)
+          results={}
+          for cid in ids:
+           k=ROOT+':item:'+str(cid)
+           if get(k):results[str(cid)]={'state':'existing_claim_not_repeated'};continue
+           st=before.get(cid,{}).get('status')
+           if st==7:results[str(cid)]={'state':'already_archived'};continue
+           if st!=11:results[str(cid)]={'state':'skipped_not_paused','status':st};continue
+           if not save(k,{'state':'attempting','id':cid},True):continue
+           r=req('/adv/v0/stop',{'id':cid})
+           result={'http':r.status_code,'state':'accepted' if r.ok else 'uncertain_or_rejected','retry_after':r.headers.get('Retry-After')}
+           save(k,result);results[str(cid)]=result
+           time.sleep(13)
+          after=read();save(ROOT+':after',after)
+          for cid in ids:
+           results.setdefault(str(cid),{})['readback_status']=after.get(cid,{}).get('status')
+          save(ROOT+':execution',{'results':results,'verified':[cid for cid in ids if after.get(cid,{}).get('status')==7],'completed_at':datetime.datetime.now(datetime.timezone.utc).isoformat()})
+          print('Private receipt saved; do not replay writes.')
+          
