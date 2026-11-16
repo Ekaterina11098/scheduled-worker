@@ -1,5 +1,7 @@
 name: Restore Guangzhou New owner backup
 on:
+  push:
+    paths: ['.github/workflows/guangzhou-new-restore-20261116.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -35,7 +37,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/private-source
         run: |
           python -m py_compile private-source/stock_guangzhou_owner_restore.py private-source/stock_cloud_execution.py
-          python test_guangzhou_new_restore_20261116.py
+          python test_guangzhou_new_20261116.py
       - name: Restore saved quantities to exact new warehouse
         env:
           PYTHONPATH: ${{ github.workspace }}/private-source:${{ github.workspace }}
