@@ -1,0 +1,69 @@
+name: WB China read-only diagnostic
+on:
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: wb-china-readonly-diagnostic
+  cancel-in-progress: false
+jobs:
+  read-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Read one existing card without changes
+        env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+        shell: python
+        run: |
+          import os, json, time, urllib.request, urllib.error
+          host='https://content-api.wildberries.cn'
+          expected={'vendorCode':'362-CelineaBag-black','nmID':2245828239}
+          token=os.environ.get('WB_TOKEN_3','')
+          if not token:
+              raise SystemExit('FAILED: WB_TOKEN_3 secret is unavailable or empty')
+          cursor={'limit':100}
+          found=[]
+          try:
+              for page in range(200):
+                  payload=json.dumps({'settings':{'cursor':cursor,'filter':{'withPhoto':-1}}}).encode()
+                  req=urllib.request.Request(host+'/content/v2/get/cards/list',data=payload,headers={'Authorization':token,'Content-Type':'application/json'},method='POST')
+                  try:
+                      with urllib.request.urlopen(req,timeout=40) as response:
+                          data=json.load(response)
+                          print('PAGE',page+1,'HTTP',response.status)
+                  except urllib.error.HTTPError as exc:
+                      raise RuntimeError('WB returned HTTP '+str(exc.code)) from None
+                  for card in data.get('cards',[]):
+                      if card.get('vendorCode')==expected['vendorCode']:
+                          found.append(card)
+                  cc=data.get('cursor') or {}
+                  if (cc.get('total') or 0)<100:
+                      break
+                  if not cc.get('updatedAt') or not cc.get('nmID'):
+                      raise RuntimeError('Cursor fields absent; cannot complete pagination')
+                  cursor={'limit':100,'updatedAt':cc['updatedAt'],'nmID':cc['nmID']}
+                  time.sleep(0.7)
+              else:
+                  raise RuntimeError('Pagination bound exceeded')
+              if len(found)!=1:
+                  raise RuntimeError('Expected exactly one matching card; found '+str(len(found)))
+              card=found[0]
+              if card.get('nmID')!=expected['nmID']:
+                  raise RuntimeError('nmID mismatch')
+              result={
+                  'vendorCode':card.get('vendorCode'),
+                  'nmID':card.get('nmID'),
+                  'description_present':bool(card.get('description')),
+                  'characteristics_count':len(card.get('characteristics') or []),
+                  'dimensions_present':bool(card.get('dimensions')),
+                  'package_length_present':bool((card.get('dimensions') or {}).get('length')),
+                  'package_width_present':bool((card.get('dimensions') or {}).get('width')),
+                  'package_height_present':bool((card.get('dimensions') or {}).get('height')),
+                  'package_weight_present':bool((card.get('dimensions') or {}).get('weightBrutto')),
+                  'barcodes_count':sum(len(s.get('skus') or []) for s in (card.get('sizes') or [])),
+              }
+              print('READ_ONLY_RESULT',json.dumps(result,ensure_ascii=False))
+              if not result['description_present'] or result['characteristics_count']==0:
+                  raise RuntimeError('Card exists but expected content is absent')
+          except Exception as exc:
+              raise SystemExit('FAILED: '+str(exc)) from None
