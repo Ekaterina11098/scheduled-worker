@@ -36,8 +36,14 @@ def apply(io,bundle,source,minima):
   st=states.get(c['id']);raw=stats.get(c['id']);members={n['nm_id']for n in(st or{}).get('nm_settings',[])}
   if not st or not raw or st.get('status')not in(9,11)or st.get('bid_type')!='manual'or st.get('settings',{}).get('payment_type')!='cpc'or members&PROTECTED:continue
   zone='search'if st['settings']['placements'].get('search')else'recommendations';typ='search'if zone=='search'else'recommendation'
-  closed=[d for d in raw.get('days',[])if d['date'][:10]in days and d['date'][:10]<day]
-  if len(closed)<2:continue # Missing days remain missing, never synthesized as zero.
+  # Whole-campaign recommendations use the same completed post-change window as SKU review.
+  events=[x['at']for x in changes if (x.get('cid')==st['id']and x.get('kind')in('bid','added','excluded','returned','relaunch'))or(x.get('nm')in members and x.get('kind')=='price')]
+  events += [x['at']for x in source.get('verified_composition_changes',[])if x.get('cid')==st['id']]
+  started=st.get('timestamps',{}).get('started')
+  if started:events.append(started)
+  changed=max((datetime.fromisoformat(at.replace('Z','+00:00')).astimezone(ZoneInfo('Europe/Moscow')).date().isoformat()for at in events),default='1970-01-01')
+  closed=[d for d in raw.get('days',[])if d['date'][:10]in days and changed<d['date'][:10]<day]
+  if len(closed)<(1 if st['status']==9 else 2):continue # No launch-day or missing-day zeros.
   spend=sum(d['sum']for d in closed);clicks=sum(d['clicks']for d in closed);orders=sum(d['orders']for d in closed)
   if spend<=0:continue
   bynm={};costs={};stable={}
@@ -90,3 +96,4 @@ def apply(io,bundle,source,minima):
    for section in out.get('recommendation_directions',{}).values():section['rows']=[r for r in section.get('rows',[])if r.get('campaign_id')!=c['id']];section['count']=len(section['rows'])
  out['campaign_financial_review']=dict(revision='completed_risk_restart_v1',audit=audit,wb_writes=0,model_calls=0)
  return out
+

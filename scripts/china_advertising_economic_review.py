@@ -111,6 +111,15 @@ def apply(bundle,source,minima):
    negative_own_unit=own_model and e.get('sample_reliable')is True and e.get('sample_size',0)>=20 and model_before<=0 and spend>0
    meaningful=meaningful or negative_own_unit
    bounded_loss=orders==0 and p['clicks']>=30 and own_model and model_before>0 and spend>=max(model_before,e['seller_price_cny']*.05)
+   # Approved planned-buyout tests still need a finite completed-day loss review.
+   # This is cost containment, never proof of actual buyout/profit or permission to fund.
+   planned_test=(e.get('buyout_fallback')is True and e.get('sample_size')==0
+                 and bool(e.get('planned_buyout_source')) and finite(e.get('buyout'))
+                 and 0<e['buyout']<=1 and model_before>0)
+   planned_overrun=planned_test and orders==0 and p['clicks']>=30 and spend>=min(model_before,e['seller_price_cny']*.05)
+   if planned_overrun:
+    bounded_loss=True
+    r['completed_planned_test_guard']=dict(working_spend_cny=min(model_before,e['seller_price_cny']*.05),decision_days=decision_days,actual_buyout_proven=False)
    positive_own_model=(orders>0 and r['model_profit_for_attributed_orders_cny']>0 and not e.get('buyout_fallback') and not e.get('commission_policy_fallback') and e.get('sample_size',0)>=5)
    if positive_own_model and not(latest_zero_loss or deterioration):
     # A target DRR is not a break-even threshold; preserve uncertainty and a finite review.
@@ -136,5 +145,6 @@ def apply(bundle,source,minima):
  out['economic_review_complete']=not any(r.get('data_blocker') for c in out['campaigns'] for r in c.get('focus',[]))
  out['economic_review_blockers']=[dict(campaign_id=c['id'],article=r['article'],blocker=r['data_blocker']) for c in out['campaigns'] for r in c.get('focus',[]) if r.get('data_blocker')]
  return out
+
 
 

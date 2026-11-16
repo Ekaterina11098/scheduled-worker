@@ -7,7 +7,13 @@ def attach(io,bundle):
  end=bundle['days'][-1]
  for c in bundle['campaigns']:
   if c.get('status')!=9 or c.get('created')!=end or c.get('period')is not None or c.get('last')is not None:continue
-  if c['id']not in p.get('campaign_ids',[]):continue
+  if c['id']not in p.get('campaign_ids',[]):
+   registry=io.get('china_agent:verified_campaign_state:v1')or{}
+   key=registry.get(str(c['id']));receipt=io.get(key)if key else None
+   after=(receipt or{}).get('after')or{}
+   if not(receipt and receipt.get('status')=='verified' and after.get('id')==c['id']
+          and after.get('status')==9 and after.get('timestamps',{}).get('started')):continue
   bundle.setdefault('approved_statistics_exceptions',{})[str(c['id'])]=dict(owner_id=5122667182,owner_accepted_separate_row=True,reason='new_campaign_no_wb_statistics',policy_key=POLICY)
   c['owner_statistics_note']='Новая РК от'+date.fromisoformat(end).strftime('%d.%m')+'. Первый полный день — сегодня; оценка после его завершения. Без изменений.'
  return bundle
+
