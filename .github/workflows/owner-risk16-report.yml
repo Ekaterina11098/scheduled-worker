@@ -5,7 +5,7 @@ on:
     paths: [.github/workflows/owner-risk16-report.yml]
 permissions: {contents: read}
 concurrency:
-  group: owner-risk16-report
+  group: owner-risk16-report-sparse
   cancel-in-progress: false
 jobs:
   review:
@@ -14,7 +14,14 @@ jobs:
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
-        with: {persist-credentials: false, fetch-depth: 1}
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/
+            /.github/
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - run: pip install requests==2.32.5 pillow==11.3.0 python-dotenv simplejson==4.2.0
