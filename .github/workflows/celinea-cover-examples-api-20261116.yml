@@ -19,7 +19,7 @@ jobs:
         shell: python
         run: |
           import os,requests,time,datetime,base64
-          wanted={'157-CelineaBag-black','159-CelineaBag-coffee','160-CelineaBag-grey'}
+          wanted={'157-CelineaBag-black','159-CelineaBag-coffee','160-CelineaBag-burgundy'}
           found={};cur={'limit':100}
           for page in range(40):
            r=requests.post('https://content-api.wildberries.cn/content/v2/get/cards/list',headers={'Authorization':os.environ['WB_TOKEN_3']},json={'settings':{'cursor':cur,'filter':{'withPhoto':-1}}},timeout=45);r.raise_for_status();j=r.json()
@@ -36,5 +36,5 @@ jobs:
             images.append({'article':a,'nmID':c['nmID'],'position':n,'source_url':url,'base64':base64.b64encode(r.content).decode()})
           sb=os.environ['SUPABASE_URL'].rstrip('/');sk=os.environ['SUPABASE_SECRET_KEY']
           out={'status':'read','images':images,'wb_writes':0}
-          r=requests.post(sb+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={'apikey':sk,'Authorization':'Bearer '+sk,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},json={'cache_key':'celinea_cover_examples_api:20261116:v1','payload':out,'updated_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'expires_at':'2099-01-01T00:00:00Z'},timeout=60);r.raise_for_status()
+          r=requests.post(sb+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={'apikey':sk,'Authorization':'Bearer '+sk,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},json={'cache_key':'celinea_cover_examples_api:20261116:v2','payload':out,'updated_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'expires_at':'2099-01-01T00:00:00Z'},timeout=60);r.raise_for_status()
           print('Cover examples downloaded from content API supplied URLs; no browser')
