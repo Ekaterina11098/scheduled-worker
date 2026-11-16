@@ -37,7 +37,7 @@ def lowering(review, day, catalogue=None, omitted=None):
     for item in review['products']:
         if item.get('result',{}).get('status')!='rollback_review':continue
         if item.get('full_days',0)<1:raise RuntimeError('Premature rollback')
-        if item.get('full_days',0)<4 and not item.get('result',{}).get('early_review_criteria_met'):
+        if item.get('full_days',0)<3 and not item.get('result',{}).get('early_review_criteria_met'):
             raise RuntimeError('Early rollback evidence missing')
         if item.get('buyout_fallback') and item.get('buyout_source') not in ('approved_plan','approved_category_plan'):
             if omitted is not None:omitted.append(dict(article=item['article'],status='buyout_source_unverified'))
@@ -59,8 +59,9 @@ def lowering(review, day, catalogue=None, omitted=None):
             continue  # The old experiment cannot recommend another cut after a new price change.
         target=item.get('economic_target') or {}
         regular=(target.get('basis')=='profit_floor_demand_hypothesis' and target.get('status')=='recommended' and target.get('expected_profit_advantage_per_day',-1)>=0 and target.get('predicted_profit_per_day',-1)>0)
+        growth=(target.get('basis')=='order_value_positive_economics' and target.get('status')=='recommended' and target.get('predicted_profit_per_day',-1)>0 and target.get('unit_contribution_rub',-1)>0 and target.get('order_value_advantage_per_day',-1)>0)
         bounded_test=(item.get('owner_first5_test_authorized') is True and target.get('basis')=='owner_first5_positive_unit_test' and target.get('status')=='recommended_test' and target.get('first_decrease_max_percent')==5 and target.get('unit_contribution_rub',-1)>0 and target.get('demand_recovery')=='unidentified_not_claimed')
-        if not regular and not bounded_test:
+        if not regular and not growth and not bounded_test:
             if omitted is not None:omitted.append(dict(article=item['article'],status='economic_target_unverified'))
             continue
         target_price=Decimal(str(target['price_cny']))
@@ -70,6 +71,7 @@ def lowering(review, day, catalogue=None, omitted=None):
             if omitted is not None:omitted.append(dict(article=item['article'],status='first_decrease_exceeds_5percent'))
             continue
         implied=(Decimal(str(target['base_cny']))*(1-Decimal(str(target['discount']))/100)).quantize(Decimal('.01'))
+        if Decimal(str(target['discount']))!=discount:raise RuntimeError('Seller discount must be preserved')
         if implied!=target_price:raise RuntimeError('Economic target price parameters mismatch')
         old=price(current);new=price(target_price)
         if Decimal(old.replace(',','.'))<=Decimal(new.replace(',','.')):

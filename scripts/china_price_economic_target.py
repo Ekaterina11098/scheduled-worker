@@ -69,7 +69,7 @@ def feasible_prices(previous, current):
         add(source['base_cny'],discount)
     return [result[p] for p in sorted(result)]
 
-def choose_target(previous,current,before,after,*,buyout_probability,retention,cost,dispatch,fx,allow_bounded_first5_test=False):
+def choose_target(previous,current,before,after,*,buyout_probability,retention,cost,dispatch,fx,allow_bounded_first5_test=False, objective='profit_floor'):
     """Choose closest feasible profit to the old daily floor, at or above it.
 
     Priority is a lower price at the same profit floor, rather than maximizing
@@ -89,6 +89,9 @@ def choose_target(previous,current,before,after,*,buyout_probability,retention,c
     except (KeyError,TypeError,ValueError,ZeroDivisionError):
         return dict(result,status='incomplete_economic_inputs')
     if q==0:return dict(result,status='no_positive_buyout_economics')
+    if objective=='order_value_positive_economics':
+        return growth_target(previous,current,before,after,q=q,keep=keep,c=c,d=d,fx=fx)
+    if objective!='profit_floor':raise ValueError('Unknown price objective')
     if nb<=0 or vb<=0 or va<=0:return dict(result,status='no_supported_demand_estimate')
     if na==0:
         # Log-elasticity is undefined at zero. Only test the exact previous price,
@@ -159,3 +162,46 @@ def choose_target(previous,current,before,after,*,buyout_probability,retention,c
     choice=min(acceptable,key=lambda v:(v['expected_profit_advantage_per_day'],v['price_cny']))
     return dict(result,**choice,status='recommended',profit_currency='RUB',price_currency='CNY')
 
+
+
+def growth_target(previous,current,before,after,*,q,keep,c,d,fx):
+    """Owner16Nov: order amount and count, positive economics; prior profit is diagnostic."""
+    old=float(previous['current_cny']);now=float(current['current_cny'])
+    nb=float(before['orders_per_day']);na=float(after['orders_per_day'])
+    vb=float(before['views'])/before['days'];va=float(after['views'])/after['days']
+    ads=float(after['advertising_per_day']);floor=float(before['expected_profit_per_day'])
+    result=dict(status='not_calculated',basis='order_value_positive_economics',
+                execution_authorized=False,hypothesis=True,first_decrease_max_percent=5,
+                price_floor_cny=old,profit_floor_per_day=floor,prior_profit_is_hard_veto=False,
+                current_order_value_per_day=na*now,order_value_currency='CNY_seller_price_proxy',
+                buyer_value_assumption='unchanged SPP/promotion ratio; buyer amount is a forecast',
+                assumptions=['same current traffic and advertising spend',
+                             'own/planned buyout and current costs unchanged',
+                             'demand recovery is a hypothesis, not proven price causality',
+                             'positive preliminary contribution is not settled profit'])
+    if nb<=0 or vb<=0 or va<=0:return dict(result,status='no_supported_demand_estimate')
+    if na>=nb or na*now>=nb*old:return dict(result,status='orders_and_amount_not_declining')
+    choices=[p for p in feasible_prices(previous,current)
+             if Decimal(str(p['discount']))==Decimal(str(current['discount']))]
+    if na==0:
+        choices=[p for p in choices if p['price_cny']==old]
+        if not choices:return dict(result,status='first_decrease_cap_no_supported_intermediate_demand')
+        orders_at=lambda price:va*nb/vb
+    else:
+        elasticity=math.log((nb/vb)/(na/va))/math.log(old/now)
+        result['demand_elasticity_hypothesis']=elasticity
+        if elasticity>=0:return dict(result,status='no_supported_demand_recovery')
+        orders_at=lambda price:na*(price/now)**elasticity
+    options=[]
+    for target in choices:
+        price=target['price_cny'];unit=q*(price*fx*keep-c)-d
+        orders=orders_at(price);profit=orders*unit-ads;value=orders*price
+        if unit>0 and profit>0 and orders>na and value>na*now:
+            options.append(dict(target,predicted_orders_per_day=orders,
+                predicted_order_value_per_day=value,order_value_advantage_per_day=value-na*now,
+                predicted_profit_per_day=profit,unit_contribution_rub=unit,
+                expected_profit_advantage_per_day=profit-floor,
+                required_orders_per_day=ads/unit,profit_currency='RUB',price_currency='CNY'))
+    if not options:return dict(result,status='no_positive_order_value_recovery')
+    best=max(options,key=lambda p:(p['predicted_order_value_per_day'],p['predicted_profit_per_day'],p['price_cny']))
+    return dict(result,**best,status='recommended')

@@ -224,13 +224,15 @@ def build(worker,candidate_review=False):
    item[label]=dict(daily=daily,days=period_days,orders_per_day=total/period_days,expected_profit_per_day=calculated['expected_profit']/period_days,advertising_per_day=ads/period_days,outcomes=outcomes[label],period_from=str(a),period_to=str(b),orders=total,views=views,funnel_orders=funnel,conversion=funnel/views if views else None,advertising=ads,expected_profit=calculated['expected_profit'])
   a,b=item['before'],item['after'];full_days=(pair[1][1]-pair[1][0]).days+1
   result=experiment_result(a['expected_profit_per_day'],b['expected_profit_per_day'],a['views'],a['funnel_orders'],b['views'],b['funnel_orders'],full_days,resolved['sample_size'])
+  if full_days>=3 and b['orders_per_day']<a['orders_per_day'] and b['orders_per_day']*item['after_price']<a['orders_per_day']*item['before_price']:
+   result.update(status='rollback_review',result_action='Количество и сумма заказов в день снизились; проверяем тест снижения с положительной экономикой.')
   result.update(comparison_basis='per_day',profit_delta_rub_per_day=result['profit_delta_rub'])
   if a['orders']==b['orders']==0:result.update(status='no_orders',result_action='Заказов в обоих периодах нет. Разница результата связана с рекламными расходами; влияние цены не оценено.')
   after=outcomes['after']
   if after['completed'] and after['paid']==0:item['zero_buyout_signal']=dict(attention=True,message='Заказы есть, подтверждённых выкупов нет; проверить причины отмен/возвратов. Не связывать с качеством без проверки.')
-  if result.get('status')=='rollback_review' and not item['buyout_fallback'] and resolved['sample_size']>=10 and item['before_price']<item['after_price'] and a['orders'] and b['orders']:
+  if result.get('status')=='rollback_review' and not item['buyout_fallback'] and resolved['sample_size']>=10 and item['before_price']<item['after_price'] and a['orders']:
    from china_agent.price_economic_target import choose_target
-   item['economic_target']=choose_target(change['before_price'],change['after_price'],a,b,buyout_probability=resolved['probability'],retention=retention,cost=costs.get(article.casefold()),dispatch=dispatch,fx=model['rub_per_cny'])
+   item['economic_target']=choose_target(change['before_price'],change['after_price'],a,b,buyout_probability=resolved['probability'],retention=retention,cost=costs.get(article.casefold()),dispatch=dispatch,fx=model['rub_per_cny'],objective='order_value_positive_economics')
   item.update(full_days=full_days,result=result);output.append(item)
  value=dict(model_version='wb_profit_floor_price_hypothesis_v4',report_date=str(worker.day),status='complete_disclosed_forecast_model',products=output,rate_period=[str(rate_start),str(end)],calculated_at=datetime.now(MSK).isoformat(),telegram_calls=0,wb_writes=0)
  # Keep unfinished or adverse experiments visible until resolved/new price.
