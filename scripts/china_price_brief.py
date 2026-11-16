@@ -64,6 +64,9 @@ def lowering(review, day, catalogue=None, omitted=None):
         target_price=Decimal(str(target['price_cny']))
         if target_price<Decimal(str(item['before_price'])):
             raise RuntimeError('Economic target below pre-increase price')
+        if target_price<current*Decimal('.95'):
+            if omitted is not None:omitted.append(dict(article=item['article'],status='first_decrease_exceeds_5percent'))
+            continue
         implied=(Decimal(str(target['base_cny']))*(1-Decimal(str(target['discount']))/100)).quantize(Decimal('.01'))
         if implied!=target_price:raise RuntimeError('Economic target price parameters mismatch')
         old=price(current);new=price(target_price)

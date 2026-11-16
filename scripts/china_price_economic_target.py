@@ -50,6 +50,8 @@ def canonical_change_days(tracked,events):
 
 def feasible_prices(previous, current):
     low=Decimal(str(previous['current_cny']));high=Decimal(str(current['current_cny']))
+    # First reduction after an increase: at most5%, rounded toward the higher price.
+    low=max(low,(high*Decimal('.95')).quantize(Decimal('.01'),rounding=ROUND_CEILING))
     if not 0<low<high:return []
     result={}
     def add(base,discount):
@@ -75,7 +77,7 @@ def choose_target(previous,current,before,after,*,buyout_probability,retention,c
     """
     result=dict(status='not_calculated',execution_authorized=False,
                 basis='profit_floor_demand_hypothesis',profit_floor_basis='before_increase_daily',
-                price_floor_cny=previous.get('current_cny'),hypothesis=True)
+                price_floor_cny=previous.get('current_cny'),first_decrease_max_percent=5,hypothesis=True)
     try:
         old=float(previous['current_cny']);now=float(current['current_cny'])
         q=float(buyout_probability);keep=float(retention);c=float(cost);d=float(dispatch);fx=float(fx)
@@ -93,7 +95,8 @@ def choose_target(previous,current,before,after,*,buyout_probability,retention,c
         # with the prior own order/opening ratio at current traffic; never invent epsilon orders.
         choices=[p for p in feasible_prices(previous,current) if p['price_cny']==old]
         contribution=q*(old*fx*keep-c)-d
-        if not choices or contribution<=0:return dict(result,status='no_positive_unit_economics')
+        if not choices:return dict(result,status='first_decrease_cap_no_supported_intermediate_demand')
+        if contribution<=0:return dict(result,status='no_positive_unit_economics')
         orders=va*nb/vb;profit=orders*contribution-ads
         candidate=dict(choices[0],predicted_orders_per_day=orders,
                        required_orders_per_day=max(0,(max(0,floor)+ads)/contribution),

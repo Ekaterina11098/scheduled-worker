@@ -29,6 +29,8 @@ def plan(s,p):
         raise ValueError('Неоднозначные цены размеров')
     current=dec(sizes[0]['discountedPrice']);target=dec(s['target_cny'])
     if current==target:return None
+    if target<current*Decimal('.95'):
+        raise ValueError('Первое снижение не более5%; нужен новый расчёт и подтверждение')
     if (current!=dec(s['current_cny']) or p['discount']!=s['seller_discount'] or
         dec(sizes[0]['price'])!=dec(s['base_cny']) or p.get('clubDiscount')!=s['club_discount']):
         raise ValueError('Цена или скидка уже изменились; нужен свежий отчёт')

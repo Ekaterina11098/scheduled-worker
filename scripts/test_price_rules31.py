@@ -13,14 +13,13 @@ windows=pure_function('china_daily_expected_control.py','comparison_windows',dic
 DAY=date(2026,11,1)
 CAT=dict(cabinet='token_3',rows=[dict(vendorCode='143-ReginaBag-black',nmID=1473245494,currencyIsoCode4217='CNY',discount=45,sizes=[dict(price=901,discountedPrice=495.55)])])
 def review(days=1):
- return dict(report_date=str(DAY),status='complete_disclosed_forecast_model',model_version='wb_profit_floor_price_hypothesis_v4',products=[dict(article='143-ReginaBag-black',before_price=450.5,after_price=495.55,full_days=days,buyout_fallback=False,buyout_sample=94,result=dict(status='rollback_review',early_review_criteria_met=True),economic_target=dict(basis='profit_floor_demand_hypothesis',status='recommended',price_cny=450.5,base_cny=901,discount=50,expected_profit_advantage_per_day=100,predicted_profit_per_day=200))])
+ return dict(report_date=str(DAY),status='complete_disclosed_forecast_model',model_version='wb_profit_floor_price_hypothesis_v4',products=[dict(article='143-ReginaBag-black',before_price=450.5,after_price=495.55,full_days=days,buyout_fallback=False,buyout_sample=94,result=dict(status='rollback_review',early_review_criteria_met=True),economic_target=dict(basis='profit_floor_demand_hypothesis',status='recommended',price_cny=471,base_cny=942,discount=50,expected_profit_advantage_per_day=100,predicted_profit_per_day=200))])
 class PriceRules(unittest.TestCase):
  def test_zero_after_orders_can_only_test_exact_previous_price(self):
   target=self.target(1000,after={'orders_per_day':0})
-  self.assertEqual(target['status'],'recommended');self.assertEqual(target['price_cny'],400)
-  self.assertEqual(target['demand_basis'],'exact_previous_price_prior_own_order_rate_at_current_traffic')
+  self.assertEqual(target['status'],'first_decrease_cap_no_supported_intermediate_demand')
  def test_zero_after_orders_does_not_fake_profit_floor(self):
-  self.assertEqual(self.target(10000,after={'orders_per_day':0})['status'],'profit_floor_not_reached')
+  self.assertEqual(self.target(10000,after={'orders_per_day':0})['status'],'first_decrease_cap_no_supported_intermediate_demand')
 
  def test_loss_making_target_is_not_delivered_even_above_negative_old_floor(self):
   r=review(4);r['products'][0]['economic_target'].update(predicted_profit_per_day=-1,expected_profit_advantage_per_day=99)
@@ -42,7 +41,7 @@ class PriceRules(unittest.TestCase):
   fake=types.ModuleType('china_agent.buyer_price_forecast');fake.forecast=lambda *args:None
   with patch.dict(sys.modules,{'china_agent':types.ModuleType('china_agent'),'china_agent.buyer_price_forecast':fake}):
    text=brief.render_plain('ПЕРВОЕ ПОВЫШЕНИЕ +5%: 0','morning',review(),DAY,CAT)
-  self.assertEqual(text,'Снижение · 143-ReginaBag-black Продавец: 495,55 → 450,5 ¥\nПокупатель: нет данных\n\nПовышение: нет')
+  self.assertEqual(text,'Снижение · 143-ReginaBag-black Продавец: 495,55 → 471 ¥\nПокупатель: нет данных\n\nПовышение: нет')
   self.assertIsNotNone(brief.plain_payload(text,CAT))
  def test_unconfirmed_scenario_stays_internal(self):
   import sys, types
@@ -95,8 +94,8 @@ class PriceRules(unittest.TestCase):
   self.assertEqual(result.experiment_result(1000,700,None,None,None,None,4,94)['status'],'rollback_review')
  def test_cr_drop_but_profit_growth_does_not_lower(self):
   self.assertEqual(result.experiment_result(1000,1200,1000,50,1000,10,1,94)['status'],'mixed')
- def test_exact_previous_price_not_fixed_minus_five(self):
-  self.assertEqual(brief.lowering(review(),DAY,CAT),[('143-ReginaBag-black','495,55','450,5')])
+ def test_first_cut_keeps_exact_target_within_five_percent(self):
+  self.assertEqual(brief.lowering(review(),DAY,CAT),[('143-ReginaBag-black','495,55','471')])
  def test_unsubstantiated_target_is_omitted(self):
   r=review();del r['products'][0]['economic_target'];self.assertEqual(brief.lowering(r,DAY,CAT),[])
  def test_below_profit_floor_is_omitted(self):
