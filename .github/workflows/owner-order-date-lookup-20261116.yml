@@ -1,0 +1,50 @@
+name: Owner read-only order dates lookup
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/owner-order-date-lookup-20261116.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: bot-stock
+  cancel-in-progress: false
+jobs:
+  lookup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            owner_order_date_lookup_20261116.py
+            stock_deploy_support.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: a81345f0a57031a58eb30fbd568e67dd5fbbd231
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          persist-credentials: false
+          path: private-source
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests==2.32.5 python-dotenv==1.1.1 aiogram==3.22.0 simplejson==4.2.0 'psycopg[binary]==3.2.9' cryptography > "$RUNNER_TEMP/order-date-install.log" 2>&1
+      - name: Read only Statistics orders and sales
+        env:
+          PYTHONPATH: ${{ github.workspace }}/private-source:${{ github.workspace }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_1: ${{ secrets.WB_TOKEN_1 }}
+          AUTO_STOCK_FAIL_FAST: '1'
+        run: |
+          python -m py_compile owner_order_date_lookup_20261116.py
+          python owner_order_date_lookup_20261116.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: owner-encrypted-order-date-lookup
+          path: ${{ runner.temp }}/stock-deploy-proof
+          retention-days: 90
