@@ -114,6 +114,7 @@ def handle(w,job,cfg):
  if (out.get('status') not in ('ready','delivered') or out.get('thread_id')!=THREAD or out.get('chat_id')!=CHAT or out.get('input_message_id')!=marker['message_id'] or out.get('job_id')!=job['id'] or not isinstance(out.get('answer'),str) or not 0<len(out['answer'])<=12000):
   patch(dict(status='failed',lease_until=None,error='codex_bridge_invalid_reply'));return 'codex_bridge_invalid_reply'
  w.active_question_id=job['id'];w.reply_id=marker['message_id']
+ w.shop_funnel_delivery=text.startswith('Конверсии магазина · запрос меню: ')
  from china_table_png import delivery_parts
  from conversion_watches import split_message
  timing('answer_ready')

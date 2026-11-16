@@ -14,9 +14,9 @@ def directions(text):
  result=[k for k,v in mapping.items() if v in text]
  if not result:raise ValueError('Направления подбора не указаны')
  return result
-def freeze(w,job,answer,blobs):
+def freeze(w,job,answer,blobs,png_only=False):
  from china_table_png import KEY,PREFIX as PNG
- key=KEY+str(job['id']);parts=([answer]if job.get('sender_id')!=307200273 else [])+[PNG+key+':'+str(i) for i in range(len(blobs))]
+ key=KEY+str(job['id']);parts=([answer]if not png_only and job.get('sender_id')!=307200273 else [])+[PNG+key+':'+str(i) for i in range(len(blobs))]
  value=dict(status='frozen',job_id=job['id'],chat_id=job['chat_id'],answer_sha256=hashlib.sha256(answer.encode()).hexdigest(),files=[dict(sha256=hashlib.sha256(b).hexdigest(),data=base64.b64encode(b).decode())for b in blobs],parts=parts)
  old=w.get(key)
  if old and old!=value:raise ValueError('Frozen menu result already exists')

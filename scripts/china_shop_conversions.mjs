@@ -42,26 +42,44 @@ export async function storeView(data,start,end,sid,mode='summary',page=0){
 function nav(sid){return {inline_keyboard:[[{text:'Изменить период',callback_data:'csc1:'+sid+':period'}],[{text:'Найти товар',callback_data:'cmn1:shopproduct'}],[{text:'‹ Продажи',callback_data:'cmn1:sales'}],[{text:'Главное меню',callback_data:'cmn1:home'}]]};}
 export async function handleStoreConversions(config,update,deps){
  const cb=update.callback_query,m=cb?.message||update.message,actor=cb?.from||m?.from;
- const initial=cb?.data==='cmn1:shopconv',match=/^csc1:([a-f0-9]{16}):(period|custom|range1|range7|range14|range30|show|retry|summary|daily|graph|next|prev)$/.exec(cb?.data||'');
+ const resultMatch=/^csc2:(\d+):(summary|daily|graph|period)$/.exec(cb?.data||'');
+ const initial=cb?.data==='cmn1:shopconv',match=/^csc1:([a-f0-9]{16}):(period|custom|range1|range7|range14|range30|show|retry|summary|daily|graph|next|prev|noop|month\d{6}|date\d{8}|showDates)$/.exec(cb?.data||'');
  const text=update.message?.text?.trim(),possibleReply=!cb&&typeof text==='string'&&text.length<=70&&m?.reply_to_message?.from?.id===BOT;
- if(!initial&&!match&&!possibleReply)return null;
+ if(!initial&&!match&&!resultMatch&&!possibleReply)return null;
  if(config.active!==true||config.chat_id!==CHAT||config.bot_id!==BOT||m?.chat?.id!==CHAT||!['group','supergroup'].includes(m.chat.type)||!Number.isSafeInteger(update.update_id)||update.update_id<0||!Number.isSafeInteger(actor?.id)||actor.id<=0||actor.is_bot!==false||m.sender_chat||m.forward_origin||(cb&&m.from?.id!==BOT))return new Response('OK');
  const get=async k=>(await deps.database('telegram_api_cache?cache_key=eq.'+encodeURIComponent(k)+'&select=payload&limit=1'))?.[0]?.payload;
  const insert=async(k,v)=>!!(await deps.database('telegram_api_cache?on_conflict=cache_key','POST',{cache_key:k,payload:v,expires_at:'2036-11-16T00:00:00Z'},'resolution=ignore-duplicates,return=representation'))?.length;
  const put=async(k,v)=>{if((await deps.database('telegram_api_cache?cache_key=eq.'+encodeURIComponent(k),'PATCH',{payload:v},'return=representation'))?.length!==1)throw Error('Store conversion state readback failed');};
  const pending=possibleReply?await get(ROOT+'input:'+actor.id):null;
- if(!initial&&!match&&pending?.message_id!==m.reply_to_message?.message_id)return null;
+ if(!initial&&!match&&!resultMatch&&pending?.message_id!==m.reply_to_message?.message_id)return null;
  if((await get('china_agent:main_menu:v1:policy'))?.enabled!==true)return null;
  const member=await deps.telegram('getChatMember',{chat_id:CHAT,user_id:actor.id});
  if(member?.user?.id!==actor.id||member.user.is_bot!==false||!(['creator','administrator','member'].includes(member.status)||(member.status==='restricted'&&member.is_member===true)))return new Response('OK');
  const now=deps.now?deps.now():new Date(),answer=t=>cb?Response.json({method:'answerCallbackQuery',callback_query_id:cb.id,...(t?{text:t,show_alert:true}:{})}):new Response('OK');
  const dk=ROOT+'delivery:'+update.update_id;if(await get(dk))return answer('');
  let ctx={view:'period'};
- if(match){
+ if(resultMatch){
+  const result=await get('china_agent:shop_funnel_result:v1:'+resultMatch[1]);
+  const out=await get('china_agent:codex_bridge:v1:outbox:'+resultMatch[1]);
+  if(result?.actor!==actor.id||result.chat_id!==CHAT||out?.status!=='delivered'||!out.message_ids?.includes(m.message_id))return answer('Откройте конверсии своей кнопкой меню.');
+  ctx={view:resultMatch[2]==='period'?'period':'report',mode:resultMatch[2],start:result.start,end:result.end};
+ }else if(match){
   const old=await get(ROOT+'session:'+match[1]);
   if(!old||old.actor!==actor.id||old.message_id!==m.message_id||Date.parse(old.expires_at)<=now.getTime())return answer('Откройте «Конверсии магазина» заново.');
   ctx={...old.context};const op=match[2];
-  if(op==='period'||op==='custom')ctx.view=op;
+  if(op==='noop')return answer('');
+  if(op==='period')ctx.view=op;
+  else if(op==='custom'){ctx.view='calendar';ctx.month=today(now).slice(0,7);delete ctx.dateStart;delete ctx.dateEnd;}
+  else if(/^month\d{6}$/.test(op)){ctx.view='calendar';ctx.month=op.slice(5,9)+'-'+op.slice(9);if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(ctx.month)||ctx.month>today(now).slice(0,7)||ctx.month<shift(today(now),-365).slice(0,7))return answer('Выберите доступный месяц.');}
+  else if(/^date\d{8}$/.test(op)){
+   const d=op.slice(4,8)+'-'+op.slice(8,10)+'-'+op.slice(10);
+   if(d>=today(now)||d<shift(today(now),-365)||new Date(d+'T00:00:00Z').toISOString().slice(0,10)!==d)return answer('Выберите завершённый день.');
+   if(!ctx.dateStart){ctx.dateStart=d;ctx.view='calendar';}
+   else if(d<ctx.dateStart||(Date.parse(d)-Date.parse(ctx.dateStart))/86400000>=31)return answer('Конец — не раньше начала, период до 31 дня.');
+   else {ctx.dateEnd=d;ctx.view='dateReview';}
+  }
+  else if(op==='showDates'){if(!ctx.dateStart||!ctx.dateEnd)return answer('Выберите даты.');ctx={view:'report',start:ctx.dateStart,end:ctx.dateEnd};}
+
   else if(op.startsWith('range')){const n=Number(op.slice(5));ctx={view:'report',start:shift(today(now),-n),end:shift(today(now),-1)};}
   else {ctx.view='report';if(op==='retry')ctx.retry=true;if(['summary','daily','graph'].includes(op)){ctx.mode=op;ctx.page=0;}if(op==='next')ctx.page=Math.min(3,(ctx.page||0)+1);if(op==='prev')ctx.page=Math.max(0,(ctx.page||0)-1);}
  }else if(possibleReply&&pending?.message_id===m.reply_to_message.message_id){
@@ -72,6 +90,16 @@ export async function handleStoreConversions(config,update,deps){
  const b=(text,op)=>({text,callback_data:'csc1:'+sid+':'+op});
  let view;
  if(ctx.view==='period')view={text:'Конверсии магазина\nОбщая воронка всех товаров: открытия → корзины → заказы.\nВыберите завершённый период МСК.',reply_markup:{inline_keyboard:[[{...b('Вчера','range1')}],[b('7 полных дней','range7'),b('14 полных дней','range14')],[b('30 полных дней','range30')],[b('Выбрать даты','custom')],[{text:'‹ Продажи',callback_data:'cmn1:sales'}]]}};
+ else if(ctx.view==='calendar'){
+  const first=ctx.month+'-01',next=new Date(first+'T00:00:00Z');next.setUTCMonth(next.getUTCMonth()+1);const end=shift(next.toISOString().slice(0,10),-1);
+  const rows=[[...['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(t=>b(t,'noop'))]];let row=[];
+  for(let i=0;i<(new Date(first+'T00:00:00Z').getUTCDay()+6)%7;i++)row.push(b('·','noop'));
+  for(let d=first;d<=end;d=shift(d,1)){const allowed=d<today(now)&&d>=shift(today(now),-365);row.push(b(allowed?(d===ctx.dateStart?'✓ ':'')+String(Number(d.slice(8))):'·',allowed?'date'+d.replaceAll('-',''):'noop'));if(row.length===7){rows.push(row);row=[];}}
+  if(row.length)rows.push(row);
+  rows.push([b('‹ '+shift(first,-1).slice(0,7),'month'+shift(first,-1).slice(0,7).replace('-','')),b(next.toISOString().slice(0,7)+' ›','month'+next.toISOString().slice(0,7).replace('-',''))],[b('‹ Периоды','period')]);
+  view={text:'Выберите '+(ctx.dateStart?'конец':'начало')+' периода · '+ctx.month+(ctx.dateStart?'\nНачало: '+ctx.dateStart:'')+'\nПолные дни МСК. Можно выбрать один день.',reply_markup:{inline_keyboard:rows}};
+ }
+ else if(ctx.view==='dateReview')view={text:'Период: '+ctx.dateStart+' — '+ctx.dateEnd+'\nПолные дни МСК.',reply_markup:{inline_keyboard:[[b('Показать','showDates')],[b('Изменить даты','custom')],[b('‹ Периоды','period')]]}};
  else if(ctx.view==='custom')view={text:(ctx.error?ctx.error+'\n':'')+'Ответьте на это сообщение двумя датами, например: 2026-11-09 2026-11-15. До31 завершённого дня МСК.',reply_markup:{force_reply:true,selective:true,input_field_placeholder:'Начало и конец периода'}};
  else{
   const data=await get(DATA+ctx.start+':'+ctx.end);

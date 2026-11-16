@@ -91,6 +91,20 @@ def run(w,job,text):
  from china_menu_analytics import freeze
  blobs=[blob for kind,content in blocks(text)if kind=='table'for blob in render(*content)]
  if not blobs:raise ValueError('Общий PNG не сформирован')
- freeze(w,job,text,blobs)
+ freeze(w,job,text,blobs,png_only=True)
+ w.save('china_agent:shop_funnel_result:v1:'+str(job['id']),dict(job_id=job['id'],actor=job['sender_id'],chat_id=job['chat_id'],start=str(a),end=str(b),status='prepared',model_calls=0,wb_writes=0))
  return text
+
+def delivery_format(w,chat,text):
+ """Attach read-only navigation to the last frozen PNG of this exact shop job."""
+ job=getattr(w,'active_question_id',None)
+ prefix='CHINA_TABLE_PNG:china_agent:table_png:v1:'+str(job)+':'
+ if chat!=-1004342917488 or not text.startswith(prefix):return {}
+ result=w.get('china_agent:shop_funnel_result:v1:'+str(job))
+ artifact=w.get('china_agent:table_png:v1:'+str(job))or{}
+ if not result or result.get('job_id')!=job or result.get('chat_id')!=chat or artifact.get('chat_id')!=chat or artifact.get('job_id')!=job:raise ValueError('Shop PNG navigation scope')
+ if int(text[len(prefix):])!=len(artifact.get('files',[]))-1:return {}
+ import json
+ button=lambda title,op:dict(text=title,callback_data='csc2:'+str(job)+':'+op)
+ return dict(caption='Конверсии магазина · '+result['start']+' — '+result['end']+' · полные дни МСК. Общая воронка WB, все товары ответа. Проценты рассчитаны по суммам.',reply_markup=json.dumps(dict(inline_keyboard=[[button('Сводка','summary'),button('График по дням','graph')],[button('Таблица по дням','daily'),button('Изменить период','period')],[dict(text='‹ Продажи',callback_data='cmn1:sales')]]),ensure_ascii=False))
 

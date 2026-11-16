@@ -810,7 +810,11 @@ def runtime():
             me=session.post('https://api.telegram.org/bot'+bot+'/getMe',timeout=20).json()
             if not me.get('ok') or me['result'].get('id')!=8780468043 or chat!=-1004342917488:raise PermissionError('China photo bot/chat mismatch')
             blob,caption=frozen_photo
-            return session.post('https://api.telegram.org/bot'+bot+'/sendPhoto',data={'chat_id':chat,'caption':caption,**({'reply_parameters':json.dumps({'message_id':worker.reply_id})} if getattr(worker,'reply_id',None) else {})},files={'photo':('china-ad-cost.png',blob,'image/png')},timeout=35).json()
+            formatting={}
+            if getattr(worker,'shop_funnel_delivery',False):
+                from china_shop_funnel import delivery_format
+                formatting=delivery_format(worker,chat,text)
+            return session.post('https://api.telegram.org/bot'+bot+'/sendPhoto',data={'chat_id':chat,'caption':caption,**formatting,**({'reply_parameters':json.dumps({'message_id':worker.reply_id})} if getattr(worker,'reply_id',None) else {})},files={'photo':('china-ad-cost.png',blob,'image/png')},timeout=35).json()
         from china_break_even import compact_payload
         formatting=compact_payload(text,worker.catalog()) if '\nБезубыточность:' in text and '\nВыкуп:' in text else {}
         if not formatting and 'Показатель |' in text:
@@ -922,6 +926,7 @@ def main():
 
 
 if __name__=='__main__':main()
+
 
 
 
