@@ -61,7 +61,7 @@ for kind in m.TYPES:
  expected_store=m.href(c["templates"][kind]["store"])
  if doc.get("description")!=DESC or doc.get("applicable") is not True or doc.get("sum")!=0 or m.href(doc.get("store",{}))!=expected_store:
   raise m.Stop("Incorrect document comment, store, posting or sum")
-rows=w.ms_rows("entity/"+kind+"/"+info["id"]+"/positions")
-if len(rows)!=1 or rows[0]["quantity"]!=1 or rows[0]["price"]!=0:raise m.Stop("Position mismatch")
-results[kind]={"name":info["name"],"id":info["id"]}
+ rows=w.ms_rows("entity/"+kind+"/"+info["id"]+"/positions")
+ if len(rows)!=1 or rows[0]["quantity"]!=1 or rows[0]["price"]!=0:raise m.Stop("Position mismatch")
+ results[kind]={"name":info["name"],"id":info["id"]}
 print(json.dumps({"status":"complete","supply":SID,"article":ARTICLE,"quantity":1,"comment":DESC,"documents":results},ensure_ascii=False))
