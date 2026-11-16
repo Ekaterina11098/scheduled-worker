@@ -1,0 +1,76 @@
+name: New orders - read-only API connectivity
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/new-orders-readonly-connectivity.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: new-orders-readonly-connectivity
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.event_name == 'workflow_dispatch' || github.event.head_commit.message == 'diagnostic: one-time new orders connectivity 2026-11-16'
+    name: Verify WB and MoySklad (read only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      WB_TOKEN_1: ${{ secrets.WB_TOKEN_1 }}
+      WB_TOKEN_2: ${{ secrets.WB_TOKEN_2 }}
+      WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+      MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+    steps:
+      - name: Read-only HTTP checks (no product changes)
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, sys, urllib.request, urllib.error
+
+          def request(label, url, token, body=None):
+              if not token:
+                  print(f"{label}: NOT_CHECKED (secret not configured)")
+                  return False
+              headers = {"Authorization": ("Bearer " + token if label == "MOYSKLAD" else token), "Accept": "application/json"}
+              if body is not None:
+                  headers["Content-Type"] = "application/json"
+              req = urllib.request.Request(
+                  url, data=json.dumps(body).encode("utf-8") if body is not None else None,
+                  headers=headers, method="POST" if body is not None else "GET"
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=20) as resp:
+                      # Only read a bounded JSON response; never print response bodies or headers.
+                      raw = resp.read(1_000_000)
+                      data = json.loads(raw)
+                      if label.startswith("WB"):
+                          records = data.get("cards")
+                      else:
+                          records = data.get("rows")
+                      if not isinstance(records, list):
+                          print(f"{label}: HTTP {resp.status}, unexpected JSON structure")
+                          return False
+                      print(f"{label}: HTTP {resp.status}, records={len(records)}")
+                      return True
+              except urllib.error.HTTPError as e:
+                  print(f"{label}: HTTP {e.code} (response body suppressed)")
+              except Exception as e:
+                  print(f"{label}: {type(e).__name__} (details suppressed)")
+              return False
+
+          payload = {"settings": {"cursor": {"limit": 1}, "filter": {"withPhoto": -1}}}
+          checks = [
+              ("WB_TOKEN_1 (RU host)", "https://content-api.wildberries.ru/content/v2/get/cards/list", "WB_TOKEN_1", payload),
+              ("WB_TOKEN_2 (RU host)", "https://content-api.wildberries.ru/content/v2/get/cards/list", "WB_TOKEN_2", payload),
+              ("WB_TOKEN_3 (CN host)", "https://content-api.wildberries.cn/content/v2/get/cards/list", "WB_TOKEN_3", payload),
+              ("MOYSKLAD", "https://api.moysklad.ru/api/remap/1.2/entity/product?limit=1", "MOYSKLAD_API_TOKEN", None),
+          ]
+          results = [request(label, url, os.environ.get(secret, ""), body) for label, url, secret, body in checks]
+          print(f"READ_ONLY_SUMMARY: {sum(results)}/{len(results)} checks succeeded")
+          sys.exit(0 if all(results) else 1)
+          PY
