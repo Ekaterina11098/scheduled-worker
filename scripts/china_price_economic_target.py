@@ -69,7 +69,7 @@ def feasible_prices(previous, current):
         add(source['base_cny'],discount)
     return [result[p] for p in sorted(result)]
 
-def choose_target(previous,current,before,after,*,buyout_probability,retention,cost,dispatch,fx):
+def choose_target(previous,current,before,after,*,buyout_probability,retention,cost,dispatch,fx,allow_bounded_first5_test=False):
     """Choose closest feasible profit to the old daily floor, at or above it.
 
     Priority is a lower price at the same profit floor, rather than maximizing
@@ -95,7 +95,30 @@ def choose_target(previous,current,before,after,*,buyout_probability,retention,c
         # with the prior own order/opening ratio at current traffic; never invent epsilon orders.
         choices=[p for p in feasible_prices(previous,current) if p['price_cny']==old]
         contribution=q*(old*fx*keep-c)-d
-        if not choices:return dict(result,status='first_decrease_cap_no_supported_intermediate_demand')
+        if not choices:
+            if not allow_bounded_first5_test:
+                return dict(result,status='first_decrease_cap_no_supported_intermediate_demand')
+            # Explicit owner-approved first-step test. Do NOT assume the demand
+            # recovery observed at a much lower old price occurs at a5% cut.
+            candidates=[p for p in feasible_prices(previous,current)
+                        if Decimal(str(p['discount']))==Decimal(str(current['discount']))]
+            if not candidates:return dict(result,status='first_decrease_cap_no_supported_intermediate_demand')
+            candidate=min(candidates,key=lambda p:p['price_cny'])
+            unit=q*(candidate['price_cny']*fx*keep-c)-d
+            if unit<=0:return dict(result,status='no_positive_unit_economics')
+            return dict(result,**candidate,status='recommended_test',
+                        basis='owner_first5_positive_unit_test',
+                        unit_contribution_rub=unit,
+                        fixed_advertising_per_day=ads,
+                        profit_floor_per_day=floor,
+                        required_orders_per_day=(max(0,floor)+ads)/unit,
+                        predicted_orders_per_day=None,predicted_profit_per_day=None,
+                        expected_profit_advantage_per_day=None,
+                        demand_recovery='unidentified_not_claimed',
+                        evaluation='one_full_MSK_day_early_diagnostic_four_full_days_normal_review',
+                        assumptions=['positive preliminary own unit economics after counted costs',
+                                     'no demand or former daily profit restoration is claimed',
+                                     'own buyout sample uncertainty and unknown shared/reverse costs remain'])
         if contribution<=0:return dict(result,status='no_positive_unit_economics')
         orders=va*nb/vb;profit=orders*contribution-ads
         candidate=dict(choices[0],predicted_orders_per_day=orders,

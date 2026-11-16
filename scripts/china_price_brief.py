@@ -58,7 +58,9 @@ def lowering(review, day, catalogue=None, omitted=None):
             if omitted is not None:omitted.append(dict(article=item['article'],nm_id=str(row['nmID']),status='price_changed_since_review',review_after_price=str(item['after_price']),current_price=str(current)))
             continue  # The old experiment cannot recommend another cut after a new price change.
         target=item.get('economic_target') or {}
-        if target.get('basis')!='profit_floor_demand_hypothesis' or target.get('status')!='recommended' or target.get('expected_profit_advantage_per_day',-1)<0 or target.get('predicted_profit_per_day',-1)<=0:
+        regular=(target.get('basis')=='profit_floor_demand_hypothesis' and target.get('status')=='recommended' and target.get('expected_profit_advantage_per_day',-1)>=0 and target.get('predicted_profit_per_day',-1)>0)
+        bounded_test=(item.get('owner_first5_test_authorized') is True and target.get('basis')=='owner_first5_positive_unit_test' and target.get('status')=='recommended_test' and target.get('first_decrease_max_percent')==5 and target.get('unit_contribution_rub',-1)>0 and target.get('demand_recovery')=='unidentified_not_claimed')
+        if not regular and not bounded_test:
             if omitted is not None:omitted.append(dict(article=item['article'],status='economic_target_unverified'))
             continue
         target_price=Decimal(str(target['price_cny']))

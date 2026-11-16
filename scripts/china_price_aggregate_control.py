@@ -179,7 +179,8 @@ def build(worker):
                 qualified=qualify(dict(action='lower'),context,baseline_known=bool((e.get('increase') or {}).get('baseline_group',{}).get('available')))
                 item['linked_context']=qualified['linked_context']
                 if qualified['action']=='lower' or membership_override(worker, item['linked_context']):
-                    item['economic_target']=choose_target(c['before_price'],c['after_price'],before,after,buyout_probability=q['probability'],retention=retention,cost=cost,dispatch=dispatch,fx=fx)
+                    item['owner_first5_test_authorized']=nm in (worker.get('china_agent:price_review_policy:v1') or {}).get('first_decrease_positive_unit_test_nm_ids',[])
+                    item['economic_target']=choose_target(c['before_price'],c['after_price'],before,after,buyout_probability=q['probability'],retention=retention,cost=cost,dispatch=dispatch,fx=fx,allow_bounded_first5_test=nm in (worker.get('china_agent:price_review_policy:v1') or {}).get('first_decrease_positive_unit_test_nm_ids',[]))
             item.update(status='expected_model',buyout_source=q['source'],unknown_reverse_and_shared_costs=True,
                         own_cogs_rub=cost,economics_note='Own completed buyout, dated CBR, COGS/tax/commission and historical logistics. Unknown reverse/shared expenses are not zero; not settled profit.',model_source='china_agent:advertising_full_growth:'+str(worker.day)+':v1:inputs')
         except (KeyError,TypeError,ValueError,ZeroDivisionError) as exc:
