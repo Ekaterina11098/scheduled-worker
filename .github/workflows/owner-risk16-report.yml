@@ -1,4 +1,5 @@
 name: Owner two campaign cost review16
+# Revision2 preserves the standing owner hold on SKU534; no repeated WB actions.
 on:
   push:
     branches: [main]
