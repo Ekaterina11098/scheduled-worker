@@ -1,0 +1,26 @@
+name: Inspect WB IP 310043377 safely
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/inspect-wb-ip-310043377.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Inspect exact WB supply and existing MS documents
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_2 }}
+        run: python scripts/inspect_wb_ip_310043377.py
