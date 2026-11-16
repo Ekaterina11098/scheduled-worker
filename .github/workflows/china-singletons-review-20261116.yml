@@ -1,0 +1,66 @@
+name: Read China singletons for owner trash review 20261116
+on:
+  push:
+    branches: ['review/china-bag-groups-20261116']
+    paths: ['.github/workflows/china-singletons-review-20261116.yml']
+permissions: {}
+jobs:
+  read:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5 cryptography
+      - name: List single-card groups without changing WB
+        shell: python
+        env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+        run: |
+          import os,time,json,requests,gzip,base64,secrets,collections,traceback
+          from datetime import datetime,timezone
+          from cryptography.hazmat.primitives import serialization,hashes
+          from cryptography.hazmat.primitives.asymmetric import padding
+          from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+          PUBLIC_KEY="-----BEGIN PUBLIC KEY-----\nMIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAqZNUrOvZ4UeO29b+p61F\niH/TYX0CFHtnqndnmHR4leDh/pqkTFqC+EryTPqjLJBylfgeqPqc0Bywo7WeHNxe\nvbOmih5rb9wRTYgJRBx7ruUJaWiJLP0yp2KwLMf8Vc0tRxRBIfXV/CHQjVIIc0rY\nOEW8+gwrAgsqFgs0944OpliDwm0aI9UX+j4gCTCmktk5swzFuqyxcDUH7fOUDKe1\nOOSqDB/lODw3333K6mjuHxRcDUD69EdTOS+hJb+ZqQOCT9JGtE2b6H9+Uf6B9cYs\nKu7JDPUD/5ETgxz3Oa3YgM7XPWwamcn5MYq8HMJ2e4F2B1x/mxSpUk6RFDR8hW/W\nFpqmg+JxpZpKwuSgBhegRpWwJ1+gS0z0h31a58XweTDtA8nd7WJjhiegbmSwItLM\npC3FVE8HzAeP6h8C+7l2r/Vl81y59CE+VHvgSmUobNRmHdY+laFAU2v8PfuebV5C\nDku+Uuz+AjUYKOtflqUc8HQQHGldtkkXG1iafKKIpZyTAgMBAAE=\n-----END PUBLIC KEY-----\n"
+          out={'cabinet':'Китай','wbWrites':0}
+          try:
+              token=os.environ['WB_TOKEN_3'];assert token
+              for attempt in range(3):
+                  cards=[];cursor={'limit':100};seen=set()
+                  for page in range(50):
+                      for retry in range(4):
+                          time.sleep(.85)
+                          r=requests.post('https://content-api.wildberries.cn/content/v2/get/cards/list',headers={'Authorization':token},json={'settings':{'sort':{'ascending':True},'cursor':cursor,'filter':{'withPhoto':-1}}},timeout=60)
+                          if r.status_code==429:
+                              wait=int(float(r.headers.get('X-Ratelimit-Retry') or r.headers.get('Retry-After') or 65))+2
+                              assert wait<=180
+                              time.sleep(wait);continue
+                          if not r.ok:raise RuntimeError('Catalog HTTP '+str(r.status_code))
+                          d=r.json()
+                          if not isinstance(d.get('cards'),list):d=d.get('data',{})
+                          assert isinstance(d.get('cards'),list) and isinstance(d.get('cursor'),dict)
+                          break
+                      else:raise RuntimeError('Read retry limit')
+                      cards.extend(d['cards'])
+                      if len(d['cards'])<100:break
+                      mark=(d['cursor'].get('updatedAt'),d['cursor'].get('nmID'))
+                      assert all(mark) and mark not in seen
+                      seen.add(mark);cursor={'limit':100,'updatedAt':mark[0],'nmID':mark[1]}
+                  else:raise RuntimeError('Pagination limit')
+                  if cards and len({c['nmID'] for c in cards})==len(cards):break
+                  time.sleep(3)
+              else:raise RuntimeError('Unstable card catalog')
+              sizes=collections.Counter(c['imtID'] for c in cards)
+              singles=[{k:c.get(k) for k in ('vendorCode','nmID','imtID','subjectID','subjectName','title')} for c in cards if sizes[c['imtID']]==1]
+              out.update(status='complete',observedAt=datetime.now(timezone.utc).isoformat(),cards=len(cards),singletons=sorted(singles,key=lambda c:c['vendorCode'].lower()),membership=[{k:c.get(k) for k in ('vendorCode','nmID','imtID')} for c in cards])
+          except Exception as exc:out.update(status='incomplete',error={'type':type(exc).__name__,'message':str(exc),'trace':traceback.format_exc()})
+          key=secrets.token_bytes(32);nonce=secrets.token_bytes(12)
+          pub=serialization.load_pem_public_key(PUBLIC_KEY.encode())
+          b=lambda x:base64.b64encode(x).decode()
+          envelope={'key':b(pub.encrypt(key,padding.OAEP(mgf=padding.MGF1(hashes.SHA256()),algorithm=hashes.SHA256(),label=None))),'nonce':b(nonce),'ciphertext':b(AESGCM(key).encrypt(nonce,gzip.compress(json.dumps(out,ensure_ascii=False).encode()),None))}
+          encoded=b(json.dumps(envelope).encode())
+          for i in range(0,len(encoded),18000):print('SINGLETON_REVIEW_ENCRYPTED '+str(i//18000)+' '+encoded[i:i+18000],flush=True)
+          print('SINGLETON_READ_COMPLETE',flush=True)
+          
