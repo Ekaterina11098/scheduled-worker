@@ -30,14 +30,14 @@ jobs:
            return requests.get('https://advert-api.wildberries.ru'+path,headers={'Authorization':os.environ['WB_TOKEN_2']},params=params,timeout=60)
           def read():
            for attempt in range(4):
-           r=req('/api/advert/v2/adverts',{'ids':','.join(map(str,ids))})
-           if r.status_code!=429:break
-           delay=int(r.headers.get('X-Ratelimit-Retry')or r.headers.get('Retry-After')or 720)+3
-           save(ROOT+':waiting',{'stage':'read','seconds':delay})
-           if delay>3603:raise RuntimeError('Cooldown exceeds bound')
-           time.sleep(delay)
-          r.raise_for_status()
-           a=r.json()['adverts'];return {int(x['id']):x for x in a}
+            r=req('/api/advert/v2/adverts',{'ids':','.join(map(str,ids))})
+            if r.status_code!=429:break
+            delay=int(r.headers.get('X-Ratelimit-Retry')or r.headers.get('Retry-After')or 720)+3
+            save(ROOT+':waiting',{'stage':'read','seconds':delay})
+            if delay>3603:raise RuntimeError('Cooldown exceeds bound')
+            time.sleep(delay)
+           r.raise_for_status()
+           return {int(x['id']):x for x in r.json()['adverts']}
           p=get(ROOT+':approval')
           assert p and p['status']=='approved'
           ids=p['ids'];assert len(ids)==7
