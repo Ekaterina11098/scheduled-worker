@@ -1,0 +1,130 @@
+name: Complete authorized report 137 accounting
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/complete-weekly137.yml']
+permissions:
+  contents: read
+concurrency:
+  group: weekly137-accounting
+  cancel-in-progress: false
+jobs:
+  complete:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Complete authorized documents with private receipts
+        shell: python
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          import sys,collections,datetime as dt
+          from decimal import Decimal,ROUND_FLOOR
+          sys.path.insert(0,'scripts')
+          import fbs_document_chain as m
+          t=m.Transport();db=m.Cache(t);w=m.Worker(t,db,{})
+          ROOT='weekly_report_review:137:'
+          out=db.get(ROOT+'accounting:v1') or {'status':'preflight','documents':[]}
+          def save():
+           out['at']=m.now();db.put(ROOT+'accounting:v1',out)
+          def auth():
+           r=db.get(ROOT+'request:v1') or {}
+           assert r.get('source_requests_authorized') is True and r.get('writes_authorized') is True and r.get('status')=='authorized'
+          def norm(x):return m.href(x).split('?')[0]
+          def get(kind,i):return t.request(m.MS,'entity/'+kind+'/'+i)
+          def pos(kind,i,stock=False):
+           result=[];offset=0
+           while True:
+            r=t.request(m.MS,'entity/'+kind+'/'+i+'/positions',params={'expand':'assortment','fields':'stock' if stock else '','limit':50,'offset':offset})
+            result+=r['rows'];offset+=len(r['rows'])
+            if offset>=r['meta']['size']:return result
+            assert r['rows']
+          def rows(path,params=None):return w.ms_rows(path,params)
+          def qty(ps):
+           c=collections.Counter()
+           for p in ps:c[norm(p['assortment'])]+=p['quantity']
+           return c
+          def write(kind,body,i=None):
+           auth();return t.request(m.MS,'entity/'+kind+('/'+i if i else ''),'PUT' if i else 'POST',body)
+          auth();inp=db.get(ROOT+'input:v1');p=db.get(ROOT+'prepare:v1');proof=db.get(ROOT+'source_proof:v1')
+          assert proof['pagination_exhausted'] and inp['source_complete'] and p['source_complete'] and p['status']=='prepared'
+          assert not p['stock_exceptions'] and not p['missing_basis'] and not p['missing_costs']
+          assert all(len(v)==1 for v in p['products'].values())
+          base={k:m.meta(p[k]) for k in ('organization','agent','store')};base['rate']=p['rate']
+          flt='organization='+norm(p['organization'])+';agent='+norm(p['agent'])+';store='+norm(p['store'])
+          def relevant(d):return any(s in d.get('name','')+' '+d.get('description','') for s in inp['report_ids']) or '0(137)' in d.get('description','')
+          existing={k:[d for d in rows('entity/'+k,{'filter':flt}) if relevant(d)] for k in ('customerorder','demand','salesreturn')}
+          out['duplicate_preflight']={k:[d['id'] for d in v] for k,v in existing.items()};save()
+          assert all(d.get('externalCode','').startswith('weekly137-') for v in existing.values() for d in v),'Unrecognized existing document requires reconciliation'
+          def ensure(kind,code,body):
+           matches=rows('entity/'+kind,{'filter':'externalCode='+code})
+           assert len(matches)<=1,'Duplicate external code'
+           if matches:return matches[0]
+           assert not any(d.get('externalCode')==code for d in existing[kind])
+           d=write(kind,{**body,'externalCode':code})
+           out['documents'].append({'type':kind,'id':d['id'],'name':d['name'],'externalCode':code});save();return d
+          def positions(amounts):return [{'assortment':m.meta(p['products'][a][0]),'quantity':q,'price':0,'discount':0,'vat':0,'vatEnabled':False} for a,q in sorted(amounts.items())]
+          expected=qty(positions(inp['sales']))
+          def stockcheck(moment=None,after=False):
+           params={'filter':'store='+norm(p['store'])+';stockMode=all;quantityMode=all'}
+           if moment:params['moment']=moment
+           ss={norm(s):s for s in rows('report/stock/all',params)}
+           checks=[]
+           for a,q in inp['sales'].items():
+            s=ss.get(norm(p['products'][a][0]),{});needed=0 if after else q
+            checks.append({'article':a,'required':needed,'stock':s.get('stock',0),'quantity':s.get('quantity',s.get('stock',0)),'price':s.get('price',0)})
+           bad=[c for c in checks if c['stock']<c['required'] or c['quantity']<c['required'] or (not after and c['price']<=0)]
+           out['stock_checks']=checks;out['stock_checked_at']=m.now();out['stock_moment']=moment;save()
+           assert not bad,'Insufficient stock or valuation; private checks saved'
+          if not existing['demand']:stockcheck()
+          delivered=[s for s in p['states'] if s['name']=='Доставлен'];assert len(delivered)==1
+          moment=dt.datetime.now(dt.timezone(dt.timedelta(hours=3))).strftime('%Y-%m-%d %H:%M:%S')
+          order=ensure('customerorder','weekly137-order',{**base,'name':inp['name'],'moment':moment,'applicable':True,'state':m.meta(delivered[0]),'description':inp['comment'],'positions':positions(inp['sales'])})
+          assert order['applicable'] and norm(order['state'])==norm(delivered[0]) and qty(pos('customerorder',order['id']))==expected
+          if not existing['demand']:stockcheck(moment)
+          demand=ensure('demand','weekly137-demand',{**base,'moment':moment,'applicable':False,'customerOrder':m.meta(order),'description':inp['comment'],'positions':positions(inp['sales'])})
+          assert qty(pos('demand',demand['id']))==expected
+          if not demand['applicable']:
+           stockcheck(demand['moment']);demand=write('demand',{'applicable':True},demand['id'])
+          ps=pos('demand',demand['id'],True);valuations=[]
+          for x in ps:
+           cost=Decimal(str(x.get('stock',{}).get('cost',0)));q=Decimal(str(x['quantity']))
+           assert cost>0 and q>0,'Shipment valuation unavailable'
+           unit=(cost/q).to_integral_value(rounding=ROUND_FLOOR);valuations.append({'assortment':norm(x['assortment']),'quantity':str(q),'cost_kopecks':str(cost),'unit_kopecks':str(unit),'line_rub':str(unit*q/100)})
+          opt=sum(Decimal(v['line_rub']) for v in valuations);ret=sum(Decimal(p['CK'][a])*q for a,q in inp['returns'].items());net=opt-ret
+          comment=inp['comment']+'\nОпт: '+format(opt,'.2f')+' руб − рыжие возвраты '+format(ret,'.2f')+' руб = '+format(net,'.2f')+' руб'
+          demand=write('demand',{'description':comment,'applicable':True},demand['id'])
+          out.update(status='shipment_completed',valuation=valuations,opt_rub=str(opt),returns_rub=str(ret),net_rub=str(net));save()
+          groups=collections.defaultdict(dict)
+          for a,q in inp['returns'].items():groups[p['basis'][a]['id']][a]=q
+          for ident,amounts in groups.items():
+           code='weekly137-return-'+ident
+           already=rows('entity/salesreturn',{'filter':'externalCode='+code});assert len(already)<=1
+           if not already:
+            basis=get('demand',ident);assert basis['applicable']
+            capacity=qty(pos('demand',ident));used=collections.Counter()
+            for ref in basis.get('returns',[]):
+             rd=get('salesreturn',norm(ref).split('/')[-1])
+             # Even draft returns reserve the basis against accidental duplication.
+             used.update(qty(pos('salesreturn',rd['id'])))
+            wanted=qty(positions(amounts));assert all(capacity[k]-used[k]>=q for k,q in wanted.items()),'Return basis capacity changed'
+            d=ensure('salesreturn',code,{**base,'moment':moment,'applicable':True,'demand':m.meta(basis),'description':'рыжие возвраты из '+inp['comment'],'positions':positions(amounts)})
+           else:d=already[0]
+           assert d['applicable'] and norm(d['demand']).endswith('/'+ident) and qty(pos('salesreturn',d['id']))==qty(positions(amounts))
+          final=[]
+          for kind in ('customerorder','demand','salesreturn'):
+           ds=[d for d in rows('entity/'+kind,{'filter':flt}) if relevant(d)]
+           assert len(ds)==(len(groups) if kind=='salesreturn' else 1)
+           for d in ds:
+            detail=get(kind,d['id']);pp=pos(kind,d['id']);assert detail['applicable'] and all(x['price']==0 for x in pp)
+            final.append({'type':kind,'id':d['id'],'name':d['name'],'url':d['meta'].get('uuidHref'),'applicable':detail['applicable'],'units':sum(x['quantity'] for x in pp),'positions':len(pp),'zero_prices':True,'moment':d['moment']})
+          stockcheck(after=True)
+          out.update(status='complete',documents=final,duplicates_check='passed',negative_stock_check='passed',completed_at=m.now());save()
+          print('Authorized accounting chain verified; private receipt saved.')
+          
