@@ -1,0 +1,133 @@
+name: Celinea 364 gallery with corrected care text16Nov
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/celinea364-gallery-care-20261116.yml']
+permissions: {}
+concurrency:
+  group: celinea364-media
+  cancel-in-progress: false
+jobs:
+  upload:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5 pillow==11.3.0
+      - name: Upload exact approved order and verify content
+        env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        shell: python
+        run: |
+          import os,json,time,base64,hashlib,io
+          from datetime import datetime,timezone
+          from urllib.parse import quote
+          import requests
+          from PIL import Image,ImageChops,ImageStat
+          sb=os.environ['SUPABASE_URL'].rstrip('/')
+          sk=os.environ['SUPABASE_SECRET_KEY']
+          sh={'apikey':sk,'Authorization':'Bearer '+sk,'Content-Type':'application/json'}
+          wh={'Authorization':os.environ['WB_TOKEN_3']}
+          host='https://content-api.wildberries.cn'
+          nm=2245828148;article='364-CelineaBag-coffee'
+          key='celinea_variants_media:364:20261116:v1:execution'
+          def stamp():return datetime.now(timezone.utc).isoformat()
+          def cache(k):
+           r=requests.get(sb+'/rest/v1/telegram_api_cache',headers=sh,params={'cache_key':'eq.'+k,'select':'payload'},timeout=40);r.raise_for_status()
+           rows=r.json();return rows[0]['payload'] if rows else None
+          def put(e):
+           r=requests.post(sb+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**sh,'Prefer':'resolution=merge-duplicates,return=minimal'},json={'cache_key':key,'payload':e,'updated_at':stamp(),'expires_at':'2099-01-01T00:00:00Z'},timeout=40);r.raise_for_status()
+          if cache(key):raise SystemExit('Execution exists; no replay')
+          def card():
+           cur={'limit':100}
+           for page in range(40):
+            r=requests.post(host+'/content/v2/get/cards/list',headers=wh,json={'settings':{'cursor':cur,'filter':{'withPhoto':-1}}},timeout=45);r.raise_for_status();j=r.json()
+            cs=[c for c in j.get('cards',[]) if c.get('vendorCode')==article]
+            if cs:
+             assert len(cs)==1 and cs[0]['nmID']==nm,'Identity mismatch'
+             return cs[0]
+            cu=j.get('cursor',{})
+            if cu.get('total',0)<100:break
+            cur={'limit':100,'updatedAt':cu['updatedAt'],'nmID':cu['nmID']};time.sleep(0.7)
+           raise RuntimeError('Exact card missing from full pagination')
+          def core(c):
+           d={k:v for k,v in c.items() if k not in ('photos','video','updatedAt')}
+           d['characteristics']=sorted(d.get('characteristics',[]),key=lambda x:str(x['id']))
+           return d
+          before=card()
+          prior=cache('celinea_variants_media:20261116:preflight:v1')
+          assert prior and prior['status']=='read' and article in prior['cards'],'Preflight missing'
+          assert before.get('photos')==prior['cards'][article].get('photos'),'Gallery changed since preflight'
+          prior_core=core(prior['cards'][article]);current_core=core(before)
+          if prior_core!=current_core:
+           put({'status':'blocked_content_conflict','changed_keys':[k for k in set(prior_core)|set(current_core) if prior_core.get(k)!=current_core.get(k)],'before':before,'wb_writes':0});raise SystemExit('Content changed; inspect private audit')
+          assert not before.get('video'),'Existing video requires dedicated preservation'
+          assert before.get('description') and len(before.get('characteristics',[]))>6,'Content appears reset'
+          dims=before.get('dimensions',{})
+          assert dims.get('length',0)>0 and dims.get('width',0)>0 and dims.get('height',0)>0 and dims.get('weightBrutto',0)>0,'Packaging missing'
+          images=[];payloads=[]
+          for n in range(1,9):
+           p=cache('celinea_care_corrected:364:20261116:v1:07') if n==7 else cache('celinea_variants_media:364:20261116:v1:'+str(n).zfill(2));assert p and p['name'].startswith(str(n).zfill(2)+'_')
+           b=base64.b64decode(p['data'],validate=True);im=Image.open(io.BytesIO(b)).convert('RGB');assert im.size==(1086,1448)
+           images.append(im.resize((96,128)));payloads.append((p['name'],b))
+          e={'status':'preparing','article':article,'nm_id':nm,'before':before,'wb_writes':0,'source_count':8,'prepared_at':stamp(),'source_sha256':[hashlib.sha256(b).hexdigest() for _,b in payloads]}
+          r=requests.post(sb+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**sh,'Prefer':'resolution=ignore-duplicates,return=representation'},json={'cache_key':key,'payload':e,'updated_at':stamp(),'expires_at':'2099-01-01T00:00:00Z'},timeout=40);r.raise_for_status();assert len(r.json())==1,'Execution already claimed'
+          try:
+           bucket='owner-media-recovery'
+           r=requests.get(sb+'/storage/v1/bucket/'+bucket,headers=sh,timeout=40);r.raise_for_status();assert r.json().get('public') is False
+           def upload(path,data,mime):
+            r=requests.post(sb+'/storage/v1/object/'+bucket+'/'+path,headers={**sh,'Content-Type':mime,'x-upsert':'false'},data=data,timeout=60)
+            if not r.ok:
+             assert 'exist' in r.text.lower(),'Storage upload failed'
+             r=requests.get(sb+'/storage/v1/object/authenticated/'+bucket+'/'+path,headers=sh,timeout=40);r.raise_for_status();assert hashlib.sha256(r.content).digest()==hashlib.sha256(data).digest(),'Existing source differs'
+           # Preserve original gallery privately, including order, before replacing it.
+           for n,p in enumerate(before.get('photos',[]),1):
+            r=requests.get(p['big'],timeout=40);r.raise_for_status();upload('celinea364-20261116-gallery-care-v1/before/'+str(n)+'.webp',r.content,'image/webp')
+           urls=[]
+           for idx in range(8):
+            name,b=payloads[idx]
+            path='celinea364-20261116-gallery-care-v1/approved/'+name
+            upload(path,b,'image/jpeg')
+            r=requests.post(sb+'/storage/v1/object/sign/'+bucket+'/'+path,headers=sh,json={'expiresIn':86400},timeout=40);r.raise_for_status();signed=r.json()['signedURL']
+            url=sb+('/storage/v1' if signed.startswith('/object/') else '')+signed
+            r=requests.get(url,timeout=40);r.raise_for_status();assert hashlib.sha256(r.content).digest()==hashlib.sha256(b).digest()
+            urls.append(url)
+           fresh=card()
+           changed=[k for k in set(core(fresh))|set(core(before)) if core(fresh).get(k)!=core(before).get(k)]
+           if changed:
+            e['changed_keys']=changed;e['fresh']=fresh;raise AssertionError('Card content changed during preparation')
+           assert fresh.get('photos')==before.get('photos') and fresh.get('video')==before.get('video'),'Media changed during preparation'
+           e['updated_at_changed_during_prepare']=fresh.get('updatedAt')!=before.get('updatedAt')
+           e.update(status='writing',wb_writes=1,submitted_at=stamp());put(e)
+           r=requests.post(host+'/content/v3/media/save',headers=wh,json={'nmId':nm,'data':urls},timeout=60)
+           e['http_status']=r.status_code
+           if not r.ok:
+            e.update(status='rejected',response=r.text[:500]);put(e);raise RuntimeError('WB media rejected')
+           j=r.json();e['response']=j
+           if j.get('error') is not False:
+            e.update(status='rejected');put(e);raise RuntimeError('WB rejected media')
+           e.update(status='accepted_pending_readback');put(e)
+           for attempt in range(18):
+            time.sleep(15);after=card();e['after']=after;e['observed_at']=stamp()
+            e['non_media_unchanged']=core(after)==core(before)
+            assert e['non_media_unchanged'],'Non-media content changed'
+            if len(after.get('photos',[]))!=8:
+             put(e);continue
+            matrix=[]
+            for p in after['photos']:
+             r=requests.get(p['big'],params={'verify':str(int(time.time()))},timeout=40);r.raise_for_status();im=Image.open(io.BytesIO(r.content)).convert('RGB').resize((96,128))
+             matrix.append([round(sum(ImageStat.Stat(ImageChops.difference(im,ref)).mean)/3,3) for ref in images])
+            order=[row.index(min(row))+1 for row in matrix]
+            e['readback_order']=order;e['mean_pixel_difference']=[row[i] for i,row in enumerate(matrix)]
+            if order==list(range(1,9)) and max(e['mean_pixel_difference'])<12:
+             e.update(status='verified',completed_at=stamp());put(e);print('Verified: exact eight photos in order1-8; non-media content unchanged');break
+            put(e)
+           else:print('Accepted; readback still pending. Do not replay upload.')
+          except Exception as ex:
+           if e.get('status')=='writing':e['status']='uncertain'
+           elif e.get('wb_writes',0)==0:e['status']='blocked_before_write'
+           e['error']=type(ex).__name__;put(e);raise SystemExit('Media operation stopped; inspect private audit')
