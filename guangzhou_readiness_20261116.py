@@ -34,8 +34,16 @@ with runtime_db() as lock:
     if not old or not json.loads(old[0]).get('execution_complete'):raise Stopped('Restoration incomplete')
     locks=s.sql('SELECT article FROM stock_sku_locks WHERE article LIKE ?',('china-mgt-2308581/%',)).fetchall();db.commit()
     if locks:raise Stopped('China physical pool has outstanding locks')
-    preflight(g,shared)
-    data['provider_cooldowns']='ready';data['phase']='fresh_china_source';save()
+    from stock_shared_requests import RequestDeferred
+    try:
+     preflight(g,shared);data['provider_cooldowns']='ready_now'
+    except RequestDeferred as pause:
+     until=time.time()+pause.wait
+     data['current_cooldown_until']=until
+     if until>=datetime(2026,11,16,17,tzinfo=timezone.utc).timestamp():raise
+     # Check deadline only. No request is sent to the paused provider group.
+     data['provider_cooldowns']='expires_before_evening'
+    data['phase']='fresh_china_source';save()
     preview=collect_preview(g);rows=validate_source(preview)
     data.update(status='ready',completed_at=time.time(),warehouse=preview['warehouse'],rows=len(rows),blocked=preview['blocked'],reserved_units=preview['reserved_units'],planned_changes=sum(r['before']!=r['target'] for r in rows.values()),preview=preview)
     save();seal('guangzhou-readiness',data)
