@@ -1,0 +1,45 @@
+name: Celeste four cards preflight16Nov
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/celeste-preflight-20261116.yml']
+permissions: {}
+concurrency:
+  group: celeste-content
+  cancel-in-progress: false
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5
+      - env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        shell: python
+        run: |
+          import requests,os,time,datetime
+          token=os.environ['WB_TOKEN_3'];h={'Authorization':token};host='https://content-api.wildberries.cn'
+          targets=['358-CelesteBag-green','359-CelesteBag-darkred','360-CelesteBag-coffee','361-CelesteBag-black']
+          def call(path,body=None,base=host):
+           r=requests.get(base+path,headers=h,timeout=45) if body is None else requests.post(base+path,headers=h,json=body,timeout=45)
+           r.raise_for_status();j=r.json();assert not j.get('error');return j
+          cur={'limit':100};found={}
+          for page in range(40):
+           j=call('/content/v2/get/cards/list',{'settings':{'cursor':cur,'filter':{'withPhoto':-1}}})
+           for c in j.get('cards',[]):
+            if c.get('vendorCode') in targets:found[c['vendorCode']]=c
+           if len(found)==4:break
+           cu=j.get('cursor',{})
+           if cu.get('total',0)<100:break
+           cur={'limit':100,'updatedAt':cu['updatedAt'],'nmID':cu['nmID']};time.sleep(.7)
+          assert len(found)==4
+          out={'status':'read','cards':found,'schema':call('/content/v2/object/charcs/50?locale=ru'),'colors':call('/content/v2/directory/colors?locale=ru'),'tnved':call('/content/v2/directory/tnved?subjectID=50'),'prices':{},'wb_writes':0}
+          for a,c in found.items():
+           out['prices'][a]=call('/api/v2/list/goods/filter?limit=100&filterNmID='+str(c['nmID']),base='https://discounts-prices-api.wildberries.ru');time.sleep(.7)
+          sb=os.environ['SUPABASE_URL'].rstrip('/');sk=os.environ['SUPABASE_SECRET_KEY']
+          r=requests.post(sb+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={'apikey':sk,'Authorization':'Bearer '+sk,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},json={'cache_key':'celeste_fill:china:20261116:preflight:v1','payload':out,'updated_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'expires_at':'2099-01-01T00:00:00Z'},timeout=45);r.raise_for_status()
+          print('Four exact Celeste cards and dictionaries read privately; WB writes0')
