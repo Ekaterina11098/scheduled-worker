@@ -16,7 +16,9 @@ concurrency:
 
 jobs:
   verify:
-    if: github.event_name == 'workflow_dispatch' || github.event.head_commit.message == 'diagnostic: one-time new orders connectivity 2026-11-16'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.head_commit.message == 'diagnostic: one-time new orders connectivity 2026-11-16'
     name: Verify WB and MoySklad (read only)
     runs-on: ubuntu-latest
     timeout-minutes: 6
