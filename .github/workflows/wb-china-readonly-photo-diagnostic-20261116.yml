@@ -1,14 +1,11 @@
 name: WB China one-time read-only photo diagnostic
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/wb-china-readonly-photo-diagnostic-20261116.yml'
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
   check_card:
-    if: github.event_name == 'push' && github.run_attempt == 1
+    if: github.run_attempt == 1
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
