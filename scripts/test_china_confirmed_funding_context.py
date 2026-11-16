@@ -23,4 +23,15 @@ class Funding(unittest.TestCase):
   io,e,c,cache=self.fixture();key=next(k for k in cache if k.startswith('china_agent:daily_ad_execution'))
   cache[key]['items'][0]['status']='uncertain'
   with self.assertRaises(ValueError):reconcile(io,e,c)
+ def test_revised_drr_generation_requires_both_exact_current_parent_plans(self):
+  io,e,c,cache=self.fixture()
+  parent=cache[PLAN+'parent'];parent.update(report_generation='pair-corrected-drr',family='drr',chat_id=-1004342917488,bot_id=8780468043,report_message_ids=[101])
+  io.daily_report_plan.update(parent_plan_id='budget',parent_plan_sha256='budgethash',family='budgets',plan_id='budget-child')
+  cache['china_agent:daily_ad_current_report:v1:budgets']=dict(plan_id='budget')
+  cache[PLAN+'budget']=dict(plan_id='budget',plan_sha256='budgethash',family='budgets',report_generation='pair-budgets',period_to='2026-11-14',chat_id=-1004342917488,bot_id=8780468043,report_message_ids=[102])
+  self.assertEqual(reconcile(io,e,c)['expected_bids']['20']['search'],23)
+  cache[PLAN+'budget']['plan_sha256']='different'
+  with self.assertRaises(ValueError):reconcile(io,e,c)
 if __name__=='__main__':unittest.main()
+
+
