@@ -429,7 +429,7 @@ class Worker:
             # Distinct KIZY product type has priority if several product words overlap.
             if any(token in name or token in article for token in ("кизы", "kizy", "kizi")):
                 categories.add("КИЗЫ")
-            elif any(token in name for token in ("сумка", "сумки", "клатч", "рюкзак")) or "bag" in article:
+            elif any(token in name for token in ("сумка", "сумки", "клатч", "рюкзак")):
                 categories.add("Сумки")
             elif "зонт" in name or "zont" in article:
                 categories.add("Зонты")
