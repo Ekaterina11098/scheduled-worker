@@ -30,4 +30,14 @@ class Tests(unittest.TestCase):
  def test_reject_unapproved_destination(self):
   with patch.object(r,'require_cloud_lease'):
    with self.assertRaises(Stopped):r.validate_intent({'owner_restore_root':r.ROOT,'warehouse':2308581})
+ def test_renamed_warehouse_keeps_same_identity(self):
+  from stock_china_mgt import select_warehouse
+  self.assertEqual(select_warehouse([{'id':2373413,'name':'Переименованный склад'}])['id'],2373413)
+ def test_name_cannot_select_wrong_id(self):
+  from stock_china_mgt import select_warehouse
+  with self.assertRaises(Stopped):select_warehouse([{'id':2308581,'name':'Гуанджоу новый'}])
+ def test_deleting_or_duplicate_id_is_rejected(self):
+  from stock_china_mgt import select_warehouse
+  with self.assertRaises(Stopped):select_warehouse([{'id':2373413,'isDeleting':True}])
+  with self.assertRaises(Stopped):select_warehouse([{'id':2373413},{'id':2373413}])
 unittest.main()
