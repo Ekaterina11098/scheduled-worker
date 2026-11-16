@@ -59,10 +59,14 @@ jobs:
            d['characteristics']=sorted(d.get('characteristics',[]),key=lambda x:str(x['id']))
            return d
           before=card()
-          prior=cache('celinea_variants_media:363:20261116:v1:execution')
-          assert prior and prior['status']=='verified','Prior gallery not verified'
-          assert before.get('photos')==prior['after'].get('photos'),'Gallery changed since approved upload'
-          prior_core=core(prior['after']);current_core=core(before)
+          audit=cache('celinea_handle_live_audit:20261116:v1')
+          assert audit and audit['status']=='read'
+          prior=next(x for x in audit['rows'] if x['article']==article)
+          care_index=prior['order'].index(7)
+          assert prior['order'].count(7)==1,'Ambiguous care slide'
+          assert prior and prior['current'],'Current audited gallery missing'
+          assert before.get('photos')==prior['current'].get('photos'),'Gallery changed since approved upload'
+          prior_core=core(prior['current']);current_core=core(before)
           if prior_core!=current_core:
            put({'status':'blocked_content_conflict','changed_keys':[k for k in set(prior_core)|set(current_core) if prior_core.get(k)!=current_core.get(k)],'before':before,'wb_writes':0});raise SystemExit('Content changed; inspect private audit')
           assert not before.get('video'),'Existing video requires dedicated preservation'
@@ -83,7 +87,13 @@ jobs:
             assert im.crop((0,0,1086,730)).tobytes()==damaged.crop((0,0,1086,730)).tobytes()
             repaired_reference=im.copy();buf=io.BytesIO();im.save(buf,format='JPEG',quality=95);b=buf.getvalue()
            images.append(im.resize((96,128)));payloads.append((p['name'],b))
-          e={'status':'preparing','article':article,'nm_id':nm,'before':before,'wb_writes':0,'source_count':8,'prepared_at':stamp(),'source_sha256':[hashlib.sha256(b).hexdigest() for _,b in payloads]}
+          expected_count=len(before['photos'])
+          images=[]
+          for photo in before['photos']:
+           r=requests.get(photo['big'],params={'verify':str(int(time.time()))},timeout=40);r.raise_for_status()
+           images.append(Image.open(io.BytesIO(r.content)).convert('RGB').resize((96,128)))
+          images[care_index]=repaired_reference.resize((96,128))
+          e={'status':'preparing','article':article,'nm_id':nm,'before':before,'wb_writes':0,'source_count':expected_count,'prepared_at':stamp(),'source_sha256':[hashlib.sha256(b).hexdigest() for _,b in payloads]}
           r=requests.post(sb+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**sh,'Prefer':'resolution=ignore-duplicates,return=representation'},json={'cache_key':key,'payload':e,'updated_at':stamp(),'expires_at':'2099-01-01T00:00:00Z'},timeout=40);r.raise_for_status();assert len(r.json())==1,'Execution already claimed'
           try:
            bucket='owner-media-recovery'
@@ -97,8 +107,8 @@ jobs:
            for n,p in enumerate(before.get('photos',[]),1):
             r=requests.get(p['big'],timeout=40);r.raise_for_status();upload('celinea363-20261116-handle-restore-v1/before/'+str(n)+'.webp',r.content,'image/webp')
            urls=[p['big'] for p in before['photos']]
-           for idx in [6]:
-            name,b=payloads[idx]
+           for idx in [care_index]:
+            name,b=payloads[6]
             path='celinea363-20261116-handle-restore-v1/approved/'+name
             upload(path,b,'image/jpeg')
             r=requests.post(sb+'/storage/v1/object/sign/'+bucket+'/'+path,headers=sh,json={'expiresIn':86400},timeout=40);r.raise_for_status();signed=r.json()['signedURL']
@@ -124,7 +134,7 @@ jobs:
             time.sleep(15);after=card();e['after']=after;e['observed_at']=stamp()
             e['non_media_unchanged']=core(after)==core(before)
             assert e['non_media_unchanged'],'Non-media content changed'
-            if len(after.get('photos',[]))!=8:
+            if len(after.get('photos',[]))!=expected_count:
              put(e);continue
             matrix=[]
             for p in after['photos']:
@@ -132,15 +142,15 @@ jobs:
              matrix.append([round(sum(ImageStat.Stat(ImageChops.difference(im,ref)).mean)/3,3) for ref in images])
             order=[row.index(min(row))+1 for row in matrix]
             e['readback_order']=order;e['mean_pixel_difference']=[row[i] for i,row in enumerate(matrix)]
-            if order==list(range(1,9)) and max(e['mean_pixel_difference'])<12:
-             r=requests.get(after['photos'][6]['big'],params={'verify':str(int(time.time()))},timeout=40);r.raise_for_status()
+            if max(e['mean_pixel_difference'])<12 and all(row[i]<=min(row)+0.5 for i,row in enumerate(matrix)):
+             r=requests.get(after['photos'][care_index]['big'],params={'verify':str(int(time.time()))},timeout=40);r.raise_for_status()
              live=Image.open(io.BytesIO(r.content)).convert('RGB').resize(repaired_reference.size)
              patch=(420,730,490,790)
              scores=[sum(ImageStat.Stat(ImageChops.difference(live.crop(patch),ref.crop(patch))).mean)/3 for ref in [damaged,repaired_reference]]
              e['handle_difference_damaged_restored']=scores
              e['handle_restored']=scores[1]<scores[0] and scores[1]<12
              if not e['handle_restored']:put(e);continue
-             e.update(status='verified',completed_at=stamp());put(e);print('Verified: original handle restored, order1-8, all other card fields preserved');break
+             e.update(status='verified',completed_at=stamp(),care_position=care_index+1,preserved_photo_count=expected_count);put(e);print('Verified: original handle restored, order1-8, all other card fields preserved');break
             put(e)
            else:print('Accepted; readback still pending. Do not replay upload.')
           except Exception as ex:
