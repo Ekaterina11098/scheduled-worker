@@ -1,5 +1,7 @@
 name: Read-only evening stock readiness
 on:
+  push:
+    paths: ['.github/workflows/guangzhou-readiness-20261116.yml']
   workflow_dispatch:
 permissions:
   contents: read
