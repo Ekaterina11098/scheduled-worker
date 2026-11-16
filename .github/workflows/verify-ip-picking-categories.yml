@@ -1,0 +1,25 @@
+name: Verify automatic IP picking categories safely
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/verify-ip-picking-categories.yml']
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check category mix and existing run safeguards with no API writes
+        run: |
+          python -m unittest discover -s scripts -p test_fbs_ip_categories.py -v
+          python -m unittest discover -s scripts -p test_fbs_china_warehouse_routing.py -v
+          python -m unittest discover -s scripts -p test_fbs_daily_schedule.py -v
+          python -m unittest discover -s scripts -p 'test_fbs_ozon*.py' -v
