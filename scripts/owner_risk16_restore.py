@@ -2,6 +2,9 @@
 import copy,json,base64,hashlib
 from datetime import datetime,timezone
 ROOT='china_agent:owner_two_campaign_cost_review:2026-11-16:v3';DAY='2026-11-16';NM=1473243903;CID=41332083
+SLOT='cost-review-two16-current';EXPECTED_ADDED={'41332083:add:1473243903'};EXPECTED_REMOVED=set()
+OWNER_REQUEST='нет у меня таких распоряжений не возвращать отдельные арт'
+PREFLIGHT=None;ALLOW_UMBRELLA_READS=False
 
 def restore(current,prior):
  out=copy.deepcopy(current)
@@ -31,22 +34,25 @@ def main():
  original=requests.sessions.Session.request
  def guard(session,method,url,**kw):
   u=urlparse(url)
-  assert url.startswith(io.url+'/rest/v1/')or u.hostname=='api.telegram.org'and method.upper()=='POST'and u.path.rsplit('/',1)[-1]=='editMessageMedia','No WB, model or unrelated calls'
+  read_ok=ALLOW_UMBRELLA_READS and u.hostname=='advert-api.wildberries.ru'and(method.upper()=='GET'and u.path=='/api/advert/v2/adverts'and u.query=='ids=41325637'or method.upper()=='POST'and u.path=='/api/advert/v1/bids/min'and(kw.get('json')or{}).get('advert_id')==41325637)
+  assert read_ok or url.startswith(io.url+'/rest/v1/')or u.hostname=='api.telegram.org'and method.upper()=='POST'and u.path.rsplit('/',1)[-1]=='editMessageMedia','No WB mutations, model or unrelated calls'
   return original(session,method,url,**kw)
  requests.sessions.Session.request=guard
  key='china_agent:advertising_artifacts:'+DAY+':v2';dk='china_agent:advertising_delivery:'+DAY+':v1';old=io.get(key);delivery=io.get(dk)
  f_old=next(f for f in old['files']if f['family']=='drr');parent=f_old['plan_id']
  assert not(io.get('china_agent:daily_action_claim:v1:'+parent)or{}).get('domains'),'Current report confirmed; cannot replace'
  prior=io.get('china_agent:owner_two_campaign_cost_review:2026-11-16:v1:review')
+ if PREFLIGHT:checks=PREFLIGHT(io,old['bundle'])
+ else:checks={}
  bundle=restore(old['bundle'],prior)
  from china_advertising_v2_png import render
  page=next(f for f in render(bundle)if f['family']=='drr');oldplan=io.get(PLAN+parent)
- oldids={i['id']for i in oldplan['items']};newids={i['id']for i in page['actions']};assert newids==oldids|{'41332083:add:1473243903'}
- new=plan(io,DAY,page,0,slot='cost-review-two16-current');markup=buttons(io,new,'drr');assert markup
+ oldids={i['id']for i in oldplan['items']};newids={i['id']for i in page['actions']};assert newids==(oldids-EXPECTED_REMOVED)|EXPECTED_ADDED
+ new=plan(io,DAY,page,0,slot=SLOT);markup=buttons(io,new,'drr');assert markup
  claim(io,parent,['drr'],'replace:'+ROOT)
- journal=dict(status='prepared',created_at=datetime.now(timezone.utc).isoformat(),owner_correction='нет у меня таких распоряжений не возвращать отдельные арт',wb_writes=0,model_calls=0,new_plan_id=new['plan_id']);assert io.create(ROOT,journal)
+ journal=dict(status='prepared',created_at=datetime.now(timezone.utc).isoformat(),owner_correction=OWNER_REQUEST,wb_writes=0,model_calls=0,new_plan_id=new['plan_id'],checks=checks);assert io.create(ROOT,journal)
  assert io.create(ROOT+':review',bundle)
- oldplan.update(invalidated_at=datetime.now(timezone.utc).isoformat(),invalidation_reason='Current owner correction restores eligible SKU534 proposal');io.put(PLAN+parent,oldplan)
+ oldplan.update(invalidated_at=datetime.now(timezone.utc).isoformat(),invalidation_reason='Current owner requested updated campaign recommendations');io.put(PLAN+parent,oldplan)
  part=next(p for p in delivery['parts']if p['kind']==f_old['kind']);mid=part['message_id'];assert mid==1053
  journal.update(status='editing',message_id=mid);io.put(ROOT,journal)
  caption='Китай · реклама и рекомендации по РК · '+DAY+'. Общий отчёт. Новых действий: '+str(len(new['items']))+'. Выберите нужное → «Посмотреть выбранное» → «Подтвердить».'
@@ -62,5 +68,5 @@ def main():
  part.update(sha256=hashlib.sha256(page['bytes']).hexdigest(),receipt=receipt,corrected_by=ROOT,corrected_at=datetime.now(timezone.utc).isoformat());io.put(dk,delivery)
  assert io.get(BIND+str(mid))==binding
  journal.update(status='delivered',message_id=mid,receipt=receipt,total_action_count=len(new['items']),completed_at=datetime.now(timezone.utc).isoformat());io.put(ROOT,journal)
- print(json.dumps(dict(status='delivered',message_id=mid,restored_proposal=NM,wb_writes=0,model_calls=0)))
+ print(json.dumps(dict(status='delivered',message_id=mid,total_action_count=len(new['items']),added_proposals=len(newids-oldids),removed_proposals=len(oldids-newids),wb_writes=0,model_calls=0)))
 if __name__=='__main__':main()
