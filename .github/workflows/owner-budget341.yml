@@ -1,0 +1,35 @@
+name: Owner blocked budget341 preflight recovery
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-budget341.yml]
+permissions: {contents: read}
+concurrency:
+  group: bot-mpstats-data
+  cancel-in-progress: false
+jobs:
+  read:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-budget341] Complete only preflight-blocked confirmed funding'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5 Pillow==11.3.0
+      - run: python -m unittest discover -s scripts -p test_china_campaign_cost_state.py -v
+      - env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          CHINA_TELEGRAM_BOT_TOKEN: ${{ secrets.CHINA_TELEGRAM_BOT_TOKEN }}
+          OPENAI_API_KEY: ''
+        run: python scripts/owner_budget341.py
