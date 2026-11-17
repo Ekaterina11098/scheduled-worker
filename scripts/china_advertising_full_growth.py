@@ -130,6 +130,8 @@ def collect(io,s,day):
    for nm in held_model.get('rows',{}):v['economics']['missing'].pop(nm,None)
    for nm,e in v['economics']['rows'].items():e.update(published_stock=v['published_stock']['amounts'].get(nm),published_stock_observed_at=v['published_stock']['observed_at'],fx_rub_per_cny=float(v['fx']['rub_per_cny']),fx_date=day)
    save()
+  from china_campaign_routes import collect as collect_routes
+  collect_routes(io,v,s,day);save()
   from china_held_evidence import merge_held
   merge_held(v);save()
   if 'campaigns'not in v:
@@ -140,7 +142,7 @@ def collect(io,s,day):
   if 'config'not in v:v['config']=http(io,'/api/advert/v1/config');save()
   v.setdefault('minimums',{});v.setdefault('addition_quotes',{});v['quote_errors']={}
   for cp in v['campaigns']:
-   if cp['status']!=9 or cp['bid_type']!='manual'or cp['settings']['payment_type']!='cpc':continue
+   if cp['status']not in(9,11) or cp['bid_type']!='manual'or cp['settings']['payment_type']!='cpc':continue
    cid=cp['id'];zone='search'if cp['settings']['placements'].get('search')else'recommendation'
    if not has_completed_campaign_day(cp,end):
     v.setdefault('deferred_minimums',{})[str(cid)]=dict(reason='No completed day after campaign launch in decision window',period_to=str(end),started=cp.get('timestamps',{}).get('started'),minimum_unknown=True)
@@ -171,6 +173,8 @@ def collect(io,s,day):
   v.update(status='collecting',last_error=type(ex).__name__+': '+str(ex),last_attempt_at=stamp());save()
   raise PendingAdvertisingDay('Full cabinet growth inputs incomplete; staged read-only collection will resume')from ex
  out=copy.deepcopy(s);out['catalogue']=v.get('catalogue',s['catalogue']);out['economics']=v['economics'];out['observed_at']=v['observed_at']
+ from china_completed_cost_scan import preserve_completed_cost
+ out['completed_cost_ledger']=preserve_completed_cost(io,s,day)
  current={c['id']:c for c in v['campaigns']};cash={r['advertId']:r for r in v['budgets']['adverts']}
  for batch in out.get('batches',{}).values():
   batch['campaigns']['adverts']=[current.get(cp['id'],cp)for cp in batch['campaigns']['adverts']]
@@ -207,7 +211,7 @@ def proposed_actions(s):
   cid=cp['id'];zone='search'if cp['settings']['placements'].get('search')else'recommendations';typ='search'if zone=='search'else'recommendation'
   for n in cp['nm_settings']:
    nm=n['nm_id'];e=v['economics']['rows'].get(str(nm),{});o=own.get(nm,{})
-   if nm in v['excluded_nm_ids']or e.get('sample_size',0)<5 or e.get('buyout_fallback')or e.get('commission_policy_fallback')or e.get('stock_free',0)<=0 or (e.get('published_stock')is None or e['published_stock']<=0):continue
+   if e.get('warehouse_role','msk')!='msk' or nm in v['excluded_nm_ids']or e.get('sample_size',0)<5 or e.get('buyout_fallback')or e.get('commission_policy_fallback')or e.get('stock_free',0)<=0 or (e.get('published_stock')is None or e['published_stock']<=0):continue
    if o.get('commentsvaluation',0)not in[0,None]and o['commentsvaluation']<4.5:continue
    relevant=[x for x in changes if x['nm']==nm and x['kind']in['bid','price','added','returned','relaunch','excluded']]
    ats=[event_time(x['at']).astimezone(ZoneInfo('Europe/Moscow')).date()for x in relevant]
@@ -260,7 +264,7 @@ def addition_actions(s,raises):
   if quote.get('campaign_id')!=cid or quote.get('placement',placement)!=placement:continue
   target=quote.get('target_minor');step=v['config']['cpcStep']
   if quote.get('bid_verified')is not True or type(target)is not int or target<=0 or target%step or target>v['config']['cpcMaxBid']:continue
-  if e.get('commission_policy_fallback')or e.get('buyout_fallback')or e.get('sample_size',0)<5 or e.get('published_stock',0)<3:continue
+  if e.get('warehouse_role','msk')!='msk' or e.get('commission_policy_fallback')or e.get('buyout_fallback')or e.get('sample_size',0)<5 or e.get('published_stock',0)<3:continue
   margin=e.get('expected_margin_before_ads_cny',-1)
   if margin<=0:continue
   # New traffic has no proven CPA. Reserve a disclosed diagnostic forecast, not a technical SKU cap.
@@ -324,6 +328,8 @@ def enrich(io,s,bundle):
  from china_advertising_reserve import filter_bundle
  result,_=filter_bundle(io,result,'prepare')
  return result
+
+
 
 
 

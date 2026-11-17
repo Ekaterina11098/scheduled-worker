@@ -55,7 +55,7 @@ def apply(bundle,source,minima):
   except (ValueError,TypeError,AttributeError):return False
  for c in out['campaigns']:
   state=states[c['id']]
-  if c['status']!=9 or c['payment']!='cpc':continue
+  if c['status']not in(9,11) or c['payment']!='cpc':continue
   settings={r['nm_id']:r for r in state['nm_settings']}
   zone='search' if state['settings']['placements'].get('search') else 'recommendations'
   for r in c.get('focus',[]):
@@ -113,6 +113,20 @@ def apply(bundle,source,minima):
    negative_own_unit=own_model and e.get('sample_reliable')is True and e.get('sample_size',0)>=20 and model_before<=0 and spend>0
    meaningful=meaningful or negative_own_unit
    bounded_loss=orders==0 and p['clicks']>=30 and own_model and model_before>0 and spend>=max(model_before,e['seller_price_cny']*.05)
+   # Reduce an expensive bid after three complete days of zero direct orders.
+   # A whole order's high margin is not a licence to keep buying dearer clicks.
+   closed_zero_cut=(old>minimum and own_model and orders==0 and
+                    len(set(decision_days))>=3 and p['clicks']>=30 and
+                    spend>=e['seller_price_cny']*.05)
+   cumulative=completed_zero_exposure(source,state,r['nm'],out.get('day'))
+   cumulative_loss=(old==minimum and cumulative and cumulative['orders']==0 and
+                    cumulative['completed_days']>=3 and cumulative['clicks']>=30 and
+                    cumulative['spend']>=max(model_before,e['seller_price_cny']*.05))
+   if closed_zero_cut or cumulative_loss:
+    r['completed_exposure_guard']=dict(three_day_cut=closed_zero_cut,cumulative=cumulative,
+      preliminary=True,not_proven_financial_loss=True)
+    r['reason']+=' Ограничение расхода без прямых заказов; малая выкупная выборка не доказывает убыток.'
+    bounded_loss=True
    # Approved planned-buyout tests still need a finite completed-day loss review.
    # This is cost containment, never proof of actual buyout/profit or permission to fund.
    planned_test=(e.get('buyout_fallback')is True and e.get('sample_size')==0
@@ -127,7 +141,7 @@ def apply(bundle,source,minima):
     bounded_loss=True
     r['completed_economic_overrun']=dict(decision_days=decision_days,modeled_after_ads_cny=r['model_profit_for_attributed_orders_cny'],preliminary=True)
    positive_own_model=(orders>0 and r['model_profit_for_attributed_orders_cny']>0 and not e.get('buyout_fallback') and not e.get('commission_policy_fallback') and e.get('sample_size',0)>=5)
-   if positive_own_model and not(latest_zero_loss or deterioration):
+   if positive_own_model and not(latest_zero_loss or deterioration or cumulative_loss):
     # A target DRR is not a break-even threshold; preserve uncertainty and a finite review.
     r['action']=None
     r['decision']=f'Сохранить {old/100:g} ¥ до оценки следующего полного дня: предварительная экономика положительна.'
@@ -152,10 +166,45 @@ def apply(bundle,source,minima):
     r['action']=None
     r['decision']=f'Сохранить {old/100:g} ¥: малая выборка; повторная оценка после следующего полного дня.'
     r['reason']+=' База для снижения/исключения пока мала; это не разрешение бессрочного теста или пополнения.'
+   if c['status']==11 and r.get('action'):
+    a=r['action']
+    # A paused campaign may only receive a separately confirmed cheaper bid.
+    # No implicit resume/funding, and no pointless repeated pause/exclusion.
+    if a.get('kind')=='ad_set_bid' and a['target_minor']<old:
+     a.update(status_before=11,paused_reduction_only=True)
+     r['decision']+=' РК оставить на паузе, без пополнения.'
+    else:r['action']=None
   c['attention']=[r for r in c.get('focus',[]) if r.get('action')]
  out['economic_review_complete']=not any(r.get('data_blocker') for c in out['campaigns'] for r in c.get('focus',[]))
  out['economic_review_blockers']=[dict(campaign_id=c['id'],article=r['article'],blocker=r['data_blocker']) for c in out['campaigns'] for r in c.get('focus',[]) if r.get('data_blocker')]
  return out
+
+def completed_zero_exposure(source,state,nm,report_day):
+ """Keep completed cost since the last actual SKU change; rolling windows cannot erase it."""
+ if not report_day:return None
+ from china_advertising_v2 import history
+ from zoneinfo import ZoneInfo
+ def local(at):return datetime.fromisoformat(at.replace('Z','+00:00')).astimezone(ZoneInfo('Europe/Moscow')).date().isoformat()
+ dates=[local(x['at']) for x in history(source.get('executions',[]))
+        if x.get('nm')==nm and (x['kind']=='price' or
+        x.get('cid')==state['id'] and x['kind']in('bid','added','returned','relaunch'))]
+ if state.get('timestamps',{}).get('started'):dates.append(local(state['timestamps']['started']))
+ changed=max(dates,default='1970-01-01')
+ raw=next((r for b in source['batches'].values() for r in b.get('stats',[]) if r['advertId']==state['id']),{})
+ days=[d for d in raw.get('days',[]) if changed<d['date'][:10]<report_day]
+ stored=source.get('completed_cost_ledger',{}).get(str(state['id']),{}).get(str(nm),{})
+ if stored.get('epoch')!=changed:stored={}
+ totals={d:dict(v)for d,v in stored.get('days',{}).items()if changed<d<report_day}
+ older=stored.get('older',{})
+ for d in days:
+  rows=[n for a in d.get('apps',[])for n in a.get('nms',[])if n['nmId']==nm]
+  totals[d['date'][:10]]=dict(spend=sum(n.get('sum',0)for n in rows),clicks=sum(n.get('clicks',0)for n in rows),orders=sum(n.get('orders',0)for n in rows))
+ if not totals:return None
+ return dict(days=sorted(totals),completed_days=len(totals)+older.get('day_count',0),
+             **{k:sum(v[k]for v in totals.values())+older.get(k,0)for k in('spend','clicks','orders')},
+             changed_day=changed,coverage_from=older.get('first',min(totals)))
+
+
 
 
 

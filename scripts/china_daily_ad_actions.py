@@ -157,7 +157,12 @@ def execute(io,a,p):
     registry=io.get('china_agent:verified_campaign_state:v1')or{};registry[str(cid)]=child;io.put('china_agent:verified_campaign_state:v1',registry)
     continue
    before=campaign(cid);state['before']=before;save()
-   if before['status']!=9:raise ValueError('Campaign no longer active')
+   paused_cut=(item.get('kind')=='ad_set_bid' and item.get('paused_reduction_only')is True
+               and item.get('status_before')==11 and before['status']==11
+               and type(item.get('target_minor'))is int and type(item.get('old_minor'))is int
+               and 0<item['target_minor']<item['old_minor'])
+   if before['status']!=9 and not paused_cut:raise ValueError('Campaign no longer active')
+   if item.get('paused_reduction_only')and not paused_cut:raise ValueError('Paused reduction scope changed')
    kind=item['kind'];method='PATCH'
    if kind=='topup_campaign' and {str(n['nm_id']):n['bids_kopecks']for n in before['nm_settings']}!=(item.get('budget_evidence')or{}).get('expected_bids')and item.get('budget_evidence'):
     from china_confirmed_funding_context import reconcile
@@ -226,4 +231,6 @@ def execute(io,a,p):
 def process_and_deliver(io,a,p):
  # execute always journals and delivers its own result, including direct recovery calls.
  return execute(io,a,p)
+
+
 

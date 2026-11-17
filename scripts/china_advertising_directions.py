@@ -21,10 +21,11 @@ def attach(bundle,source):
  out=copy.deepcopy(bundle);sections={key:dict(label=label,rows=[],status='checked',note='Подтверждённых кандидатов нет.')for key,label in LABELS.items()}
  seen=set()
  for c in out['campaigns']:
-  if c['status']!=9:continue
+  if c['status']not in(9,11):continue
   for r in c.get('focus',[]):
    a=r.get('action')or{};kind=a.get('kind');key='add'if kind=='ad_add_sku'else'exclude'if kind=='ad_exclude_sku'else'raise'if kind=='ad_set_bid'and a.get('target_minor',0)>a.get('old_minor',0)else'reduce'if kind=='ad_set_bid'else None
    if not key:continue
+   if c['status']==11 and not(kind=='ad_set_bid'and a.get('paused_reduction_only')is True and a.get('target_minor',0)<a.get('old_minor',0)):continue
    signature=(key,c['id'],r['nm'])
    if signature in seen:continue
    seen.add(signature);sections[key]['rows'].append(dict(article=r['article'],campaign_id=c['id'],decision=r['decision'],action=a,period=r.get('period'),evaluation_days=(r.get('comparison')or{}).get('to_days',[]),economics=r.get('economics')or{},ready=True,nm_id=a.get('nm_id'),target_minor=a.get('target_minor'),bid_verified=a.get('exact_addition_quote')is True))
@@ -68,7 +69,8 @@ def campaign_table(bundle):
     # The addition scan must select an evidenced actual campaign before display.
     continue
    c=byid.get(cid)
-   if not c or c['status']!=9:continue
+   if not c or c['status']not in(9,11):continue
+   if c['status']==11 and not(key=='reduce'and(r.get('action')or{}).get('paused_reduction_only')is True):continue
    a=r.get('action')or{}
    if key=='add':
     if r.get('ready')is not True or r.get('bid_verified')is not True or type(r.get('target_minor'))is not int:continue
@@ -76,6 +78,7 @@ def campaign_table(bundle):
    elif key=='exclude':text='Исключить из РК.'
    else:text=(('Тест: повысить'if a.get('manual_experiment')else'Повысить')if key=='raise'else'Снизить')+' '+str(a['old_minor']/100)+' → '+str(a['target_minor']/100)+' CNY.'
    if key in('reduce','exclude')and len(r.get('evaluation_days',[]))==1:text+=' Ранняя оценка: 1 полный день.'
+   if a.get('paused_reduction_only'):text+=' Оставить РК на паузе; без пополнения.'
    c['direction_recommendations'].append(r['article']+': '+text)
  # Exact owner-selected proposals must remain visible in their actual campaign row.
  for c in out['campaigns']:
@@ -88,9 +91,40 @@ def campaign_table(bundle):
    if text not in c['direction_recommendations']:c['direction_recommendations'].append(text)
  for c in out['campaigns']:
   if c.get('financial_action'):c['direction_recommendations']=[c['financial_recommendation']]
+  paused=[r for r in c.get('attention',[])if(r.get('action')or{}).get('paused_reduction_only')]
+  if paused and len(paused)==len(c['direction_recommendations']):
+   pairs={(r['action']['old_minor'],r['action']['target_minor'])for r in paused}
+   if len(pairs)==1:
+    old,target=next(iter(pairs))
+    c['direction_recommendations']=[', '.join(r['article']for r in paused)+': снизить '+str(old/100)+' → '+str(target/100)+' CNY. Оставить РК на паузе; без пополнения.']
+  if not c['direction_recommendations']:
+   c['direction_recommendations']=risk_summary(c,out)
  # The action column contains only new ready changes; holds remain in the audit rows.
  # Unready research stays in the private Codex analysis journal.
  return out
+
+def risk_summary(c,bundle):
+ """No ready write is not a verdict that a high-cost campaign is healthy."""
+ if c.get('owner_risk_summary'):return list(c['owner_risk_summary'])
+ p=c.get('period')or{};spend=p.get('spend',0);orders=p.get('orders',0)
+ risk=spend>0 and (not orders or c.get('drr')is not None and c['drr']>5)
+ if not risk:return ['Без изменений.']
+ if c.get('missing_stats'):return ['Статистика неполна. Не повышать ставки; не пополнять до проверки.']
+ if c['status']==11:
+  launched=c.get('created')==bundle.get('days',[None])[-1]
+  text='Оставить на паузе. Не пополнять и не возобновлять.'
+  if launched:text+=' Расход дня запуска; полного дня теста ещё нет.'
+  return [text]
+ pending=[r for r in c.get('focus',[])if r.get('pending_first_day')]
+ if c.get('confirmed_exclusions')and c.get('new_composition'):
+  return ['ДРР включает расход уже исключённых товаров; повторно не исключать.',
+          'Новый состав: без повышения ставок и пополнения; оценка '+
+          (date.fromisoformat(bundle['day'])+timedelta(days=1)).strftime('%d.%m')+'.']
+ rows=[r for r in c.get('focus',[])if not r.get('already_excluded')and r.get('decision')and r.get('period',{}).get('spend',0)>0]
+ if pending:return [r['article']+': '+r['decision']for r in pending[:2]]
+ if rows:
+  return [r['article']+': '+r['decision']for r in sorted(rows,key=lambda r:r['period'].get('spend',0),reverse=True)[:2]]
+ return ['Не повышать ставки и не пополнять: проверка риска не завершена.']
 
 def overview(bundle):
  """Read-only summary page; bound actionable rows remain on their detailed PNG pages."""
@@ -125,6 +159,8 @@ def overview(bundle):
    if a and r.get('ready'):actions.append(a)
   y+=25
  finish();return files
+
+
 
 
 
