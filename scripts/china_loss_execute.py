@@ -48,14 +48,14 @@ class IO(BaseIO):
   sids={r['payload'].get('sid') for r in rows}
   if len(sids)!=1 or claims.get('sid') not in sids:raise ValueError('WB seller scope unknown')
 
-def run():
+def run(job_id=None):
  if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  io=IO()
  from china_advertising_plans import process as process_advertising_plans
- process_advertising_plans(io)
+ if job_id is None:process_advertising_plans(io)
  from china_new_ad_reports import process_requests
- process_requests(io)
- rows=io.db('telegram_api_cache?cache_key=like.'+quote(APPROVAL+'*',safe='')+'&select=payload&limit=100')
+ if job_id is None:process_requests(io)
+ rows=io.db('telegram_api_cache?cache_key='+('eq.'+quote(APPROVAL+str(job_id),safe='') if job_id is not None else 'like.'+quote(APPROVAL+'*',safe=''))+'&select=payload&limit=100')
  if len(rows)>=100:raise RuntimeError('Approval pagination incomplete')
  for row in rows:
   a=row['payload']
@@ -92,4 +92,5 @@ def run():
     io.put(LATEST,latest)
   except Exception:io.put(delivery,dict(status='uncertain',text=body,chat_id=CHAT))
   print(json.dumps(dict(plan_id=a['plan_id'],status=e['status'],items=[dict(id=x['id'],status=x['status']) for x in e['items']]),ensure_ascii=False))
-if __name__=='__main__':run()
+if __name__=='__main__':
+ parser=argparse.ArgumentParser();parser.add_argument('--job-id',type=int);args=parser.parse_args();run(args.job_id)
