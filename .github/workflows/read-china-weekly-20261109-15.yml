@@ -79,7 +79,7 @@ jobs:
           for ch in proof["chunks"]:
            for row in db.get(ch["key"]):seen.add(str(row["rrdId"]))
           for page in range(10):
-           status,data=request("detailed/"+str(rep["reportId"]),{"limit":100000,"rrdId":cursor})
+           status,data=request("detailed",{"dateFrom":req["date_from"],"dateTo":req["date_to"],"period":"weekly","limit":100000,"rrdId":cursor})
            if status==204 or (status==200 and data==[]):
             proof.update(status="complete",pagination_exhausted=True,completed_at=m.now(),currencies=[rep["currency"]],report_ids=[rep["reportId"]]);db.put(ROOT+"source_proof:v1",proof);print("Source pagination complete; private records retained.");raise SystemExit()
            assert isinstance(data,list) and data
