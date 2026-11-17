@@ -35,3 +35,5 @@ jobs:
         run: python scripts/owner_budget341.py
 
 # Continue only unsubmitted preflight blocks; numeric binding preserved.
+
+# Final selected-test preflight only; all other funding preserved.
