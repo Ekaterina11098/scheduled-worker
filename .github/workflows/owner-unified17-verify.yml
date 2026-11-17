@@ -66,3 +66,5 @@ jobs:
           OPENAI_API_KEY: ''
           CHINA_TELEGRAM_BOT_TOKEN: ${{ secrets.CHINA_TELEGRAM_BOT_TOKEN }}
         run: python scripts/owner_unified17_verify.py
+
+# Separate cached-rule regression from unresolved marketplace readback.

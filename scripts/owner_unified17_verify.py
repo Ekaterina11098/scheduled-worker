@@ -24,30 +24,36 @@ def main():
   assert len(e['items'])==7 and len(p['items'])==7 and a['plan_id']==PLAN
   states=w.campaigns([41055480,41270309,41298169]);byid={i['id']:i for i in p['items']}
   def projection(cp):return {k:cp[k]for k in('id','status','currency','bid_type','settings','nm_settings')}
-  for cid in states:
-   rows=[x for x in e['items']if str(byid[x['id']]['campaign_id'])==cid];expected=copy.deepcopy(rows[0]['before'])
-   for row in rows:
-    i=byid[row['id']]
-    if i['kind']=='ad_exclude_sku':expected['nm_settings']=[n for n in expected['nm_settings']if n['nm_id']!=i['nm_id']]
-    else:next(n for n in expected['nm_settings']if n['nm_id']==i['nm_id'])['bids_kopecks'][i['placement']]=i['target_minor']
-   expected['nm_settings'].sort(key=lambda n:n['nm_id']);actual=copy.deepcopy(states[cid]);actual['nm_settings'].sort(key=lambda n:n['nm_id'])
-   assert projection(actual)==projection(expected),'Current WB differs from approved batch '+cid
-  for row in e['items']:
-   if row['status']=='verified':continue
-   assert row['status']in('accepted','uncertain')
-   cid=byid[row['id']]['campaign_id'];before=copy.deepcopy(row['before']);expected=copy.deepcopy(before)
-   expected['nm_settings']=[n for n in expected['nm_settings']if n['nm_id']!=byid[row['id']]['nm_id']]
-   expected['nm_settings'].sort(key=lambda n:n['nm_id']);actual=copy.deepcopy(states[str(cid)]);actual['nm_settings'].sort(key=lambda n:n['nm_id'])
-   assert projection(expected)==projection(actual),'Individual final readback differs; do not rewrite'
-   row.update(status='verified',after=states[str(cid)],verified_at=stamp(),readback_recovery='read_only_no_repeated_write')
-  e.update(status='done',completed_at=stamp(),readback_recovery_at=stamp());c.put(ekey,e)
-  from china_confirmed_report_recovery import register_campaigns
-  register_campaigns(c,p,e)
-  from china_advertising_state import AdvertisingIO
-  from china_execution_notice import deliver_result
-  notice=deliver_result(AdvertisingIO(),a,p,e)
-  assert notice and notice['status']=='sent'and notice['phase']=='verified'and notice['message_id']==1087
-  c.put(ROOT+':execution_readback',dict(status='verified',items=7,campaigns=states,source_execution_key=ekey,result_message_id=1087,wb_writes=0,verified_at=stamp()))
+  c.put(ROOT+':current_campaigns',dict(observed_at=stamp(),campaigns=states,wb_writes=0))
+  def verify_seven():
+   for cid in states:
+    rows=[x for x in e['items']if str(byid[x['id']]['campaign_id'])==cid];expected=copy.deepcopy(rows[0]['before'])
+    for row in rows:
+     i=byid[row['id']]
+     if i['kind']=='ad_exclude_sku':expected['nm_settings']=[n for n in expected['nm_settings']if n['nm_id']!=i['nm_id']]
+     else:next(n for n in expected['nm_settings']if n['nm_id']==i['nm_id'])['bids_kopecks'][i['placement']]=i['target_minor']
+    expected['nm_settings'].sort(key=lambda n:n['nm_id']);actual=copy.deepcopy(states[cid]);actual['nm_settings'].sort(key=lambda n:n['nm_id'])
+    assert projection(actual)==projection(expected),'Current WB differs from approved batch '+cid
+   for row in e['items']:
+    if row['status']=='verified':continue
+    assert row['status']in('accepted','uncertain')
+    cid=byid[row['id']]['campaign_id'];before=copy.deepcopy(row['before']);expected=copy.deepcopy(before)
+    expected['nm_settings']=[n for n in expected['nm_settings']if n['nm_id']!=byid[row['id']]['nm_id']]
+    expected['nm_settings'].sort(key=lambda n:n['nm_id']);actual=copy.deepcopy(states[str(cid)]);actual['nm_settings'].sort(key=lambda n:n['nm_id'])
+    assert projection(expected)==projection(actual),'Individual final readback differs; do not rewrite'
+    row.update(status='verified',after=states[str(cid)],verified_at=stamp(),readback_recovery='read_only_no_repeated_write')
+   e.update(status='done',completed_at=stamp(),readback_recovery_at=stamp());c.put(ekey,e)
+   from china_confirmed_report_recovery import register_campaigns
+   register_campaigns(c,p,e)
+   from china_advertising_state import AdvertisingIO
+   from china_execution_notice import deliver_result
+   notice=deliver_result(AdvertisingIO(),a,p,e)
+   assert notice and notice['status']=='sent'and notice['phase']=='verified'and notice['message_id']==1087
+   c.put(ROOT+':execution_readback',dict(status='verified',items=7,campaigns=states,source_execution_key=ekey,result_message_id=1087,wb_writes=0,verified_at=stamp()))
+  try:
+   verify_seven();seven_ok=True
+  except AssertionError as error:
+   seven_ok=False;c.put(ROOT+':execution_readback',dict(status='needs_review',reason=str(error),wb_writes=0,checked_at=stamp()))
   # Replay actual dated frozen inputs; no collection/model/Telegram traffic.
   s=c.get('china_agent:advertising_source:2026-11-17:v2')
   frozen=c.get('china_agent:advertising_midday_completed:2026-11-17:v1');compact=c.get(frozen['source_ref'])
@@ -80,6 +86,6 @@ def main():
   item=next(r for r in outputs[0]['rows']if r['campaign_id']==41270309 and r['nm_id']==1473246045)
   assert item['decision_window']['days']==['2026-11-16']and abs(item['decision_window']['metrics']['spend']-15.92)<.001
   c.put(ROOT+':regression',dict(status='verified',revision=REVISION,surfaces=['morning','midday','analyst'],identical=True,case631=item,rows=len(outputs[0]['rows']),decision_contract=outputs[0],wb_writes=0,model_calls=0,new_telegram_messages=0,checked_at=stamp()))
-  print(json.dumps(dict(status='verified',items7verified=True,three_surfaces_identical=True,case631_days=item['decision_window']['days'],wb_writes=0)))
+  print(json.dumps(dict(status='verified',items7verified=seven_ok,three_surfaces_identical=True,case631_days=item['decision_window']['days'],wb_writes=0)))
  finally:requests.sessions.Session.request=original
 if __name__=='__main__':main()
