@@ -14,7 +14,8 @@ def main():
  from china_budget_ready_model import assess_campaign
  from china_advertising_v2 import history
  io=AdvertisingIO();scope=io.get(ROOT+':scope');assert scope['owner_id']==5122667182 and scope['wb_writes']==0
- assert io.create(ROOT+':read_claim',dict(status='collecting',at=stamp())),'Read already claimed; inspect evidence before retry'
+ if not io.create(ROOT+':read_claim',dict(status='collecting',at=stamp())):
+  assert io.create(ROOT+':read_resume1_claim',dict(status='collecting',at=stamp(),reason='First checkpoint PATCH targeted missing cache row; only read requests occurred')),'Resume already claimed'
  validate_identity(Cache(),WB())
  original=requests.sessions.Session.request
  def guard(session,method,url,*args,**kw):
@@ -28,9 +29,11 @@ def main():
   assert ok,'Read-only evidence scope rejected'
   return original(session,method,url,*args,**kw)
  requests.sessions.Session.request=guard
- result=dict(status='collecting',observed_at=stamp(),wb_writes=0,telegram_calls=0,model_calls=0,errors={})
+ result=io.get(ROOT+':fresh')or dict(status='collecting',observed_at=stamp(),wb_writes=0,telegram_calls=0,model_calls=0,errors={})
+ if not io.get(ROOT+':fresh'):assert io.create(ROOT+':fresh',result)
  def save():io.put(ROOT+':fresh',result)
  def stage(key,fn):
+  if key in result and key not in result['errors']:return result[key]
   try:result[key]=fn()
   except Exception as e:result['errors'][key]=type(e).__name__+': '+str(e)[:250];save();raise
   save();return result[key]
@@ -59,12 +62,11 @@ def main():
   models=model_rows(dict(products=inputs['own'],prices=exact,stock=stocks,fx=inputs['fx']),io.get('china_agent:new_ad_economics_policy:v1'),{})
   # Existing approved, dated MSK logistics are reused, never replaced by zero.
   if models['missing']:
-   logistics={source['catalogue']['rows'][0]['vendorCode']:None} # replaced below from approved economic evidence
    delivery={'rows':{r['article']:dict(delivery_cny=source['economics']['rows'][str(r['nm_id'])]['logistics_cny'],delivery_source=source['economics']['rows'][str(r['nm_id'])]['logistics_source'],route='Moscow_FBS')for r in exact['rows']}}
    models=model_rows(dict(products=inputs['own'],prices=exact,stock=stocks,fx=inputs['fx']),io.get('china_agent:new_ad_economics_policy:v1'),delivery)
   assert not models['missing'] and set(models['rows'])==set(map(str,nms)),'Complete current own model required'
   for nm,e in models['rows'].items():e.update(published_stock=pub['amounts'][nm],published_stock_observed_at=pub['observed_at'],fx_rub_per_cny=inputs['fx']['rub_per_cny'])
-  source['economics']['rows'].update(models['rows']);raw=next(r for batch in source['batches'].values()for r in batch['stats']if r['advertId']==41332083)
+  source['economics']['rows'].update(models['rows']);raw=next(r for batch in source['batches'].values()for r in (batch['stats']or[])if r['advertId']==41332083)
   model=assess_campaign(cp,raw,source['economics'],inputs['own'],history(source.get('executions',[])),b['budget_days'],stamp())
   model['expected_bids']={str(n['nm_id']):n['bids_kopecks']for n in cp['nm_settings']};model['member_inputs']={str(r['nm_id']):dict(article=r['article'],price=r['seller_price'],cost=models['rows'][str(r['nm_id'])]['own_cogs_rub'],buyout=models['rows'][str(r['nm_id'])]['buyout'],fx=inputs['fx']['rub_per_cny'])for r in exact['rows']}
   result.update(model413=model,models413=models,fx=inputs['fx'],status='complete',completed_at=stamp());save()
