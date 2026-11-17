@@ -65,6 +65,8 @@ def run(job_id=None):
   # Expiration gates new writes; an existing execution may only recover readback.
   if datetime.now(timezone.utc)>datetime.fromisoformat(p['expires_at']) and not io.get(EXEC+str(a['job_id'])) and not (p.get('execution_kind')=='ad_create_campaigns' and io.get('china_agent:new_ad_execution:v1:'+p['plan_id'])) and not (p.get('execution_kind')=='daily_ad_actions_v2' and io.get('china_agent:daily_ad_execution:v2:'+p['plan_id'])) and not (p.get('execution_kind')=='ad_drr_rule' and io.get('china_agent:ad_rule_execution:'+p['plan_id']+':v1')):continue
   if p.get('execution_kind')=='daily_ad_actions_v2':
+   from china_daily_report_validity import valid
+   if not valid(io,p):continue # Superseded approvals cannot block a newer confirmed report.
    from china_daily_ad_actions import process_and_deliver
    process_and_deliver(io,a,p)
    continue
