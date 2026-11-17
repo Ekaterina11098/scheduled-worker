@@ -61,6 +61,7 @@ jobs:
             /.github/
             /*request*.json
       - run: python -m unittest discover -s scripts -p test_china_scheduled_report_transport.py
+      - run: python -m unittest discover -s scripts -p test_price_repair_install.py
       - name: Skip completed reports and check fallback time
         id: due
         env:
