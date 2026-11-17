@@ -1,0 +1,46 @@
+name: Post rename private comparison tests and FBS diagnosis
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  private-comparison-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: b4cd153a6f53e5027d27a0475a3c2e646bbd15e5
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests==2.32.5 python-dotenv==1.1.1
+      - name: Validate free WB sources and historical comparisons without API writes
+        run: |
+          python -m unittest discover -s tests -p test_wb_sources.py -v
+          python -m unittest discover -s tests -p test_campaign_review.py -v
+  fbs-read-only-diagnosis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the unknown warehouse and save its identity only to private state
+        env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        shell: python
+        run: |
+          import os,json,datetime,urllib.request
+          assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/scheduled-worker'
+          request=urllib.request.Request('https://marketplace-api.wildberries.ru/api/v3/warehouses',headers={'Authorization':os.environ['WB_TOKEN_3']},method='GET')
+          with urllib.request.urlopen(request,timeout=30) as r:rows=json.load(r)
+          assert isinstance(rows,list)
+          selected=[{k:v for k,v in x.items() if k in ('id','name','officeId','cargoType','deliveryType')} for x in rows if x.get('id')==2373413]
+          result={'observed_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'unknown_origin':selected,'found':len(selected)==1,'wb_writes':0,'moysklad_writes':0,'run_id':os.environ['GITHUB_RUN_ID']}
+          record={'cache_key':'diagnostic:fbs_warehouse_identity:20261117','payload':result,'expires_at':'2026-12-17T00:00:00Z'}
+          request=urllib.request.Request(os.environ['SUPABASE_URL'].rstrip('/')+'/rest/v1/telegram_api_cache?on_conflict=cache_key',data=json.dumps(record).encode(),headers={'apikey':os.environ['SUPABASE_SECRET_KEY'],'Content-Type':'application/json','Prefer':'resolution=merge-duplicates'},method='POST')
+          with urllib.request.urlopen(request,timeout=30) as r:assert r.status in (200,201,204)
+          print('WB warehouse read completed; diagnosis saved privately; no WB or MoySklad changes')
