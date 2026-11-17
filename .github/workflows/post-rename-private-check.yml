@@ -54,12 +54,19 @@ jobs:
               assert re.fullmatch('[0-9a-f-]{36}',ident)
               demand=get(ms+'entity/demand/'+ident,mh)
               item={'cache_key':row['cache_key'],'demand':facts(demand),'demand_positions':get(ms+'entity/demand/'+ident+'/positions?limit=1000',mh).get('rows',[])}
+              item['demand_fields']=sorted(demand)
+              item['demand_linked_returns']=demand.get('returns',demand.get('salesReturns'))
               try:
                   external=demand.get('externalCode','').rsplit(':',1)[0]+':salesreturn'
                   url=ms+'entity/salesreturn?'+urllib.parse.urlencode({'filter':'externalCode='+external,'limit':100})
                   returns=get(url,mh).get('rows',[])
                   item['returns']=[facts(d) for d in returns]
                   item['return_positions']={d['id']:get(ms+'entity/salesreturn/'+d['id']+'/positions?limit=1000',mh).get('rows',[]) for d in returns}
+                  recent=get(ms+'entity/salesreturn?'+urllib.parse.urlencode({'filter':'moment>='+demand['moment'][:10]+' 00:00:00','limit':1000}),mh)
+                  assert recent.get('meta',{}).get('size',0)<=1000,'Recent return list exceeds diagnostic bound'
+                  matched=[d for d in recent.get('rows',[]) if (d.get('demand')or{}).get('meta',{}).get('href')==ms+'entity/demand/'+ident]
+                  item['all_linked_returns']=[facts(d) for d in matched]
+                  item['all_linked_return_positions']={d['id']:get(ms+'entity/salesreturn/'+d['id']+'/positions?limit=1000',mh).get('rows',[]) for d in matched}
               except urllib.error.HTTPError as e:item['linked_return_read_http']=e.code
               # /new computes a template only; it does not create or post a document.
               try:
