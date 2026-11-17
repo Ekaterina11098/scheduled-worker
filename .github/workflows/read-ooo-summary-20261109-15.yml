@@ -1,0 +1,80 @@
+name: Read requested OOO weekly summary November 9-15
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/read-ooo-summary-20261109-15.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ooo-weekly-documents-source
+  cancel-in-progress: false
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Read requested report PDF privately
+        shell: python
+        env:
+          WB_TOKEN_1: ${{ secrets.WB_TOKEN_1 }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          import os,sys,json,urllib.request,urllib.error,urllib.parse,gzip,base64,io,zipfile,shutil,tempfile,subprocess,datetime as dt
+          sys.path.insert(0,'scripts')
+          import fbs_document_chain as m
+          db=m.Cache(m.Transport())
+          ROOT='weekly_report_review:ooo:20261109_20261115:'
+          access_key='weekly_report_review:ooo:documents_download_access:v1'
+          cfg=db.get(ROOT+'request:v1') or {}
+          assert cfg.get('source_requests_authorized') is True,'Owner request disabled'
+          old=db.get(ROOT+'summary_document:v1') or {}
+          if old.get('status')=='downloaded':
+           print('Existing private report document retained.');sys.exit(0)
+          now=dt.datetime.now(dt.timezone.utc);access=db.get(access_key) or {}
+          if access.get('next_allowed_at') and m.stamp(access['next_allowed_at'])>now:
+           print('Document API cooldown active; no source request.');sys.exit(0)
+          proof=db.get(ROOT+'source_proof:v1') or {}
+          ids=proof.get('report_ids') or []
+          assert len(ids)==1,'Expected exactly one requested report'
+          rid=str(ids[0]);service='weekly-implementation-report-'+rid
+          token=os.environ.get('WB_TOKEN_1','')
+          assert token,'Configured cabinet token unavailable'
+          url='https://documents-api.wildberries.ru/api/v1/documents/download?'+urllib.parse.urlencode({'serviceName':service,'extension':'zip'})
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+           def redirect_request(self,*args,**kwargs):raise RuntimeError('Redirect blocked')
+          opener=urllib.request.build_opener(NoRedirect)
+          db.put(access_key,{'status':'requesting','last_request_at':m.now(),'next_allowed_at':(now+dt.timedelta(hours=24,seconds=5)).isoformat(),'task':ROOT})
+          try:
+           with opener.open(urllib.request.Request(url,headers={'Authorization':token,'Accept-Encoding':'gzip'}),timeout=120) as resp:
+            raw=resp.read();headers=dict(resp.headers.items());http=resp.status
+            if resp.headers.get('Content-Encoding')=='gzip':raw=gzip.decompress(raw)
+          except urllib.error.HTTPError as e:
+           headers=dict(e.headers.items());retry=86405
+           for key,value in headers.items():
+            if key.casefold() in ('retry-after','x-ratelimit-retry'):
+             try:retry=max(retry,float(value)+5)
+             except ValueError:pass
+           db.put(access_key,{'status':'source_error','http':e.code,'next_allowed_at':(now+dt.timedelta(seconds=retry)).isoformat(),'task':ROOT})
+           db.put(ROOT+'summary_document:v1',{'status':'source_error','http':e.code,'at':m.now()})
+           print('Document request stopped; private receipt saved.');sys.exit(0)
+          data=json.loads(raw)['data'];assert data.get('document'),'Missing report document bytes'
+          encoded=data['document'];archive=base64.b64decode(encoded)
+          out={'status':'downloaded','at':m.now(),'http':http,'serviceName':service,'fileName':data.get('fileName'),'bytes':len(archive),'files':[],'texts':[]}
+          db.put(ROOT+'summary_document_response:v1',{'data':data})
+          with zipfile.ZipFile(io.BytesIO(archive)) as z:
+           for info in z.infolist():
+            out['files'].append({'name':info.filename,'bytes':info.file_size})
+            if info.filename.casefold().endswith('.pdf') and shutil.which('pdftotext'):
+             with tempfile.NamedTemporaryFile(suffix='.pdf') as temp:
+              temp.write(z.read(info));temp.flush()
+              text=subprocess.check_output(['pdftotext','-layout',temp.name,'-'],timeout=60).decode('utf-8')
+              out['texts'].append({'name':info.filename,'text':text})
+          db.put(ROOT+'summary_document:v1',out)
+          db.put(access_key,{'status':'read_complete','http':http,'last_request_at':now.isoformat(),'next_allowed_at':(now+dt.timedelta(hours=24,seconds=5)).isoformat(),'task':ROOT})
+          print('Requested weekly document saved privately; available PDF text retained.')
