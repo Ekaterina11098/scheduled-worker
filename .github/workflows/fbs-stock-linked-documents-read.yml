@@ -1,0 +1,50 @@
+name: Read linked documents for stock-blocked supplies
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  read-documents:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Read existing linked shipments and returns without commercial writes
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        shell: python
+        run: |
+          import os,sys
+          sys.path.insert(0,'scripts')
+          import fbs_document_chain as m
+          assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/scheduled-worker'
+          class ReadOnly(m.Transport):
+              def request(self,base,path,method='GET',body=None,params=None):
+                  if base==m.WB or base==m.MS and method!='GET':raise m.Stop('Commercial writes and WB calls prohibited')
+                  return super().request(base,path,method,body,params)
+          t=ReadOnly();db=m.Cache(t);prior=db.get('diagnostic:fbs_stock_shortages:20261117')
+          assert prior and len(prior['supplies'])==2
+          w=m.Worker(t,db,db.get(m.CONFIG))
+          def facts(doc):
+              return {k:doc.get(k) for k in ('id','name','description','moment','applicable','externalCode','sum','store','organization','agent','customerOrder','demand','returns','state') if k in doc}
+          findings=[]
+          for supply in prior['supplies']:
+              order=t.request(m.MS,'entity/customerorder/'+supply['order']['id'])
+              item={'supply_id':supply['supply']['id'],'order':facts(order),'shipments':[]}
+              for link in order.get('demands',[]):
+                  url=m.href(link);assert url.startswith(m.MS+'entity/demand/')
+                  demand=t.request(m.MS,url[len(m.MS):])
+                  entry={'document':facts(demand),'positions':w.ms_rows('entity/demand/'+demand['id']+'/positions'),'returns':[]}
+                  for ref in demand.get('returns',[]):
+                      url=m.href(ref);assert url.startswith(m.MS+'entity/salesreturn/')
+                      ret=t.request(m.MS,url[len(m.MS):])
+                      entry['returns'].append({'document':facts(ret),'positions':w.ms_rows('entity/salesreturn/'+ret['id']+'/positions')})
+                  item['shipments'].append(entry)
+              findings.append(item)
+          db.put('diagnostic:fbs_stock_linked_docs:20261117',{'observed_at':m.now(),'run_id':os.environ['GITHUB_RUN_ID'],'supplies':findings,'moysklad_writes':0,'wb_writes':0})
+          print('Linked document reads complete; findings private; commercial writes=0')
