@@ -1,0 +1,53 @@
+name: Remove only obsolete OOO question card 1265
+on:
+  push:
+    paths: ['.github/workflows/remove-old-question-1265.yml']
+permissions:
+  contents: read
+jobs:
+  remove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: /review-approval-preparation/
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install 'psycopg[binary]==3.2.10'
+      - name: Delete exact superseded message only
+        env:
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os,json,hmac,hashlib,time,urllib.request,urllib.error
+          import psycopg
+          root=os.environ['SUPABASE_SECRET_KEY'].encode()
+          pw=hmac.new(root,b'veschi:review-approval-login:20261015:v1',hashlib.sha256).hexdigest()
+          with psycopg.connect(host='aws-0-eu-central-1.pooler.supabase.com',port=5432,dbname='postgres',user='review_approval_login_20261015.abxgjoqlddhtcmjcjwxw',password=pw,sslmode='require',autocommit=True,connect_timeout=15,options='-c statement_timeout=30000') as conn:
+           def get(table,key):
+            row=conn.execute('select payload from review_approval.'+table+' where id=%s',(key,)).fetchone()
+            return json.loads(row[0]) if row else None
+           key='owner-delete-old-question:1265:20261117'
+           previous=get('events',key)
+           if previous and previous.get('status')=='confirmed':
+            print('Already confirmed');raise SystemExit(0)
+           old=get('cards','f01b09930e30e73b525507e3ee7eae18')
+           current=get('cards','6bd90e31b67f86776200cebc40b87579')
+           assert old['message_id']==1265 and old['kind']=='questions' and old['cabinet']=='token_1' and old['status']=='rework'
+           assert old['item_id']==current['item_id']=='xgXo5KEBByWDs8n6NHmE'
+           assert current['message_id']==1268 and current['status'] in ('approved','sent')
+           data=json.dumps(dict(chat_id='-1003932246120',message_id=1265)).encode()
+           request=urllib.request.Request('https://api.telegram.org/bot'+os.environ['TELEGRAM_BOT_TOKEN']+'/deleteMessage',data=data,headers={'Content-Type':'application/json'})
+           try:
+            with urllib.request.urlopen(request,timeout=30) as response: result=json.load(response)
+           except urllib.error.HTTPError as e:
+            result=json.loads(e.read())
+           if not result.get('ok') and 'message to delete not found' not in result.get('description','').lower():
+            raise RuntimeError('Telegram deletion failed: '+str(result.get('error_code')))
+           receipt=dict(status='confirmed',message_id=1265,chat_id='-1003932246120',old_card_token='f01b09930e30e73b525507e3ee7eae18',checked_at=time.time(),run_id=os.environ.get('GITHUB_RUN_ID'),wb_calls=0)
+           conn.execute('insert into review_approval.events(id,payload) values(%s,%s) on conflict(id) do update set payload=excluded.payload',(key,json.dumps(receipt)))
+           print(json.dumps(receipt))
+          PY
