@@ -1,0 +1,27 @@
+name: Recover17Nov scheduled price delivery only
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-price-delivery17-recovery.yml]
+permissions: {contents: read}
+concurrency:
+  group: china-price-reports
+  cancel-in-progress: false
+jobs:
+  recover:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[midday17-delivery-fix] Restore scheduled reports without marketplace writes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5
+      - env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          CHINA_TELEGRAM_BOT_TOKEN: ${{ secrets.CHINA_TELEGRAM_BOT_TOKEN }}
+        run: PYTHONPATH=scripts python scripts/owner_price_delivery17_recovery.py

@@ -70,10 +70,13 @@ def deliver(w):
     parts=prepared['parts'];token=os.environ['CHINA_TELEGRAM_BOT_TOKEN']
     def tg(method,body,files=None):
         try:
-            response=w.original_http(requests.Session(),'POST','https://api.telegram.org/bot'+token+'/'+method,data=body,files=files,timeout=60)
+            options=dict(data=body,files=files) if files else dict(json={k:(json.loads(v) if k in ('reply_markup','entities','link_preview_options') and isinstance(v,str) else v) for k,v in body.items()})
+            response=w.original_http(requests.Session(),'POST','https://api.telegram.org/bot'+token+'/'+method,**options,timeout=(10,60))
             value=response.json()
-        except Exception:
-            w.uncertain=True;raise RuntimeError('Telegram delivery outcome uncertain') from None
+        except requests.ConnectTimeout:
+            raise RuntimeError('Telegram connection timed out before delivery') from None
+        except Exception as exc:
+            w.uncertain=True;raise RuntimeError('Telegram delivery outcome uncertain: '+type(exc).__name__) from None
         if not response.ok or value.get('ok') is not True:
             if response.status_code==429:w.telegram_cooldown=max(1,int(value.get('parameters',{}).get('retry_after',60)))
             if response.status_code>=500:w.uncertain=True

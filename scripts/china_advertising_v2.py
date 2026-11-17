@@ -24,7 +24,7 @@ def http(io,path,method='GET',body=None):
    if attempt==1:raise
    continue
   if not r.ok:
-   if attempt==0 and r.status_code in (502,503,504):continue
+   if attempt==0 and r.status_code in (500,502,503,504):continue
    raise RuntimeError('China advertising read HTTP '+str(r.status_code))
   return r.json() if r.content else {}
 def compact_execution_records(records):

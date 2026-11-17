@@ -63,3 +63,5 @@ jobs:
         run: PYTHONPATH=../scripts:. python ../scripts/china_advertising_midday.py
 
 # Read-only transport: bounded retry after transient WB connection failure; preserve prepared economics and report identity.
+
+#17Nov: omit discarded intraday minimum dependency; completed-day checked actions remain mandatory.

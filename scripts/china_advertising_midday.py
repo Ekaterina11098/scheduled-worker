@@ -93,21 +93,10 @@ def prepare_midday(io,day,source=None):
     if p['orders']!=0 or p['spend']<price*.05 or p['clicks']<30:continue
     article=label.get('article','')
     if not article or article.startswith('WB '):continue
-    typ='search' if placement=='search' else 'recommendation'
-    j=http(io,'/api/advert/v1/bids/min','POST',dict(advert_id=c['id'],nm_ids=[nm],payment_type='cpc',placement_types=[typ]))
-    bids=[v['value'] for row in j.get('bids',[]) if row['nm_id']==nm for v in row.get('bids',[]) if v.get('type')==typ and v.get('currency')=='CNY']
-    if len(bids)!=1:raise ValueError('Fresh WB minimum incomplete')
-    action=None
-    if old>bids[0]:
-     target=max(bids[0],int(old*.8))
-     action=dict(kind='ad_set_bid',campaign_id=c['id'],nm_id=nm,placement=placement,old_minor=old,target_minor=target)
-     decision='Снизить '+money(old/100)+' → '+money(target/100)+' ¥.'
-    elif len(c['nm_settings'])>1 and c.get('restrictions',{}).get('can_change_nms'):
-     action=dict(kind='ad_exclude_sku',campaign_id=c['id'],nm_id=nm,placement=placement,old_minor=old)
-     decision='Исключить из этой РК.'
-    if action:
-     action.update(id=str(c['id'])+':'+str(nm),article=article)
-     attention.append(dict(article=article,decision=decision,action=action,spend=p['spend'],clicks=p['clicks']))
+    # Current-day zero orders are diagnostics only. Completed-day review below
+    # supplies executable actions and its own exact current minimum checks.
+    # Do not make a discarded intraday action depend on another WB minimum read.
+    continue
    # Do not propose to empty a campaign via individual approvals.
    if len(attention)==len(c.get('nm_settings',[])):attention=[]
    out.append(dict(id=c['id'],name=c['settings']['name'],draft=draft,today=metric,attention=attention,post_change_note=('По товарам после запуска/изменений полный следующий день МСК ещё не завершён; повторных действий по ним нет.' if protected else None)))
