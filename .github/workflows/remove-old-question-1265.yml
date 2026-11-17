@@ -9,10 +9,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 4
     steps:
-      - uses: actions/checkout@v4
-        with:
-          sparse-checkout: /review-approval-preparation/
-          persist-credentials: false
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - run: pip install 'psycopg[binary]==3.2.10'
