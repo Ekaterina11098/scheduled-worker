@@ -374,6 +374,26 @@ class Worker:
         docs = self.ms_rows("entity/" + typ, {"filter": "externalCode=" + ext})
         if len(docs) > 1:
             raise Stop("Duplicate document external code")
+        linked_return = False
+        if not docs and typ == "salesreturn" and payload.get("demand"):
+            parent_href = href(payload["demand"])
+            if not parent_href.startswith(MS + "entity/demand/"):
+                raise Stop("Invalid return demand identity")
+            parent = self.t.request(MS, parent_href[len(MS):])
+            returns = parent.get("returns", [])
+            if not isinstance(returns, list) or len(returns) > 1:
+                raise Stop("Existing linked returns require manual reconciliation")
+            if returns:
+                return_href = href(returns[0])
+                if not return_href.startswith(MS + "entity/salesreturn/") or any(c in return_href[len(MS + 'entity/salesreturn/'):] for c in '/?#'):
+                    raise Stop("Invalid linked return identity")
+                doc = self.t.request(MS, return_href[len(MS):])
+                if href(doc) != return_href:
+                    raise Stop("Linked return identity mismatch")
+                if doc.get("description") != payload.get("description"):
+                    raise Stop("Existing linked return comment mismatch")
+                docs = [doc]
+                linked_return = True
         if docs:
             doc = docs[0]
         elif state.get("inflight"):
@@ -405,6 +425,8 @@ class Worker:
                 raise Stop("Created document readback ambiguous")
             doc = docs[0]
         self.verify(typ, doc, payload)
+        if linked_return:
+            state["reconciled_linked_return"] = {"id": doc["id"], "at": now(), "document_changed": False}
         state.setdefault("documents", {})[typ] = {"id": doc["id"], "name": doc["name"], **meta(doc)}
         if state.get("inflight") == typ:
             state.pop("inflight", None)
@@ -544,7 +566,7 @@ class Worker:
         self._annotation_positions = state["positions"]
         annotation = self.order_annotation(supply, state.get("warehouse_routing") if route else None)
         # Preflight the exact source warehouse before writing the first document.
-        if route:
+        if route and not state.get("documents", {}).get("demand"):
             stock_payload = json.loads(json.dumps(self.c["templates"]["demand"]))
             stock_payload["store"]["meta"]["href"] = route["demand"]
             stock_payload["positions"] = state["positions"]

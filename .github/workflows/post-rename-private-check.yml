@@ -4,6 +4,65 @@ on:
 permissions:
   contents: read
 jobs:
+  reconcile-existing-returns:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    concurrency:
+      group: fbs-document-chain-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Check FBS routing, matching and replay safeguards
+        run: python -m unittest discover -s scripts -p 'test_fbs*.py'
+      - name: Reconcile exact already-existing documents without WB or MoySklad writes
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        shell: python
+        run: |
+          import os,sys,copy
+          sys.path.insert(0,'scripts')
+          import fbs_document_chain as m
+          assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/scheduled-worker'
+          class ReadOnlyCommercialTransport(m.Transport):
+              def request(self,base,path,method='GET',body=None,params=None):
+                  if base in (m.MS,m.WB) and method!='GET':raise m.Stop('Commercial writes prohibited during reconciliation')
+                  if base==m.WB:raise m.Stop('WB calls are unnecessary during return reconciliation')
+                  return super().request(base,path,method,body,params)
+          t=ReadOnlyCommercialTransport();db=m.Cache(t);config=db.get(m.CONFIG)
+          rows=[r for r in db.pending() if r['payload'].get('status')=='salesreturn_rejected' and r['payload'].get('error')=='HTTP_412 POST entity/salesreturn']
+          reconciled=0
+          for row in rows:
+              key=row['cache_key'];before=copy.deepcopy(row['payload']);state=copy.deepcopy(before)
+              db.put('diagnostic:fbs_pre_linked_return_reconciliation:'+state['supply']['id'],{'at':m.now(),'original_state':before,'run_id':os.environ['GITHUB_RUN_ID']})
+              w=m.Worker(t,db,config);w._annotation_positions=state['positions']
+              annotation=w.order_annotation(state['supply'],state.get('warehouse_routing'))
+              assert annotation,'Expected annotation policy missing'
+              links={};routing=state.get('warehouse_routing')
+              for kind in m.TYPES:
+                  payload=copy.deepcopy(config['templates'][kind])
+                  if routing:
+                      ident=routing['return_store_id'] if kind=='salesreturn' else routing['source_store_id']
+                      payload['store']['meta']['href']=m.MS+'entity/store/'+ident
+                  payload.update(positions=state['positions'],applicable=True,description=annotation['description'])
+                  if kind=='customerorder':payload['name']=state['supply']['id']
+                  elif kind=='demand':payload['customerOrder']=links['customerorder']
+                  else:payload['demand']=links['demand']
+                  links[kind]=w.ensure(kind,payload,state,key)
+              assert state.get('reconciled_linked_return'),'No exact linked manual return was found'
+              order=t.request(m.MS,'entity/customerorder/'+state['documents']['customerorder']['id'])
+              ready=m.href(order.get('state',{}))==m.href(annotation['state']) and order.get('description')==annotation['description']
+              state.update(status='complete' if ready else 'salesreturn_verified',reconciled_at=m.now(),reconciliation_run_id=os.environ['GITHUB_RUN_ID'],reconciliation_commercial_writes=0)
+              if ready:state['completed_at']=m.now();state['order_annotation']={'state_name':config['order_annotation']['state_name'],'description':annotation['description']}
+              else:state['reconciliation_needs_order_annotation']=True
+              state.pop('error',None)
+              assert db.get(key)==before,'State changed concurrently; refusing overwrite'
+              db.put(key,state);reconciled+=1
+          print('Existing linked return reconciliation finished; records=',reconciled,'WB and MoySklad writes=0')
   private-comparison-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 6

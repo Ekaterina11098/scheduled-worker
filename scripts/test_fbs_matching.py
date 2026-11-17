@@ -9,7 +9,7 @@ class Matching(unittest.TestCase):
    def request(self,base,path,**kw):
     ids=list(range(1,222)) if cancelled else [1]
     if path.endswith("/order-ids"):return {"orderIds":ids}
-    if path=="api/v3/orders/status":return {"orders":[{"id":i,"supplierStatus":"complete","wbStatus":"canceled_by_client" if cancelled and i==1 else "waiting"} for i in kw["body"]["orders"]]}
+    if path=="api/v3/orders/status":return {"orders":[{"id":i,"supplierStatus":"cancel" if cancelled and i==1 else "complete","wbStatus":"canceled_by_client" if cancelled and i==1 else "waiting"} for i in kw["body"]["orders"]]}
     if path=="api/v3/orders":return {"orders":[{"id":i,"article":"595-Noelbag-zblack"} for i in ids],"next":0}
     return {"rows":products,"meta":{"size":len(products)}}
   return m.Worker(T(),Cache(),{}).positions({"id":"WB-GI-1","closedAt":"2026-10-20T00:00:00Z"})

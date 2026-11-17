@@ -24,6 +24,8 @@ class Fake:
         if method=="POST":
             doc=copy.deepcopy(body); doc.update(id=kind,name=body.get("name",kind),sum=0,**ref(kind,kind))
             self.docs[kind].append(doc); self.writes.append(kind); return doc
+        if len(path.split('/'))==3:
+            return copy.deepcopy(next(d for d in self.docs[kind] if d['id']==path.split('/')[-1]))
         if path.endswith("/positions"):
             vals=self.docs[kind][0]["positions"]
         else:
