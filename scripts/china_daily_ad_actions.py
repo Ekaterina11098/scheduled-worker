@@ -176,7 +176,7 @@ def execute(io,a,p):
     evidence=reconcile(io,item['budget_evidence'],before)
     item=copy.deepcopy(item);item.update(budget_evidence=evidence,nm_ids=sorted(n['nm_id']for n in before['nm_settings']))
     state['funding_reconciliation']=evidence['confirmed_state_reconciliation'];save()
-   if kind in ['topup_campaign','pause_campaign','archive_campaign'] and sorted(n['nm_id'] for n in before['nm_settings'])!=item['nm_ids']:raise ValueError('Campaign composition changed since PNG')
+   if kind in ['topup_campaign','pause_campaign','archive_campaign'] and not(kind=='topup_campaign'and item.get('manual_budget_continuation')) and sorted(n['nm_id'] for n in before['nm_settings'])!=item['nm_ids']:raise ValueError('Campaign composition changed since PNG')
    if kind in ['ad_set_bid','ad_exclude_sku']:
     selected=next((n for n in before['nm_settings'] if n['nm_id']==item['nm_id']),None)
     if kind=='ad_exclude_sku' and selected is None:state.update(status='verified',already_done=True,after=before);save();continue
