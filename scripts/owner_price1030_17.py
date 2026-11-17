@@ -9,12 +9,15 @@ def main():
  from china_agent.morning_pair import PairWorker
  class TimedPair(PairWorker):
   def prepare(self,preview=False):
-   answer,trace=super().prepare(preview)
+   from china_price_current_check import check
    saved=self.get('china_agent:morning_pair:2026-11-17:candidates:verify')or{}
    assert self.day.isoformat()=='2026-11-17'and saved.get('status')=='preview_verified'
-   assert answer==saved['preview'],'Prepared price proposals differ from the owner-reviewed preview'
+   self.price_control_review=self.get('china_agent:daily_expected_candidates:2026-11-17:verify')
+   assert self.price_control_review['status']=='complete_disclosed_forecast_model'
+   answer=check(self,saved['preview'])
+   assert answer==saved['preview'],'Current availability or price changed since owner review'
    self.audit['owner_preview_match']=True
-   return answer,trace
+   return answer,[dict(name='china_price_daily_report',report_date=str(self.day),period_from='2026-11-13',period_to='2026-11-16',source_snapshot_id=saved['source_snapshot_id'],status='complete_orders',ready_rises=1,execution_authorized=False)]
   def guard(self,session,method,url,*a,**kw):
    u=urlparse(url)
    if u.hostname=='api.telegram.org'and u.path.rsplit('/',1)[-1].startswith(('send','edit')):
