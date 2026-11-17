@@ -38,7 +38,7 @@ jobs:
           out={'at':m.now(),'status':'reading','matches':len(docs),'shipments':[]}
           for d in docs:
            agent=d.get('agent',{})
-           if 'ОФФПРАЙС' not in agent.get('name','').upper():continue
+           if False:continue
            item={'demand':d,'positions':w.ms_rows('entity/demand/'+d['id']+'/positions',{'expand':'assortment'}),'linked':[]}
            for typ,field in [('salesreturn','returns'),('factureout','factureOut')]:
             refs=d.get(field,[])
@@ -52,4 +52,8 @@ jobs:
            item['files']=w.ms_rows('entity/demand/'+d['id']+'/files')
            out['shipments'].append(item)
           out['status']='read_complete';out['completed_at']=m.now();db.put(ROOT+'source:v1',out)
+          import urllib.request,base64
+          schema_url='https://www.nalog.gov.ru/html/sites/www.new.nalog.ru/files/related_activities/el_doc/el_bus_entities/pril2_16626884_xsd.zip'
+          with urllib.request.urlopen(schema_url,timeout=60) as r:schema=r.read()
+          db.put(ROOT+'schema501:v1',{'url':schema_url,'base64':base64.b64encode(schema).decode(),'bytes':len(schema)})
           print('Read-only shipment and linked document source saved privately.')
