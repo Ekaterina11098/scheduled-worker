@@ -7,7 +7,7 @@ def check(items,states,current):
  byid={s['id']:s for s in states};groups={};bad={}
  for i in items:
   s=byid.get(i['id'])
-  if i.get('kind') in AD and s and s.get('status')in('verified','accepted','uncertain') and s.get('before'):
+  if i.get('kind') in AD and s and s.get('status')in('verified','accepted','uncertain','submitting') and s.get('before'):
    groups.setdefault(i['campaign_id'],[]).append((i,s))
  for cid,pairs in groups.items():
   initial=pairs[0][1]['before'];actual=current.get(cid)
@@ -30,7 +30,7 @@ def check(items,states,current):
  return bad,groups
 
 def validate(items,states,campaign,pause=time.sleep):
- ids={i['campaign_id']for i in items if i.get('kind')in AD and any(s['id']==i['id']and s.get('before')and s.get('status')in('verified','accepted','uncertain')for s in states)}
+ ids={i['campaign_id']for i in items if i.get('kind')in AD and any(s['id']==i['id']and s.get('before')and s.get('status')in('verified','accepted','uncertain','submitting')for s in states)}
  result=dict(status='verified',read_only=True,rounds=[],checked_at=datetime.now(timezone.utc).isoformat())
  for round_no in range(2):
   if round_no:pause(3)
@@ -42,7 +42,7 @@ def validate(items,states,campaign,pause=time.sleep):
   if bad:
    result['status']='uncertain'
    for s in states:
-    if any(i['id']==s['id']and i.get('campaign_id')in bad for i in items)and s.get('status')in('verified','accepted','uncertain'):
+    if any(i['id']==s['id']and i.get('campaign_id')in bad for i in items)and s.get('status')in('verified','accepted','uncertain','submitting'):
      s.setdefault('historical_step_status',s['status']);s['status']='uncertain';s['final_readback_error']=next(bad[i['campaign_id']]for i in items if i['id']==s['id']);s['requires_read_only_reconciliation']=True
    break
  return result
