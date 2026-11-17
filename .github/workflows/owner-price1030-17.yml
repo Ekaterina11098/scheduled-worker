@@ -89,3 +89,5 @@ jobs:
           python ../scripts/test_price_rules31.py
           python -m compileall -q china_agent/morning_pair.py china_agent/daily_expected_control.py
           python ../scripts/owner_price1030_17.py
+
+# Reuse verified preview; revalidate only current exact candidate inputs.
