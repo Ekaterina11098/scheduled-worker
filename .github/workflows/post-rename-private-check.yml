@@ -55,11 +55,26 @@ jobs:
               demand=get(ms+'entity/demand/'+ident,mh)
               item={'cache_key':row['cache_key'],'demand':facts(demand),'demand_positions':get(ms+'entity/demand/'+ident+'/positions?limit=1000',mh).get('rows',[])}
               try:
-                  url=ms+'entity/salesreturn?'+urllib.parse.urlencode({'filter':'demand='+ms+'entity/demand/'+ident,'limit':100})
+                  external=demand.get('externalCode','').rsplit(':',1)[0]+':salesreturn'
+                  url=ms+'entity/salesreturn?'+urllib.parse.urlencode({'filter':'externalCode='+external,'limit':100})
                   returns=get(url,mh).get('rows',[])
                   item['returns']=[facts(d) for d in returns]
                   item['return_positions']={d['id']:get(ms+'entity/salesreturn/'+d['id']+'/positions?limit=1000',mh).get('rows',[]) for d in returns}
               except urllib.error.HTTPError as e:item['linked_return_read_http']=e.code
+              # /new computes a template only; it does not create or post a document.
+              try:
+                  request=urllib.request.Request(ms+'entity/salesreturn/new',data=json.dumps({'demand':{'meta':demand['meta']}}).encode(),headers={**mh,'Content-Type':'application/json'},method='PUT')
+                  with urllib.request.urlopen(request,timeout=30) as response:
+                      raw=response.read(3_000_000)
+                      if response.headers.get('Content-Encoding','').lower()=='gzip':raw=gzip.decompress(raw)
+                      template=json.loads(raw)
+                      item['return_template']={k:v for k,v in template.items() if k in ('positions','store','organization','agent','demand','applicable','sum','vatEnabled','vatIncluded')}
+              except urllib.error.HTTPError as e:
+                  raw=e.read()
+                  if e.headers.get('Content-Encoding','').lower()=='gzip':raw=gzip.decompress(raw)
+                  item['template_http']=e.code
+                  try:item['template_errors']=json.loads(raw).get('errors',[])
+                  except Exception:item['template_errors']=[{'error':'Response body could not be decoded'}]
               results.append(item)
           record={'cache_key':'diagnostic:fbs_rejected_returns:20261117','payload':{'observed_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'run_id':os.environ['GITHUB_RUN_ID'],'results':results,'moysklad_writes':0},'expires_at':'2026-12-17T00:00:00Z'}
           request=urllib.request.Request(sb+'?on_conflict=cache_key',data=json.dumps(record).encode(),headers={**sh,'Prefer':'resolution=merge-duplicates'},method='POST')
