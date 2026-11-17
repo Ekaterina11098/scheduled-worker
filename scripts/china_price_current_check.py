@@ -20,7 +20,7 @@ def check(worker,answer):
         p=[r for r in prices['rows'] if str(r['nm_id'])==nm];s=[r for r in stock['rows'] if r['article'].casefold()==article.casefold()]
         reason=None
         policy=worker.get('china_agent:price_review_policy:v1') or {}
-        if action=='Снижение' and nm in policy.get('decrease_excluded_nm_ids',[]):reason='owner_current_stock_decision'
+        if action=='Снижение' and policy.get('decrease_exclusion_date')==str(worker.day) and nm in policy.get('decrease_excluded_nm_ids',[]):reason='owner_current_stock_decision'
         elif nm in policy.get('excluded_nm_ids',[]):reason='owner_hold'
         elif len(p)!=1 or Decimal(str(p[0]['seller_price']))!=old:reason='price_changed'
         elif len(s)!=1 or not all(type(s[0].get(k)) in (int,float) for k in ('stock','reserve')) or s[0]['stock']-s[0]['reserve']<=0:reason='MSK_stock_unknown_or_zero'
