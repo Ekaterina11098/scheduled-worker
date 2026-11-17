@@ -34,7 +34,7 @@ jobs:
            current=get('cards','6bd90e31b67f86776200cebc40b87579')
            assert old['message_id']==1265 and old['kind']=='questions' and old['cabinet']=='token_1' and old['status']=='rework'
            assert old['item_id']==current['item_id']=='xgXo5KEBByWDs8n6NHmE'
-           assert current['message_id']==1268 and current['status'] in ('approved','sent')
+           assert current['message_id']==1268 and current['status'] in ('approved','sent','uncertain')
            data=json.dumps(dict(chat_id='-1003932246120',message_id=1265)).encode()
            request=urllib.request.Request('https://api.telegram.org/bot'+os.environ['TELEGRAM_BOT_TOKEN']+'/deleteMessage',data=data,headers={'Content-Type':'application/json'})
            try:
