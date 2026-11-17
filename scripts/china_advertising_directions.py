@@ -92,7 +92,7 @@ def campaign_table(bundle):
  for c in out['campaigns']:
   if c.get('financial_action'):c['direction_recommendations']=[c['financial_recommendation']]
   paused=[r for r in c.get('attention',[])if(r.get('action')or{}).get('paused_reduction_only')]
-  if paused and len(paused)==len(c['direction_recommendations']):
+  if not c.get('financial_action')and paused and len(paused)==len(c['direction_recommendations']):
    pairs={(r['action']['old_minor'],r['action']['target_minor'])for r in paused}
    if len(pairs)==1:
     old,target=next(iter(pairs))
@@ -159,10 +159,3 @@ def overview(bundle):
    if a and r.get('ready'):actions.append(a)
   y+=25
  finish();return files
-
-
-
-
-
-
-

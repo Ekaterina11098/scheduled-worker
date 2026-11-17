@@ -10,12 +10,13 @@ def validate_preparation_item(io,item,before):
  assert contract.get('status')in('ready_for_human_confirmation','verified')and contract.get('grants_action_permission')is False
  assert contract.get('action_hashes',{}).get(item['id'])==digest([item]),'Preparation item changed'
  assert datetime.now(timezone.utc)<datetime.fromisoformat(contract['expires_at']),'Preparation expired'
- assert before['id']==contract['campaign_id']==item['campaign_id']and before['status']==11
+ assert before['id']==contract['campaign_id']==item['campaign_id']and before['status']==contract.get('status_before',11)
  expected=contract['expected_bids'];ids={n['nm_id']for n in before['nm_settings']}
  assert set(contract['keep_nm_ids'])<=ids<=set(map(int,expected)),'Preparation composition changed'
  for n in before['nm_settings']:
   bids=n['bids_kopecks'];old=expected[str(n['nm_id'])]
-  assert bids==old or n['nm_id']in contract['keep_nm_ids']and bids==dict(old,**{contract['placement']:contract['target_minor']}),'Preparation bid changed'
+  target=(contract.get('target_bids')or{}).get(str(n['nm_id']),dict(old,**{contract['placement']:contract['target_minor']}))
+  assert bids==old or n['nm_id']in contract['keep_nm_ids']and bids==target,'Preparation bid changed'
  return True
 
 def publish_preparation(io,items,states,execution_key):
@@ -23,9 +24,10 @@ def publish_preparation(io,items,states,execution_key):
   c=io.get(ref);byid={s['id']:s for s in states}
   if not c or not all(byid.get(k,{}).get('status')=='verified'for k in c['action_hashes']):continue
   matches=[s['after']for k,s in byid.items()if k in c['action_hashes']and s.get('after')]
-  after=next((a for a in reversed(matches)if a['status']==11 and sorted(n['nm_id']for n in a['nm_settings'])==sorted(c['keep_nm_ids'])and all(n['bids_kopecks'][c['placement']]==c['target_minor']for n in a['nm_settings'])),None)
+  after=next((a for a in reversed(matches)if a['status']==c.get('status_before',11) and sorted(n['nm_id']for n in a['nm_settings'])==sorted(c['keep_nm_ids'])and all(n['bids_kopecks']==(c.get('target_bids')or{}).get(str(n['nm_id']),dict(n['bids_kopecks'],**{c['placement']:c['target_minor']}))for n in a['nm_settings'])),None)
   if not after:continue
-  routes=io.get('china_agent:campaign_economics_routes:v1');routes['campaigns'][str(c['campaign_id'])]['nm_ids']=sorted(c['keep_nm_ids']);io.put('china_agent:campaign_economics_routes:v1',routes)
+  if c.get('warehouse_role','guangzhou')=='guangzhou':
+   routes=io.get('china_agent:campaign_economics_routes:v1');routes['campaigns'][str(c['campaign_id'])]['nm_ids']=sorted(c['keep_nm_ids']);io.put('china_agent:campaign_economics_routes:v1',routes)
   c.update(status='verified',execution_key=execution_key,after=after,verified_at=datetime.now(timezone.utc).isoformat());io.put(ref,c)
 
 def validate_contract(io,item,before,now=None):
@@ -133,4 +135,3 @@ def execute(io,item,state,save,req,campaign,budget):
  routes['campaigns'][str(cid)]['verified_selected_test']=dict(action_id=item['id'],verified_at=state['verified_at'],previous_nm_ids=sorted(map(int,item['recovery_evidence']['expected_bids'])))
  io.put('china_agent:campaign_economics_routes:v1',routes)
  return state['wb_writes']
-

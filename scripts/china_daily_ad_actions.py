@@ -165,10 +165,13 @@ def execute(io,a,p):
    if item.get('paused_exclusion_only')is True:
     from china_selected_campaign_test import validate_preparation_item
     paused_exclusion=validate_preparation_item(io,item,before)
+   if item.get('preparation_ref')and not item.get('paused_exclusion_only'):
+    from china_selected_campaign_test import validate_preparation_item
+    validate_preparation_item(io,item,before)
    if before['status']!=9 and not(paused_cut or paused_exclusion):raise ValueError('Campaign no longer active')
    if item.get('paused_reduction_only')and not paused_cut:raise ValueError('Paused reduction scope changed')
    kind=item['kind'];method='PATCH'
-   if kind=='topup_campaign' and {str(n['nm_id']):n['bids_kopecks']for n in before['nm_settings']}!=(item.get('budget_evidence')or{}).get('expected_bids')and item.get('budget_evidence'):
+   if kind=='topup_campaign' and not item.get('manual_budget_continuation') and {str(n['nm_id']):n['bids_kopecks']for n in before['nm_settings']}!=(item.get('budget_evidence')or{}).get('expected_bids')and item.get('budget_evidence'):
     from china_confirmed_funding_context import reconcile
     evidence=reconcile(io,item['budget_evidence'],before)
     item=copy.deepcopy(item);item.update(budget_evidence=evidence,nm_ids=sorted(n['nm_id']for n in before['nm_settings']))
@@ -205,7 +208,8 @@ def execute(io,a,p):
    elif kind=='topup_campaign':
     from china_budget_ready_model import validate_funding
     validate_funding(io,item,before)
-    if str(cid) in (io.get('china_agent:budget_owner_policy:v1')or{}).get('do_not_fund',{}):raise ValueError('Owner forbids funding this campaign')
+    hold=(io.get('china_agent:budget_owner_policy:v1')or{}).get('do_not_fund',{}).get(str(cid))
+    if hold and hold!=item.get('supersedes_temporary_hold'):raise ValueError('Owner forbids funding this campaign')
     b=budget(cid);state['before_budget']=b;state['after_budget']=b;save()
     if b>=item['target_balance']:state.update(status='verified',already_done=True,after=before);save();continue
     if b>item['balance_before']+2:raise ValueError('Budget was funded after PNG; refresh plan')
@@ -238,6 +242,3 @@ def execute(io,a,p):
 def process_and_deliver(io,a,p):
  # execute always journals and delivers its own result, including direct recovery calls.
  return execute(io,a,p)
-
-
-

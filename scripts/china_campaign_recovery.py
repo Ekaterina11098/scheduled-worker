@@ -14,11 +14,20 @@ def _execute(io,item,state,save,req,campaign,budget):
  from china_morning_readiness import current_prices,published_stock
  from china_moysklad_read import read_stock
  cid=item['campaign_id'];e=item['recovery_evidence'];before=campaign(cid)
+ manual=False
+ if item.get('manual_continuation'):
+  from china_loss_control import digest
+  contract=io.get(item.get('continuation_contract',''))or{}
+  assert contract.get('status')=='ready_for_human_confirmation'and contract.get('grants_action_permission')is False
+  assert contract.get('action_sha256')==digest([item])and contract.get('maximum_funding_cny')==item['amount_cny']
+  assert datetime.now(timezone.utc)<datetime.fromisoformat(contract['expires_at'])
+  assert item.get('keep_existing_bids')is True and e.get('risk_disclosed_before_confirmation')is True
+  manual=True
  assert item['kind']=='recover_campaign' and before['status']==11,'Recovery requires paused campaign'
  assert before['currency']=='CNY' and before['bid_type']=='manual' and before['settings']['payment_type']=='cpc'
  assert cid not in (40811856,) and not ({1473245494,1473245510}&{n['nm_id']for n in before['nm_settings']}),'Protected campaign/product'
  assert e['period_to']<datetime.now(timezone.utc).astimezone(__import__('zoneinfo').ZoneInfo('Europe/Moscow')).date().isoformat()
- assert e['modeled_after_ads_cny']>0 and e['stress_after_ads_cny']>0 and e['preliminary']is True
+ assert e['modeled_after_ads_cny']>0 and (e['stress_after_ads_cny']>0 or manual) and e['preliminary']is True
  assert 0<=(datetime.now(timezone.utc)-datetime.fromisoformat(e['observed_at'].replace('Z','+00:00'))).total_seconds()<=24*3600,'Recovery economics expired'
  actual={str(n['nm_id']):n['bids_kopecks']for n in before['nm_settings']}
  assert actual==e['expected_bids'],'Recovery composition/bids changed'
@@ -28,7 +37,7 @@ def _execute(io,item,state,save,req,campaign,budget):
  quote=req('/api/advert/v1/bids/min','POST',dict(advert_id=cid,nm_ids=ids,payment_type='cpc',placement_types=['search'if zone=='search'else'recommendation']))
  minima={r['nm_id']:next((v['value']for v in r['bids']if v['currency']=='CNY'and v['type']==('search'if zone=='search'else'recommendation')),None)for r in quote['bids']}
  keep=item.get('keep_existing_bids')is True
- assert set(minima)==set(ids) and all(type(minima[n])is int and 0<minima[n]<=item['target_minor']and (item['target_minor']==actual[str(n)][zone]if keep else item['target_minor']<actual[str(n)][zone])for n in ids),'Recovery minimum changed'
+ assert set(minima)==set(ids) and all(type(minima[n])is int and 0<minima[n]<=(actual[str(n)][zone]if keep else item['target_minor'])and (actual[str(n)][zone]>0 if keep else item['target_minor']<actual[str(n)][zone])for n in ids),'Recovery minimum changed'
  prices=current_prices(io,ids);pub=published_stock(io,prices,ids);stock=read_stock([r['article']for r in prices['rows']]);stocks={r['article'].casefold():r for r in stock['rows']}
  assert stock['coverage_complete']and not pub['missing_nm_ids']and {r['nm_id']for r in prices['rows']}==set(ids),'Fresh recovery coverage incomplete'
  cost_increase_rub=0
@@ -56,7 +65,7 @@ def _execute(io,item,state,save,req,campaign,budget):
    assert days,'Recovery attribution window missing'
    order_count=sum(d['orders']for d in days)
   delta=order_count*cost_increase_rub/fx
-  assert e['modeled_after_ads_cny']-delta>0 and e['stress_after_ads_cny']-delta>0,'Current COGS no longer supports the approved stress model'
+  assert e['modeled_after_ads_cny']-delta>0 and (e['stress_after_ads_cny']-delta>0 or manual),'Current COGS no longer supports the approved stress model'
   state['cost_revalidation']=dict(positive_increase_rub=cost_increase_rub,worst_case_model_delta_cny=delta,attributions_upper_bound=order_count,fx_rub_per_cny=fx)
  state.update(before=before,before_budget=budget(cid),steps=[]);save()
  assert state['before_budget']==item['balance_before'],'Campaign already funded; refresh recovery'
@@ -69,6 +78,9 @@ def _execute(io,item,state,save,req,campaign,budget):
   fields=['id','currency','bid_type','settings']
   return got['status']==status and all(got[k]==expected[k]for k in fields)and sorted(got['nm_settings'],key=lambda n:n['nm_id'])==sorted(expected['nm_settings'],key=lambda n:n['nm_id'])
  def step(label,path,method,body,verify):
+  if manual:
+   from china_daily_report_validity import require
+   require(io,io.daily_report_plan)
   s=dict(id=label,status='submitting',request=dict(path=path,method=method,body=body));state['steps'].append(s);state['status']='submitting';save()
   try:
    s['response']=req(path,method,body);s['status']='accepted';state['wb_writes']=state.get('wb_writes',0)+1;save()
@@ -103,5 +115,3 @@ def _execute(io,item,state,save,req,campaign,budget):
   except Exception:
    state['policy_reconciliation_required']=True;save()
  return state['wb_writes']
-
-

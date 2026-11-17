@@ -65,4 +65,3 @@ class SelectedTest(unittest.TestCase):
  def test_uncertain_funding_cannot_resume(self):
   s,w,_,_=self.run_flow(fail='/deposit?');self.assertEqual(s['status'],'uncertain');self.assertEqual(len(w),1);self.assertFalse(any('/start?'in x for x in w))
 if __name__=='__main__':unittest.main()
-

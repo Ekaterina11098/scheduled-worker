@@ -15,7 +15,8 @@ def proven(item,state):
   expected=copy.deepcopy(before.get('nm_settings',[]))
   if item.get('selected_test'):
    expected=[n for n in expected if n['nm_id']in item['nm_ids']]
-  for member in expected:member['bids_kopecks'][item['placement']]=item['target_minor']
+  if not item.get('keep_existing_bids'):
+   for member in expected:member['bids_kopecks'][item['placement']]=item['target_minor']
   return before.get('status')==11 and after.get('status')==9 and sorted(expected,key=lambda n:n['nm_id'])==sorted(after.get('nm_settings',[]),key=lambda n:n['nm_id']) and state.get('after_budget',-1)>=state.get('before_budget',0)+item['amount_cny']-2 and [s.get('status')for s in state.get('steps',[])]==['verified']*(4 if item.get('selected_test')else 3)
  if before.get('status')!=after.get('status'):return False
  if kind=='topup_campaign':
@@ -103,6 +104,3 @@ def deliver_registered(io,key,e):
   raise ValueError('Completion notice authorization mismatch')
  p=dict(p,execution_key=key)
  return deliver_result(io,a,p,e)
-
-
-

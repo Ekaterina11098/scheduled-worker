@@ -37,10 +37,14 @@ def recommendations(c):
    out.append(r['article']+': '+r['decision'])
  return out or ['Не требуется']
 
-def budget_column(c):
+def _budget_column_base(c):
  """Owner-approved display only; execution conditions remain in the structured plan."""
+ if (c.get('financial_action')or{}).get('manual_continuation'):
+  a=c['financial_action']
+  return 'Пополнить на '+str(a['amount_cny'])+' CNY и возобновить.\nСостав и ставки без изменений; есть риск окупаемости.'
  if (c.get('financial_action')or{}).get('selected_test'):
-  return 'Тест: пополнить на '+str(c['financial_action']['amount_cny'])+' CNY.\nПосле проверки рекламного PNG: состав 027, 68, 160, 161 по 0,28 CNY. Возобновить. Плановый выкуп 40%: +37,93 CNY; при 32%: −25,44. Малая выборка, есть риск минуса.'
+  a=c['financial_action']
+  return 'Тест: пополнить на '+str(a['amount_cny'])+' CNY.\nВозобновить после проверки состава четырёх товаров в рекламном PNG. Плановый выкуп 40%; эффективность ещё не доказана.'
  if (c.get('financial_action')or{}).get('kind')=='recover_campaign':return 'Пополнить на '+str(c['financial_action']['amount_cny'])+' CNY.\nВключает снижение всех ставок до '+str(c['financial_action']['target_minor']/100)+' CNY и возобновление.'
  if (c.get('financial_action')or{}).get('kind')=='pause_campaign':return 'Не пополнять.\nПредлагается приостановить РК.'
  if c.get('owner_budget_refused'):return 'Пока не пополнять'
@@ -52,6 +56,11 @@ def budget_column(c):
  if amount is None:return 'Сумма не рассчитана'
  if (c.get('budget_action')or{}).get('kind')=='topup_campaign'or c.get('budget_economics_status')=='positive':return ('Тест: пополнить на 'if (c.get('campaign_budget_economics')or{}).get('stress_after_ads_cny',0)<0 else'Пополнить на ')+str(int(amount))+' CNY.'
  return 'Пока не пополнять.\nПоложительная экономика РК не подтверждена.'
+def budget_column(c):
+ text=_budget_column_base(c)
+ note=c.get('budget_duration_note')
+ return text+'\n'+note if note else text
+
 def _render_legacy(bundle):
  bundle=dict(bundle,campaigns=sorted(bundle['campaigns'],key=lambda c:not any(r.get('action') for r in c.get('attention',[]))))
  W=2400;H=6500;xs=[44,355,650,870,1090,1700,2356];files=[]
@@ -128,7 +137,7 @@ def _render_legacy(bundle):
   a=c.get('financial_action')or{}
   if a.get('kind')=='recover_campaign':
    ref=a['recovery_evidence'].get('spend_cny',c.get('period',{}).get('spend'))
-   c.update(budget_reference_need=ref,budget_cash_gap=max(0,ref-c['balance'])if ref is not None else None,budget_average_daily=ref/3 if ref is not None else None,budget_reference_label='Ориентир 3 дней нового теста: 'if a.get('selected_test')else'Расход за 3 дня: ')
+   c.update(budget_reference_need=ref,budget_cash_gap=max(0,ref-c['balance'])if ref is not None else None,budget_average_daily=ref/3 if ref is not None else None,budget_reference_label='Резерв по темпу вчера (3 дня): 'if a.get('manual_continuation')else'Ориентир 3 дней нового теста: 'if a.get('selected_test')else'Расход за 3 дня: ')
  im,d=canvas('Китай · бюджеты и суммы пополнения');y=240;actions=[]
  selected=[c for c in bundle['campaigns'] if c.get('budget_review_required')or c.get('financial_action')or c.get('budget_audit_state')=='reviewed_no_fund']
  for c in selected:
@@ -151,7 +160,7 @@ def _render_legacy(bundle):
   bp=c.get('budget_period')
   budget_days=bundle.get('budget_days') or ([] if bundle.get('intraday') else bundle.get('days',[]))
   budget_day_label=__import__('datetime').date.fromisoformat(budget_days[-1]).strftime('%d.%m') if budget_days else 'неизвестную дату'
-  for offset,label,value in [(64,'Вчера, '+budget_day_label+': ',c['last']['spend'] if c.get('last') else None),(104,'Расход завершённых 3 дней: ',bp['spend'] if bp else None),(144,'Средний расход в день: ',c.get('budget_average_daily'))]:
+  for offset,label,value in [(64,'Вчера, '+budget_day_label+': ',c['last']['spend'] if c.get('last') else None),(104,'Расход завершённых 3 дней: ',bp['spend'] if bp else None),(144,c.get('budget_daily_label','Средний расход в день: '),c.get('budget_average_daily'))]:
    d.text((860,y+offset),label+money(value)+' ¥',font=font(27),fill=INK)
   for offset,label,value in [(200,'ДРР завершённых дней: ',bp),(242,'ДРР за '+budget_day_label+': ',c.get('last'))]:
    d.text((860,y+offset),label,font=font(27),fill=INK)
@@ -164,7 +173,7 @@ def _render_legacy(bundle):
   if action:actions.append(action)
  if not selected:
   d.text((44,y),'Проверены все РК: нет новых пополнений или неразобранных бюджетных рисков.',font=font(29),fill=INK);y+=55
- footer='Резерв на 3 дня = расход за 3 завершённых дня; нехватка = резерв − остаток. Сумма округлена вверх до 50 ¥, минимум WB '+money(bundle.get('budget_minimum_topup_cny',100))+' ¥. Пополнение — только после отдельной команды на готовую рекомендацию. Решения по РК — в рекламном PNG.'
+ footer=bundle.get('budget_footer_text')or'Резерв на 3 дня = расход за 3 завершённых дня; нехватка = резерв − остаток. Сумма округлена вверх до 50 ¥, минимум WB '+money(bundle.get('budget_minimum_topup_cny',100))+' ¥. Пополнение — только после отдельной команды на готовую рекомендацию. Решения по РК — в рекламном PNG.'
  if bundle.get('owner_unified_approval'):footer+=' Реклама и пополнения — единый план. Ответ «Сделай всё» на любой из двух PNG выполняет весь согласованный набор один раз.'
  for line in wrap(d,footer,W-88,24):d.text((44,y+10),line,font=font(24),fill='#536b79');y+=32
  finish(im,y,'budgets',actions)
@@ -210,13 +219,3 @@ def render(bundle):
   parts=[f for f in files if f['family']==family]
   for index,f in enumerate(parts,1):f.update(kind=family+':'+str(index).zfill(3),page=index,total=len(parts))
  return files
-
-
-
-
-
-
-
-
-
-

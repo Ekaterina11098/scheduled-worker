@@ -104,6 +104,9 @@ def attach(bundle,source,changes):
 
 def validate_funding(io,item,before):
  """Fresh price, own COGS/availability and exact bid composition before an explicitly approved deposit."""
+ if item.get('manual_budget_continuation'):
+  from china_manual_budget_contract import validate_funding as validate_manual
+  return validate_manual(io,item,before)
  from china_advertising_v2 import http
  from china_morning_readiness import current_prices,published_stock
  from china_moysklad_read import read_stock
@@ -136,6 +139,3 @@ def validate_funding(io,item,before):
   if not finite(q)and st['price']/100>old['cost']:raise ValueError('Changed COGS with unknown own buyout; refresh review')
   if finite(q)and finite(fx)and fx>0:delta+=evidence['attributed_orders_by_nm'].get(nm,0)*q*(st['price']/100-old['cost'])/fx
  if evidence['modeled_after_ads_cny']-delta<=0:raise ValueError('Current COGS no longer supports provisional funding model')
-
-
-
