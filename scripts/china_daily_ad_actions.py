@@ -230,6 +230,8 @@ def execute(io,a,p):
    save()
   except Exception as ex:
    state.update(status='uncertain' if state['status']=='submitting' else state['status'] if state['status'] in ['accepted','uncertain','verified'] else 'blocked',reason=str(ex) if isinstance(ex,(ValueError,RuntimeError)) else type(ex).__name__);save()
+ from china_package_readback import validate as validate_package
+ e['package_readback']=validate_package(execution_order(p['items']),e['items'],campaign);save()
  if any(x.get('preparation_ref')for x in p['items']):
   from china_selected_campaign_test import publish_preparation
   publish_preparation(io,p['items'],e['items'],key)
