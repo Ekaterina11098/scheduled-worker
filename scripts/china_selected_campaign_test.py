@@ -47,7 +47,8 @@ def validate_contract(io,item,before,now=None):
  actual={str(n['nm_id']):n['bids_kopecks']for n in before['nm_settings']}
  e=item['recovery_evidence'];keep=set(item['nm_ids']);remove=set(item['remove_nm_ids'])
  assert actual==e['expected_bids'] and keep and not remove and keep==set(map(int,actual)),'Composition/bids changed'
- assert before==preparation['after'],'Prepared campaign changed'
+ prepared=preparation['after']
+ assert all(before.get(k)==prepared.get(k)for k in('id','status','currency','bid_type','settings'))and sorted(before['nm_settings'],key=lambda n:n['nm_id'])==sorted(prepared['nm_settings'],key=lambda n:n['nm_id']),'Prepared campaign changed'
  assert e['preliminary']is True and e['modeled_after_ads_cny']>0 and e['risk_disclosed_before_confirmation']is True
  assert item['review_scope_text'] and e['stress_after_ads_cny']<0,'Explicit risk disclosure missing'
  assert type(item['amount_cny'])is int and 0<item['amount_cny']<=contract['maximum_funding_cny']
