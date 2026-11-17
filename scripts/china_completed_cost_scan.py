@@ -18,9 +18,8 @@ def preserve_completed_cost(io,source,report_day):
    for nm in list(target):
     if nm not in wanted:target.pop(nm)
    for nm in wanted:
-    changes=[local(x['at'])for x in events if x.get('nm')==int(nm)and(x['kind']=='price'or x.get('cid')==cid and x['kind']in('bid','added','returned','relaunch'))]
-    if state.get('timestamps',{}).get('started'):changes.append(local(state['timestamps']['started']))
-    epoch=max(changes,default='1970-01-01');entry=target.get(nm)or{}
+    from china_advertising_decision_contract import changed_day
+    epoch=changed_day(source,state,int(nm));entry=target.get(nm)or{}
     if entry.get('epoch')!=epoch:entry=dict(epoch=epoch,days={},older=dict(spend=0,clicks=0,orders=0,day_count=0))
     for d in campaign.get('days',[]):
      day=d['date'][:10]
@@ -71,7 +70,7 @@ def expand(bundle,source,minima):
   existing={r['nm']for r in c.get('focus',[])}
   for n in state['nm_settings']:
    nm=n['nm_id']
-   if nm in existing or nm in(1473245494,1473245510):continue
+   if nm in existing:continue
    dates=[dateof(x['at'])for x in changes if x.get('nm')==nm and (x['kind']in('bid','price')or x.get('cid')==c['id']and x['kind']in('added','returned','relaunch'))]
    if state.get('timestamps',{}).get('started'):dates.append(dateof(state['timestamps']['started']))
    changed=max(dates,default='1970-01-01')

@@ -652,6 +652,8 @@ def prepare(io,day):
    c['direction_recommendations']=['Без изменений.']
    for r in c.get('focus',[]):r['action']=None;r['decision']='Без изменений.'
  from china_campaign_financial_review import apply as financial_review
+ from china_advertising_decision_contract import finalize
+ result=finalize(io,result,s,minimums)
  return financial_review(io,attach_new_campaign_reporting(io,result),s,minimums)
 
 

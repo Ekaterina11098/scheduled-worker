@@ -210,6 +210,8 @@ def attach(io,bundle,day):
  from china_sales_growth_review import attach as sales_review
  review=sales_review(review)
  from china_campaign_financial_review import apply as financial_review
+ from china_advertising_decision_contract import finalize
+ review=finalize(io,review,source,minima)
  review=financial_review(io,review,source,minima)
  review=validate_recommendation_readiness(review)
  key='china_agent:advertising_midday_completed:'+day+':v1'

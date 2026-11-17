@@ -48,7 +48,8 @@ def model_rows(inputs,policy,delivery):
 def apply(bundle,source,minima):
  """A high completed-day DRR at minimum CPC is reviewed now, not postponed indefinitely."""
  from china_completed_cost_scan import expand
- out=expand(bundle,source,minima);states={c['id']:c for b in source['batches'].values() for c in b['campaigns']['adverts']}
+ from china_advertising_decision_contract import normalize
+ out=normalize(expand(bundle,source,minima),source);states={c['id']:c for b in source['batches'].values() for c in b['campaigns']['adverts']}
  economics=source.get('economics',{}).get('rows',{});clock=datetime.now(timezone.utc)
  def dated(at,hours):
   try:return 0<=(clock-datetime.fromisoformat(at.replace('Z','+00:00'))).total_seconds()<=hours*3600
@@ -59,9 +60,6 @@ def apply(bundle,source,minima):
   settings={r['nm_id']:r for r in state['nm_settings']}
   zone='search' if state['settings']['placements'].get('search') else 'recommendations'
   for r in c.get('focus',[]):
-   if r['nm']in(1473245494,1473245510):
-    r['action']=None
-    continue
    if r['nm'] not in settings:
     r['action']=None;r['already_excluded']=True;continue
    if r.get('pending_first_day'):
@@ -95,7 +93,7 @@ def apply(bundle,source,minima):
    if e.get('buyout_fallback'):r['reason']+=f" Нет завершённой собственной выборки: выкуп{e['buyout']*100:g}% — допущение, не факт."
    base=dict(id=str(c['id'])+':'+str(r['nm']),campaign_id=c['id'],nm_id=r['nm'],placement=zone,old_minor=old,article=r['article'])
    own_model=e.get('sample_size',0)>=5 and not e.get('buyout_fallback') and not e.get('commission_policy_fallback')
-   decision_days=(r.get('comparison')or{}).get('to_days')or out.get('days',[])
+   decision_days=(r.get('decision_window')or{}).get('days',(r.get('comparison')or{}).get('to_days')or out.get('days',[]))
    last_day=(out.get('days')or[None])[-1]
    raw=next((z for batch in source['batches'].values()for z in batch.get('stats',[])if z['advertId']==c['id']),{})
    latest_rows=[n for d in raw.get('days',[])if d['date'][:10]==last_day and last_day in decision_days for app in d.get('apps',[])for n in app.get('nms',[])if n['nmId']==r['nm']]
@@ -166,6 +164,9 @@ def apply(bundle,source,minima):
     r['action']=None
     r['decision']=f'Сохранить {old/100:g} ¥: малая выборка; повторная оценка после следующего полного дня.'
     r['reason']+=' База для снижения/исключения пока мала; это не разрешение бессрочного теста или пополнения.'
+   if r.get('action')and (closed_zero_cut or cumulative_loss):
+    basis=cumulative if cumulative_loss else dict(coverage_from=decision_days[0],days=decision_days,spend=spend,clicks=p['clicks'])
+    r['decision']+=f" За {basis['coverage_from']}–{basis['days'][-1]}: {basis['spend']:.2f} ¥, {int(basis['clicks'])} кликов, 0 прямых заказов."
    if c['status']==11 and r.get('action'):
     a=r['action']
     # A paused campaign may only receive a separately confirmed cheaper bid.
@@ -185,15 +186,14 @@ def completed_zero_exposure(source,state,nm,report_day):
  from china_advertising_v2 import history
  from zoneinfo import ZoneInfo
  def local(at):return datetime.fromisoformat(at.replace('Z','+00:00')).astimezone(ZoneInfo('Europe/Moscow')).date().isoformat()
- dates=[local(x['at']) for x in history(source.get('executions',[]))
-        if x.get('nm')==nm and (x['kind']=='price' or
-        x.get('cid')==state['id'] and x['kind']in('bid','added','returned','relaunch'))]
- if state.get('timestamps',{}).get('started'):dates.append(local(state['timestamps']['started']))
- changed=max(dates,default='1970-01-01')
+ from china_advertising_decision_contract import changed_day
+ changed=changed_day(source,state,nm)
  raw=next((r for b in source['batches'].values() for r in b.get('stats',[]) if r['advertId']==state['id']),{})
  days=[d for d in raw.get('days',[]) if changed<d['date'][:10]<report_day]
  stored=source.get('completed_cost_ledger',{}).get(str(state['id']),{}).get(str(nm),{})
- if stored.get('epoch')!=changed:stored={}
+ # Retain dated known costs across an epoch correction, never the invalid older prefix.
+ if stored.get('epoch')!=changed:
+  stored=dict(days={d:v for d,v in stored.get('days',{}).items()if changed<d<report_day},older=stored.get('older',{})if stored.get('older',{}).get('first','')>changed else {})
  totals={d:dict(v)for d,v in stored.get('days',{}).items()if changed<d<report_day}
  older=stored.get('older',{})
  for d in days:
@@ -203,6 +203,8 @@ def completed_zero_exposure(source,state,nm,report_day):
  return dict(days=sorted(totals),completed_days=len(totals)+older.get('day_count',0),
              **{k:sum(v[k]for v in totals.values())+older.get(k,0)for k in('spend','clicks','orders')},
              changed_day=changed,coverage_from=older.get('first',min(totals)))
+
+
 
 
 
