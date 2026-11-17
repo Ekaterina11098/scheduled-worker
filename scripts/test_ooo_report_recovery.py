@@ -62,7 +62,7 @@ class Recovery(unittest.TestCase):
  def test_prepared_artifact_is_not_sent_before_target_time(self):
   def get(k):
    if k.endswith(':policy'):return {'enabled':True}
-   if k.endswith(':report'):return {'status':'ready'}
+   if k.endswith(':report'):return {'status':'ready','delivery_quality':{'status':'passed'}}
    return None
   mods={'china_codex_cloud':types.SimpleNamespace(DB=lambda:types.SimpleNamespace(get=get),stamp=lambda:'now'),'ooo_daily_review':types.SimpleNamespace(review=lambda*a:None)}
   ns={'__name__':'worker_test','__file__':str(WORKER)}
@@ -95,5 +95,27 @@ class BudgetCoverage(unittest.TestCase):
   read=self.setup_budget([[],[{'advertId':1,'currency':'KGS','total':500}]])
   with self.assertRaises(RuntimeError):read()
   self.assertEqual(read(),{'1':500,'2':None});self.assertEqual(len(self.reads),2)
+
+
+class DeliveryCompleteness(unittest.TestCase):
+ def guard(self):
+  import ast
+  tree=ast.parse(WORKER.read_text(encoding='utf-8'));ns={}
+  nodes=[n for n in tree.body if isinstance(n,ast.ClassDef)and n.name=='ReportNotReady'or isinstance(n,ast.FunctionDef)and n.name=='require_complete_statistics'or isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='REQUIRED_CAMPAIGNS'for t in n.targets)]
+  exec(compile(ast.Module(body=nodes,type_ignores=[]),'quality','exec'),ns)
+  return ns
+ def rows(self,ns):
+  return [{'advertId':cid,'currency':'KGS','days':[{'date':'2026-11-16','sum':0,'sum_price':0,'orders':0,'clicks':0,'views':0}]}for cid in ns['REQUIRED_CAMPAIGNS']]
+ def test_confirmed_zero_is_complete(self):
+  ns=self.guard();self.assertEqual(ns['require_complete_statistics'](self.rows(ns),['2026-11-16'])['status'],'passed')
+ def test_missing_archived_campaign_is_blocked(self):
+  ns=self.guard()
+  with self.assertRaises(ns['ReportNotReady']):ns['require_complete_statistics'](self.rows(ns)[:-1],['2026-11-16'])
+ def test_missing_day_is_blocked(self):
+  ns=self.guard();rows=self.rows(ns);rows[0]['days']=[]
+  with self.assertRaises(ns['ReportNotReady']):ns['require_complete_statistics'](rows,['2026-11-16'])
+ def test_wrong_currency_is_blocked(self):
+  ns=self.guard();rows=self.rows(ns);rows[0]['currency']='RUB'
+  with self.assertRaises(ns['ReportNotReady']):ns['require_complete_statistics'](rows,['2026-11-16'])
 
 if __name__=='__main__':unittest.main()

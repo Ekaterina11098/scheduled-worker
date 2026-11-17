@@ -7,6 +7,22 @@ MSK=datetime.timezone(datetime.timedelta(hours=3))
 def execute(code,path):
  path.write_text(code,encoding='utf-8');return runpy.run_path(str(path),run_name='__main__')
 def canonical(v):return json.dumps(v,sort_keys=True,separators=(',',':'))
+
+class ReportNotReady(RuntimeError):pass
+REQUIRED_CAMPAIGNS={39605581,39605579,40385586,41515989,41516310,41516903,41517233,41517533,39605582}
+def require_complete_statistics(rows,days):
+ by_id={r['advertId']:r for r in rows}
+ missing=[]
+ for cid in sorted(REQUIRED_CAMPAIGNS):
+  campaign=by_id.get(cid,{})
+  dated={r.get('date','')[:10]:r for r in campaign.get('days',[])}
+  for day in days:
+   row=dated.get(day)
+   if campaign.get('currency')!='KGS'or row is None or any(type(row.get(k))not in(int,float)or row[k]<0 for k in ('sum','sum_price','orders','clicks','views')):
+    missing.append([cid,day])
+ if missing:raise ReportNotReady('Report blocked: required campaign/day statistics incomplete; no delivery')
+ return {'status':'passed','campaign_ids':sorted(REQUIRED_CAMPAIGNS),'days':days}
+
 def worker(slot,day=None,verify=False,prepare_only=False):
  db=DB();day=day or datetime.datetime.now(MSK).date().isoformat();date=datetime.date.fromisoformat(day)
  root='ooo_agent:'+('morning:'+day if slot=='morning' else 'midday:'+day+':1500')
@@ -18,6 +34,7 @@ def worker(slot,day=None,verify=False,prepare_only=False):
  assets=json.loads((Path(__file__).parent/'ooo_report_templates.json').read_text(encoding='utf-8'))
  # Reuse immutable ready artifacts; do not recollect or rerender after preflight failures.
  if not verify and (db.get(root+':report')or{}).get('status')=='ready':
+  if(db.get(root+':report').get('delivery_quality')or{}).get('status')!='passed':raise RuntimeError('Report blocked: prepared artifact has no complete-data approval')
   if prepare_only:return {'status':'already_prepared'}
   with tempfile.TemporaryDirectory()as temp:
    execute(assets['sender'if slot=='morning'else'midsender'].replace('2026-11-11',day),Path(temp)/'send.py')
@@ -49,6 +66,8 @@ def worker(slot,day=None,verify=False,prepare_only=False):
   execute(analyzer,R/'work/analyzer.py');a=json.loads((R/'work/ooo_morning11_analysis.json').read_text(encoding='utf-8'))
   for cid in a['configurations']:a['campaigns'].setdefault(cid,{p:{}for p in ['day','three','fourteen','today']})
   z=review(a,evidence,day)
+  quality=None
+  if slot=='morning':quality=require_complete_statistics(evidence['sources']['advertising14']['data'],[(date-datetime.timedelta(days=i)).isoformat()for i in (3,2,1)])
   (R/'work/ooo_morning12_analysis.json').write_text(json.dumps(a),encoding='utf-8');(R/'work/ooo_morning12_review.json').write_text(json.dumps(z),encoding='utf-8')
   if slot=='morning':
    renderer=assets['renderer'].replace('def native(p):return {','def native(p):return None if not p else {');period=[(date-datetime.timedelta(days=i)).isoformat()for i in(3,2,1)]
@@ -71,6 +90,7 @@ def worker(slot,day=None,verify=False,prepare_only=False):
    if not verify:execute(reader,R/'work/readmid.py')
    s=db.get(root+':read')or{}
    if not s.get('data')or not s.get('steps'):raise RuntimeError('Current-day source unavailable')
+   quality=require_complete_statistics(s['data'],[day])
    s.update(day=day,observed_at=s['steps']['0']['observed_at'],status='partial',missing_ids=sorted(set(s['steps']['0']['requested_ids'])-{c['advertId']for c in s['data']}))
    (R/'work/ooo_midday11_current.json').write_text(json.dumps(s),encoding='utf-8');(R/'work/ooo_morning11_review.json').write_text(json.dumps({'actions':[],'funding':[]}),encoding='utf-8')
    (R/'work/ooo_morning11_analysis.json').write_text(json.dumps(a),encoding='utf-8')
@@ -91,7 +111,7 @@ def worker(slot,day=None,verify=False,prepare_only=False):
    k=root+':analysis:'+str(i//40000);keys.append(k);once(k,{'data':encoded[i:i+40000]})
   manifest={'cabinet':'token_1','currency':'KGS','actions':[{k:v for k,v in x.items()if k!='article'}for x in z['actions']],'topups':z['funding'],'other_changes':[]}
   plan=('morning-'+day)if slot=='morning'else('midday-'+day+'-1500')
-  report={'status':'ready','analysis':{'full_analysis':{'encoding':'base64-json-utf8','sha256':hashlib.sha256(raw).hexdigest(),'bytes':len(raw),'chunk_keys':keys}},'wb_writes':0,'model_calls':0}
+  report={'status':'ready','delivery_quality':quality,'analysis':{'full_analysis':{'encoding':'base64-json-utf8','sha256':hashlib.sha256(raw).hexdigest(),'bytes':len(raw),'chunk_keys':keys}},'wb_writes':0,'model_calls':0}
   once(root+':report',report);once(root+':telegram:input',{'owner_approved':True,'chat_id':-1003987998401,'kinds':kinds,'images':images})
   once('ooo_agent:sol_dialog:v1:publication:'+plan,{'status':'prepared','plan_id':plan,'chat_id':-1003987998401,'manifest':manifest,'manifest_sha256':hashlib.sha256(canonical(manifest).encode()).hexdigest(),'expires_at':(datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(hours=17)).isoformat(),'artifact_sha256':[x['sha256']for x in images],'receipt_keys':[root+':telegram:delivery:'+k for k in kinds]})
   if prepare_only:return {'status':'prepared','images':len(images)}
@@ -112,11 +132,13 @@ def run():
   retry=DB().get(retry_key)or{}
   if retry.get('after',0)>now.timestamp():continue
   try:print(json.dumps(worker(slot,prepare_only=prepare_only)))
-  except Exception:
+  except Exception as error:
    db=DB();attempt=int(retry.get('attempt',0))+1
    delay=min(1800,300*2**min(attempt-1,3))
    value={'attempt':attempt,'after':now.timestamp()+delay,'status':'retry_scheduled','last_failure_at':stamp()}
    db.update(retry_key,value)if db.get(retry_key)else db.once(retry_key,value)
+   if isinstance(error,ReportNotReady):
+    failures.append(slot);continue
    day=now.date().isoformat();key='ooo_agent:daily_reports:v1:attention:'+day+':'+slot
    if not db.get(key):
     import requests
