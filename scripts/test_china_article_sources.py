@@ -4,6 +4,7 @@ import china_analytic_dialog as a
 from china_article_diagnostic_read import read_current
 from test_china_article_diagnostic_read import worker,analyst,inputs,view
 from test_china_article_diagnostic import NOW
+from moysklad_warehouses import STORE_IDS
 class ReadPlanTests(unittest.TestCase):
  def test_real_read_plan_is_scoped_and_never_mutates(self):
   w=worker();an=analyst(w);data=inputs();calls=[]
@@ -41,7 +42,7 @@ class ReadPlanTests(unittest.TestCase):
  def test_real_stock_reader_requires_all_modes_gzip_and_complete_pages(self):
   w=worker();an=analyst(w)
   base='https://api.moysklad.ru/api/remap/1.2'
-  store=base+'/entity/store/00000000-0000-0000-0000-000000000001'
+  store=base+'/entity/store/'+STORE_IDS['msk']
   product=base+'/entity/product/00000000-0000-0000-0000-000000000002'
   class R:
    ok=True;status_code=200
@@ -49,7 +50,7 @@ class ReadPlanTests(unittest.TestCase):
    def json(self):return self.p
   def get(url,params,headers,timeout,allow_redirects):
    self.assertEqual(headers['Accept-Encoding'],'gzip');self.assertFalse(allow_redirects);self.assertEqual(params['limit'],100)
-   if url.endswith('/entity/store'):return R(dict(meta=dict(size=1),rows=[dict(name='МСК',meta=dict(href=store),archived=False)]))
+   if url.endswith('/entity/store'):return R(dict(meta=dict(size=1),rows=[dict(id=STORE_IDS['msk'],name='Переименованный тестовый склад',meta=dict(href=store),archived=False)]))
    if url.endswith('/entity/product'):
     self.assertEqual(params['filter'],'article=test-bag')
     return R(dict(meta=dict(size=1),rows=[dict(article='test-bag',meta=dict(href=product))]))
