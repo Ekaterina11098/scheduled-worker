@@ -368,6 +368,27 @@ class Worker:
         if totals(positions) != totals(payload["positions"]):
             raise Stop("Document positions mismatch")
 
+    def linked_demand(self, order_ref, payload):
+        parent_href = href(order_ref)
+        if not parent_href.startswith(MS + "entity/customerorder/") or any(c in parent_href[len(MS + 'entity/customerorder/'):] for c in '/?#'):
+            raise Stop("Invalid demand customer order identity")
+        parent = self.t.request(MS, parent_href[len(MS):])
+        if href(parent) != parent_href:
+            raise Stop("Linked customer order identity mismatch")
+        demands = parent.get("demands", [])
+        if not isinstance(demands, list) or len(demands) > 1:
+            raise Stop("Existing linked demands require manual reconciliation")
+        if not demands:
+            return None
+        demand_href = href(demands[0])
+        if not demand_href.startswith(MS + "entity/demand/") or any(c in demand_href[len(MS + 'entity/demand/'):] for c in '/?#'):
+            raise Stop("Invalid linked demand identity")
+        doc = self.t.request(MS, demand_href[len(MS):])
+        if href(doc) != demand_href or doc.get("description") != payload.get("description"):
+            raise Stop("Existing linked demand identity/comment mismatch")
+        self.verify("demand", doc, payload)
+        return doc
+
     def ensure(self, typ, payload, state, key):
         ext = self.c.get("document_prefix", "fbs-china") + ":" + state["supply"]["id"] + ":" + typ
         payload = {**payload, "externalCode": ext}
@@ -375,6 +396,12 @@ class Worker:
         if len(docs) > 1:
             raise Stop("Duplicate document external code")
         linked_return = False
+        linked_demand = False
+        if not docs and typ == "demand" and payload.get("customerOrder"):
+            doc = self.linked_demand(payload["customerOrder"], payload)
+            if doc:
+                docs = [doc]
+                linked_demand = True
         if not docs and typ == "salesreturn" and payload.get("demand"):
             parent_href = href(payload["demand"])
             if not parent_href.startswith(MS + "entity/demand/"):
@@ -427,6 +454,8 @@ class Worker:
         self.verify(typ, doc, payload)
         if linked_return:
             state["reconciled_linked_return"] = {"id": doc["id"], "at": now(), "document_changed": False}
+        if linked_demand:
+            state["reconciled_linked_demand"] = {"id": doc["id"], "at": now(), "document_changed": False}
         state.setdefault("documents", {})[typ] = {"id": doc["id"], "name": doc["name"], **meta(doc)}
         if state.get("inflight") == typ:
             state.pop("inflight", None)
@@ -571,7 +600,24 @@ class Worker:
             stock_payload = json.loads(json.dumps(self.c["templates"]["demand"]))
             stock_payload["store"]["meta"]["href"] = route["demand"]
             stock_payload["positions"] = state["positions"]
-            self.require_available_stock(stock_payload, state)
+            stock_payload["description"] = annotation["description"] if annotation else "WB FBS China " + supply["id"] + " / " + supply.get("name", "")
+            ext = self.c.get("document_prefix", "fbs-china") + ":" + supply["id"]
+            orders = self.ms_rows("entity/customerorder", {"filter": "externalCode=" + ext + ":customerorder"})
+            if len(orders) > 1:
+                raise Stop("Duplicate document external code")
+            demands = self.ms_rows("entity/demand", {"filter": "externalCode=" + ext + ":demand"})
+            if len(demands) > 1:
+                raise Stop("Duplicate document external code")
+            existing = None
+            if orders:
+                stock_payload["customerOrder"] = meta(orders[0])
+                if demands:
+                    self.verify("demand", demands[0], stock_payload)
+                    existing = demands[0]
+                else:
+                    existing = self.linked_demand(meta(orders[0]), stock_payload)
+            if not existing:
+                self.require_available_stock(stock_payload, state)
         links = {}
         for typ in TYPES:
             payload = json.loads(json.dumps(self.c["templates"][typ]))
