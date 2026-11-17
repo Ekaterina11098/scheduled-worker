@@ -118,4 +118,14 @@ class DeliveryCompleteness(unittest.TestCase):
   ns=self.guard();rows=self.rows(ns);rows[0]['currency']='RUB'
   with self.assertRaises(ns['ReportNotReady']):ns['require_complete_statistics'](rows,['2026-11-16'])
 
+
+ def test_archived_missing_does_not_block_nonarchived(self):
+  ns=self.guard();rows=self.rows(ns);omitted=rows.pop()['advertId']
+  cfg={str(cid):{'status':7 if cid==omitted else 9}for cid in ns['REQUIRED_CAMPAIGNS']}
+  self.assertEqual(ns['require_complete_statistics'](rows,['2026-11-16'],cfg)['status'],'passed')
+ def test_paused_missing_still_blocks(self):
+  ns=self.guard();rows=self.rows(ns);omitted=rows.pop()['advertId']
+  cfg={str(cid):{'status':11 if cid==omitted else 9}for cid in ns['REQUIRED_CAMPAIGNS']}
+  with self.assertRaises(ns['ReportNotReady']):ns['require_complete_statistics'](rows,['2026-11-16'],cfg)
+
 if __name__=='__main__':unittest.main()

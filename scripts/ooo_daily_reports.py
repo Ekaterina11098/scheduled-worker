@@ -10,10 +10,11 @@ def canonical(v):return json.dumps(v,sort_keys=True,separators=(',',':'))
 
 class ReportNotReady(RuntimeError):pass
 REQUIRED_CAMPAIGNS={39605581,39605579,40385586,41515989,41516310,41516903,41517233,41517533,39605582}
-def require_complete_statistics(rows,days):
+def require_complete_statistics(rows,days,configurations=None):
  by_id={r['advertId']:r for r in rows}
  missing=[]
- for cid in sorted(REQUIRED_CAMPAIGNS):
+ required=REQUIRED_CAMPAIGNS if configurations is None else {int(cid)for cid,cfg in configurations.items()if cfg.get('status')!=7}
+ for cid in sorted(required):
   campaign=by_id.get(cid,{})
   dated={r.get('date','')[:10]:r for r in campaign.get('days',[])}
   for day in days:
@@ -21,7 +22,7 @@ def require_complete_statistics(rows,days):
    if campaign.get('currency')!='KGS'or row is None or any(type(row.get(k))not in(int,float)or row[k]<0 for k in ('sum','sum_price','orders','clicks','views')):
     missing.append([cid,day])
  if missing:raise ReportNotReady('Report blocked: required campaign/day statistics incomplete; no delivery')
- return {'status':'passed','campaign_ids':sorted(REQUIRED_CAMPAIGNS),'days':days}
+ return {'status':'passed','campaign_ids':sorted(required),'policy':'nonarchived_rows_v2','days':days}
 
 def worker(slot,day=None,verify=False,prepare_only=False):
  db=DB();day=day or datetime.datetime.now(MSK).date().isoformat();date=datetime.date.fromisoformat(day)
@@ -67,7 +68,7 @@ def worker(slot,day=None,verify=False,prepare_only=False):
   for cid in a['configurations']:a['campaigns'].setdefault(cid,{p:{}for p in ['day','three','fourteen','today']})
   z=review(a,evidence,day)
   quality=None
-  if slot=='morning':quality=require_complete_statistics(evidence['sources']['advertising14']['data'],[(date-datetime.timedelta(days=i)).isoformat()for i in (3,2,1)])
+  if slot=='morning':quality=require_complete_statistics(evidence['sources']['advertising14']['data'],[(date-datetime.timedelta(days=i)).isoformat()for i in (3,2,1)],a['configurations'])
   (R/'work/ooo_morning12_analysis.json').write_text(json.dumps(a),encoding='utf-8');(R/'work/ooo_morning12_review.json').write_text(json.dumps(z),encoding='utf-8')
   if slot=='morning':
    renderer=assets['renderer'].replace('def native(p):return {','def native(p):return None if not p else {');period=[(date-datetime.timedelta(days=i)).isoformat()for i in(3,2,1)]
@@ -90,7 +91,7 @@ def worker(slot,day=None,verify=False,prepare_only=False):
    if not verify:execute(reader,R/'work/readmid.py')
    s=db.get(root+':read')or{}
    if not s.get('data')or not s.get('steps'):raise RuntimeError('Current-day source unavailable')
-   quality=require_complete_statistics(s['data'],[day])
+   quality=require_complete_statistics(s['data'],[day],s.get('current_statuses')or a['configurations'])
    s.update(day=day,observed_at=s['steps']['0']['observed_at'],status='partial',missing_ids=sorted(set(s['steps']['0']['requested_ids'])-{c['advertId']for c in s['data']}))
    (R/'work/ooo_midday11_current.json').write_text(json.dumps(s),encoding='utf-8');(R/'work/ooo_morning11_review.json').write_text(json.dumps({'actions':[],'funding':[]}),encoding='utf-8')
    (R/'work/ooo_morning11_analysis.json').write_text(json.dumps(a),encoding='utf-8')
