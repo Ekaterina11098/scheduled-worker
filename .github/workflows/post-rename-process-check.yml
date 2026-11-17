@@ -32,6 +32,8 @@ jobs:
           python -m unittest discover -s tests -p test_advertising_daily_png.py
           python -m unittest discover -s tests -p test_advertising_weekly_png.py
           python -m unittest discover -s tests -p test_no_order_spend.py
+      - name: FBS routing and existing-return safeguards
+        run: python -m unittest discover -s scripts -p 'test_fbs*.py'
   read-only-integrations:
     runs-on: ubuntu-latest
     timeout-minutes: 8
@@ -71,6 +73,8 @@ jobs:
               assert isinstance(d.get('cards'),list),'WB card response missing'
           d=read('MoySklad','https://api.moysklad.ru/api/remap/1.2/entity/product?limit=1',{'Authorization':'Bearer '+os.environ['MOYSKLAD_API_TOKEN'],'Accept':'application/json;charset=utf-8','Accept-Encoding':'gzip'})
           assert isinstance(d.get('rows'),list),'MoySklad response missing'
+          d=read('Approved Guangzhou store','https://api.moysklad.ru/api/remap/1.2/entity/store/2233c6a7-d906-11f1-0a80-197e004df0d2',{'Authorization':'Bearer '+os.environ['MOYSKLAD_API_TOKEN'],'Accept':'application/json;charset=utf-8','Accept-Encoding':'gzip'})
+          assert d.get('name')=='Гуанджоу' and not d.get('archived'),'Approved store identity mismatch'
           d=read('Private state',os.environ['SUPABASE_URL'].rstrip('/')+'/rest/v1/telegram_api_cache?select=cache_key&limit=1',{'apikey':os.environ['SUPABASE_SECRET_KEY']})
           assert isinstance(d,list),'Private state response missing'
   active-process-inventory:
@@ -112,7 +116,7 @@ jobs:
       actions: write
       contents: read
     steps:
-      - name: Cancel only the five known stale pre-rename runs
+      - name: Remove only the five exported empty runs explicitly approved by owner
         env:
           GH_TOKEN: ${{ github.token }}
         shell: python
@@ -131,25 +135,30 @@ jobs:
                   except Exception:message=''
                   return e.code,{'message':message}
           targets={44159521553:'review-approval-process.yml',43098575975:'test.yml',43098575916:'all-cabinet-model-audit.yml',43098268944:'all-cabinet-model-audit.yml',43098269024:'test.yml'}
-          unresolved=[]
+          # Owner explicitly approved deletion of these five empty records on 2026-11-17.
+          # Preflight the entire fixed list before any DELETE; never delete a run with jobs.
+          eligible=[]
           for run_id,workflow in targets.items():
               path='/actions/runs/'+str(run_id)
               code,run=api(path)
+              if code==404:
+                  print(run_id,'already removed');continue
               assert code==200 and run['repository']['id']==1403427904
               assert run['path']=='.github/workflows/'+workflow
               assert run['created_at']<'2026-11-17T19:54:00Z'
               assert str(run_id)!=os.environ['GITHUB_RUN_ID']
-              if run['status']=='completed':
-                  print(run_id,'already completed',run.get('conclusion'));continue
-              code,body=api(path+'/cancel','POST');print(run_id,'cancel HTTP',code,body.get('message',''))
-              time.sleep(3)
-              _,run=api(path)
-              if run['status']!='completed':
-                  code,body=api(path+'/force-cancel','POST');print(run_id,'force-cancel HTTP',code,body.get('message',''))
+              assert run['status'] in ('queued','completed'),'Run became active; deletion prohibited'
+              code,jobs=api(path+'/jobs?per_page=100')
+              assert code==200 and jobs['total_count']==0 and not jobs['jobs'],'Run has jobs; deletion prohibited'
+              eligible.append(run_id)
+          for run_id in eligible:
+              path='/actions/runs/'+str(run_id)
+              code,body=api(path,'DELETE')
+              print(run_id,'DELETE HTTP',code,body.get('message',''))
+              assert code in (204,404),'GitHub refused approved empty-record removal'
               for attempt in range(6):
-                  _,run=api(path)
-                  if run['status']=='completed':break
-                  time.sleep(5)
-              print(run_id,'final status',run['status'],run.get('conclusion'))
-              if run['status']!='completed':unresolved.append(run_id)
-          if unresolved:raise RuntimeError('GitHub left stale runs unresolved: '+str(unresolved))
+                  code,_=api(path)
+                  if code==404:break
+                  time.sleep(2)
+              assert code==404,'Removal readback not confirmed'
+              print(run_id,'removed and verified absent')

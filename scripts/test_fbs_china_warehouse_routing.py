@@ -49,6 +49,13 @@ class ChinaRoutingTests(unittest.TestCase):
         self.assertEqual(routing["salesreturn"],m.MS+"entity/store/"+HK)
         self.assertEqual(self.state["warehouse_routing"]["wb_warehouse_id"],2308581)
 
+    def test_new_guangzhou_alias_uses_the_same_approved_origin(self):
+        routing=self.select([2373413,2373413])
+        self.assertEqual(routing['customerorder'],m.MS+'entity/store/'+GUANGZHOU)
+        self.assertEqual(routing['demand'],m.MS+'entity/store/'+GUANGZHOU)
+        self.assertEqual(routing['salesreturn'],m.MS+'entity/store/'+HK)
+        self.assertEqual(self.state['warehouse_routing']['wb_warehouse_id'],2373413)
+
     def test_msk_warehouse_selection_ignores_supply_name(self):
         self.state["supply"]["name"]="Гуанчжоу"
         routing=self.select([2126188,2126188])

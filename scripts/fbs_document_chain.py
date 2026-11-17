@@ -526,6 +526,7 @@ class Worker:
         origin_store_by_wb_id = {
             2126188: ("3c67619d-f25d-11ee-0a80-0c6f000a027a", "МСК"),
             2308581: ("2233c6a7-d906-11f1-0a80-197e004df0d2", "Гуанджоу"),
+            2373413: ("2233c6a7-d906-11f1-0a80-197e004df0d2", "Гуанджоу"),
         }
         if warehouse_id not in origin_store_by_wb_id:
             raise Stop("Unapproved WB origin warehouse ID: " + str(warehouse_id))
