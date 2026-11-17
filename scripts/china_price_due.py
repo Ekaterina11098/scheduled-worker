@@ -20,6 +20,13 @@ def main():
             preview=(request.get('action')=='verify' or request.get('correct_candidates') is True and request.get('owner_id')==5122667182) and request.get('report_date')==str(now.date()) and request.get('mode')==a.mode
         except (OSError,ValueError):pass
     if allowed and not preview:
+        q=urllib.parse.urlencode(dict(cache_key='eq.china_agent:price_publication_hold:'+str(now.date())+':v1',select='payload',limit=1))
+        secret=os.environ['SUPABASE_SECRET_KEY']
+        req=urllib.request.Request(os.environ['SUPABASE_URL'].rstrip('/')+'/rest/v1/telegram_api_cache?'+q,headers={'apikey':secret,'Authorization':'Bearer '+secret})
+        with urllib.request.urlopen(req,timeout=30) as response:holds=json.load(response)
+        if holds and holds[0]['payload'].get('status')=='held_by_owner' and holds[0]['payload'].get('owner_id')==5122667182:
+            allowed=False;reason='owner_preview_only_no_telegram'
+    if allowed and not preview:
         update=-(9800000000 if a.mode=='morning' else 9600000000)-(now.date()-date(2020,1,1)).days
         updates=[update] # Only the brief recommendations are scheduled; control is explicit-only.
         q=urllib.parse.urlencode(dict(agent_id='eq.china',update_id='in.('+','.join(map(str,updates))+')',select='id,update_id,status,tool_trace',limit=3))
