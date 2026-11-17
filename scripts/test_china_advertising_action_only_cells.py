@@ -7,8 +7,9 @@ class ActionCells(unittest.TestCase):
   c=dict(id=1,status=9,period=dict(spend=10,amount=100),last=dict(spend=6,amount=100),focus=[dict(article='660',decision='Сохранить ставку до оценки 17.11.',action=None,pending_first_day=True),dict(article='586',decision='Сохранить: малая выборка.',action=None)])
   b=dict(campaigns=[c],recommendation_directions={k:dict(rows=[])for k in ('raise','reduce','add','exclude')})
   before=copy.deepcopy(b);result=campaign_table(b)
-  self.assertEqual(recommendations(result['campaigns'][0]),['Без изменений.'])
+  self.assertEqual(recommendations(result['campaigns'][0]),['660: Сохранить ставку до оценки 17.11.'])
   self.assertEqual(result['campaigns'][0]['focus'],c['focus'])
+  self.assertFalse(any(x.get('action') for x in result['campaigns'][0]['focus']))
   self.assertEqual(b,before)
 
  def test_real_campaign_risk_action_remains_visible(self):
