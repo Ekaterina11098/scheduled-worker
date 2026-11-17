@@ -57,3 +57,10 @@ console.log('PASS: no execution on selection/review; exact scoped confirmation; 
 }
 console.log('PASS: separate funding confirmation waits for WB-verified ad preparation; no job or claim before it');
 
+
+{
+ const w=fixture();w.cache.get('china_agent:loss_plan:v1:test').items.find(i=>i.id==='up').preparation_ref='atomic-preparation';w.cache.set('atomic-preparation',{action_hashes:{up:'hash1',add:'hash2'}});
+ await w.click('gup');await w.click('review');const r=w.cache.get(ROOT+'review_message:1000');assert.match((await w.click('confirm'+r.selection_hash,7,1000)).text,/выберите вместе/);assert.equal(w.jobs.length,0);assert.equal(w.cache.get('china_agent:daily_action_claim:v1:test'),undefined);
+ await w.click('gadd');await w.click('review');const r2=w.cache.get(ROOT+'review_message:1001');await w.click('confirm'+r2.selection_hash,7,1001);assert.equal(w.jobs.length,1);
+}
+console.log('PASS: all preparation items require one complete, explicit ad selection; partial selection makes no job or claim');
