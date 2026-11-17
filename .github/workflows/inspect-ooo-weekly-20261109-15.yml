@@ -37,9 +37,11 @@ jobs:
           assert proof.get("pagination_exhausted") is True and inp.get("source_complete") is True and p.get("source_complete") is True
           assert p["status"]=="prepared" and not any(p[k] for k in ("stock_exceptions","missing_basis","missing_costs","duplicates"))
           assert (dt.datetime.now(dt.timezone.utc)-m.stamp(p["completed_at"])).total_seconds()<1800
-          assert not db.get(ROOT+"execution:v1"),"Prior execution must be reconciled"
-          assert db.claim(ROOT+"execution_claim:v1",{"at":m.now(),"run":__import__("os").environ["GITHUB_RUN_ID"]}),"Execution already claimed"
-          out={"status":"checking","at":m.now(),"documents":{}}
+          previous=db.get(ROOT+"execution:v1") or {}
+          assert previous.get("status")=="stopped" and not previous.get("documents",{}).get("salesreturns"),"Reconcile prior execution"
+          assert db.claim(ROOT+"recovery_claim:v1",{"at":m.now(),"run":__import__("os").environ["GITHUB_RUN_ID"]}),"Execution already claimed"
+          out=previous
+          out["status"]="recovering"
           def save():db.put(ROOT+"execution:v1",out)
           def norm(x):return m.href(x).split("?")[0]
           def api(path,method="GET",body=None,params=None):return t.request(m.MS,path,method,body,params)
@@ -121,8 +123,11 @@ jobs:
            out["documents"]["salesreturns"]=[]
            for ident,articles in bases.items():
             draft=templates[ident];contents=[]
+            db.put(ROOT+"return_template:v1",draft)
+            template_positions=draft["positions"]
+            if isinstance(template_positions,dict):template_positions=template_positions["rows"]
             for a,q in articles.items():
-             candidates=[x for x in draft["positions"] if norm(x["assortment"])==norm(p["products"][a][0])]
+             candidates=[x for x in template_positions if norm(x["assortment"])==norm(p["products"][a][0])]
              assert len(candidates)==1
              row=candidates[0]
              contents.append({**{k:row[k] for k in ("assortment","vat","vatEnabled") if k in row},"quantity":q,"price":0,"discount":0})
