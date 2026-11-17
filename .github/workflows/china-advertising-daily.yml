@@ -161,3 +161,5 @@ jobs:
         run: python scripts/china_change_observation.py --budget 60
 
 # Scoped recovery: validate each new campaign from its actual launch date.
+
+# Verify completed-day duplicate guard before the next scheduled preparation.

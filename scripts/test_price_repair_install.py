@@ -6,7 +6,7 @@ from install_china_codex_price import install
 
 class Install(unittest.TestCase):
     def test_agreed_time_windows(self):
-        for mode,h,m,expected in [('morning',10,29,False),('morning',10,30,True),('morning',11,15,True),('morning',11,16,False),('intraday',14,59,False),('intraday',15,0,True),('intraday',15,45,True),('intraday',15,46,False)]:
+        for mode,h,m,expected in [('morning',10,4,False),('morning',10,5,True),('morning',10,29,True),('morning',10,30,True),('morning',11,15,True),('morning',11,16,False),('intraday',14,59,False),('intraday',15,0,True),('intraday',15,45,True),('intraday',15,46,False)]:
             self.assertEqual(in_window(datetime(2026,11,9,h,m),mode),expected)
     def test_install_idempotent_preserves_existing_guards(self):
         base=Path(__file__).resolve().parents[1]

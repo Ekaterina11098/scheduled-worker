@@ -61,25 +61,4 @@ def refresh_before_send(io,day,saved,key):
     if delivery.get('parts'):return saved
     bundle,evidence=filter_bundle(io,saved['bundle'],'send')
     if evidence['status'] in ('ready','ready_with_shortfall','not_required'):return saved
-    from china_advertising_v2_png import render
-    from china_daily_ad_actions import plan
-    import base64,hashlib,json
-    slot='reserve-'+hashlib.sha256(json.dumps(bundle['reserve_preflight']['blocked_action_ids']).encode()).hexdigest()[:12]
-    files=[]
-    for index,f in enumerate(render(bundle)):
-        p=plan(io,day,f,index,slot=slot)
-        files.append(dict(kind=f['kind'],family=f['family'],page=f['page'],total=f['total'],plan_id=p['plan_id'],plan_sha256=p['plan_sha256'],action_count=len(p['items']),b64=base64.b64encode(f['bytes']).decode()))
-    archive=key+':before-'+slot
-    if not io.get(archive):
-        if not io.create(archive,saved):raise RuntimeError('Reserve artifact archive conflict')
-    for f in saved['files']:
-        pk='china_agent:loss_plan:v1:'+f['plan_id'];old=io.get(pk)
-        if old:
-            if old.get('report_message_ids'):raise RuntimeError('Cannot replace a visible proposal')
-            old.update(invalidated_at=datetime.now(timezone.utc).isoformat(),invalidation_reason='Superseded before send after current reserve check')
-            io.put(pk,old)
-    updated=dict(saved,bundle=bundle,files=files,reserve_check=evidence['receipt_key'])
-    io.put(key,updated)
-    if io.get(key)!=updated:raise RuntimeError('Revised reserve report readback failed')
-    return updated
-
+    raise RuntimeError('Current reserve evidence unavailable before publication; keep frozen full proposal and retry, no partial report')

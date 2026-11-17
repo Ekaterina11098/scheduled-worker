@@ -160,3 +160,5 @@ jobs:
           PY
           fi
 
+
+# Verify completed-day duplicate guard before the next scheduled preparation.
