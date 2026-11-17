@@ -16,6 +16,10 @@ class PackageTest(unittest.TestCase):
  def test_unrelated_bid_change_is_not_silent(self):
   i,s=self.fixture();a=cp([3]);a['nm_settings'][0]['bids_kopecks']['recommendations']=30
   self.assertTrue(check(i,s,{1:a})[0])
+ def test_submitting_request_is_actually_checked(self):
+  i,s=self.fixture();s[1]['status']='submitting';calls=[]
+  def read(cid):calls.append(cid);return cp([2,3])
+  self.assertEqual(validate(i,s,read,lambda _:None)['status'],'uncertain');self.assertEqual(calls,[1])
  def test_read_failure_is_not_success(self):
   i,s=self.fixture()
   def fail(_):raise RuntimeError('HTTP500')
