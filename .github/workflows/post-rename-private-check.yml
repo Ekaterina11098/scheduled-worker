@@ -34,11 +34,12 @@ jobs:
                   if base==m.WB:raise m.Stop('WB calls are unnecessary during return reconciliation')
                   return super().request(base,path,method,body,params)
           t=ReadOnlyCommercialTransport();db=m.Cache(t);config=db.get(m.CONFIG)
-          rows=[r for r in db.pending() if r['payload'].get('status')=='salesreturn_rejected' and r['payload'].get('error')=='HTTP_412 POST entity/salesreturn']
+          rows=[r for r in db.pending() if r['payload'].get('status') in ('customerorder_verified','demand_verified','salesreturn_rejected','salesreturn_verified') and r['payload'].get('error')=='HTTP_412 POST entity/salesreturn']
           reconciled=0
           for row in rows:
               key=row['cache_key'];before=copy.deepcopy(row['payload']);state=copy.deepcopy(before)
-              db.put('diagnostic:fbs_pre_linked_return_reconciliation:'+state['supply']['id'],{'at':m.now(),'original_state':before,'run_id':os.environ['GITHUB_RUN_ID']})
+              backup_key='diagnostic:fbs_pre_linked_return_reconciliation:'+state['supply']['id']
+              if db.get(backup_key) is None:db.put(backup_key,{'at':m.now(),'original_state':before,'run_id':os.environ['GITHUB_RUN_ID']})
               w=m.Worker(t,db,config);w._annotation_positions=state['positions']
               annotation=w.order_annotation(state['supply'],state.get('warehouse_routing'))
               assert annotation,'Expected annotation policy missing'
@@ -54,13 +55,14 @@ jobs:
                   else:payload['demand']=links['demand']
                   links[kind]=w.ensure(kind,payload,state,key)
               assert state.get('reconciled_linked_return'),'No exact linked manual return was found'
+              verified_state=copy.deepcopy(state)
               order=t.request(m.MS,'entity/customerorder/'+state['documents']['customerorder']['id'])
               ready=m.href(order.get('state',{}))==m.href(annotation['state']) and order.get('description')==annotation['description']
               state.update(status='complete' if ready else 'salesreturn_verified',reconciled_at=m.now(),reconciliation_run_id=os.environ['GITHUB_RUN_ID'],reconciliation_commercial_writes=0)
               if ready:state['completed_at']=m.now();state['order_annotation']={'state_name':config['order_annotation']['state_name'],'description':annotation['description']}
               else:state['reconciliation_needs_order_annotation']=True
               state.pop('error',None)
-              assert db.get(key)==before,'State changed concurrently; refusing overwrite'
+              assert db.get(key)==verified_state,'State changed concurrently; refusing overwrite'
               db.put(key,state);reconciled+=1
           print('Existing linked return reconciliation finished; records=',reconciled,'WB and MoySklad writes=0')
   private-comparison-tests:
