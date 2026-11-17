@@ -35,15 +35,20 @@ def validate_funding(io,item,before):
  pub=published_stock(io,current,list(map(int,actual)))
  articles=[r['article']for r in prices['rows']];parts=[read_stock(articles[start:start+20])for start in range(0,len(articles),20)]
  if not all(s['coverage_complete']for s in parts)or pub['missing_nm_ids']:raise ValueError('Fresh manual budget availability incomplete')
- stocks={r['article'].casefold():r for part in parts for r in part['rows']};delta=0
+ stocks={r['article'].casefold():r for part in parts for r in part['rows']};delta=0;unavailable_reserve=0;unavailable=[]
  for row in prices['rows']:
   nm=str(row['nm_id']);old=old_inputs[nm];stock=stocks[row['article'].casefold()]
   if row['seller_price']!=old['price']or not stock.get('price')or stock['price']<=0:raise ValueError('Manual budget price/COGS changed: '+row['article'])
-  if nm in actual and (stock['stock']-stock['reserve']<=0 or pub['amounts'][nm]<=0):raise ValueError('Advertised SKU unavailable: '+row['article'])
+  missing_stock=nm in actual and (stock['stock']-stock['reserve']<=0 or pub['amounts'][nm]<=0)
   fx=float(old.get('fx')or e.get('fx_rub_per_cny')or 0)
   if fx<=0:raise ValueError('Manual budget FX missing')
   # All attributions carry all positive cost increases at100%buyout: no profit credit from decreases/new orders.
   delta+=max(0,stock['price']/100-old['cost'])/fx
+  if missing_stock:
+   count=e.get('attributed_orders_by_nm',{}).get(nm,0);q=old.get('buyout')
+   if type(count)not in(int,float)or type(q)not in(int,float)or not 0<=q<=1:raise ValueError('Unavailable SKU contribution unknown')
+   unavailable_reserve+=count*q*max(0,old['price']-old['cost']/fx)
+   unavailable.append(nm)
  bound=e.get('attributed_orders',e.get('metrics',{}).get('orders'))
- if type(bound)not in(int,float)or bound<0 or e['modeled_after_ads_cny']-bound*delta<=0:raise ValueError('Current COGS no longer supports disclosed manual scenario')
- return dict(current_cost_delta_cny=bound*delta,associated_profit_not_proven=True)
+ if type(bound)not in(int,float)or bound<0 or len(unavailable)==len(actual)or e['modeled_after_ads_cny']-bound*delta-unavailable_reserve<=0:raise ValueError('Current COGS no longer supports disclosed manual scenario')
+ return dict(current_cost_delta_cny=bound*delta,unavailable_nm_ids=unavailable,unavailable_contribution_upper_bound_cny=unavailable_reserve,remaining_modeled_after_ads_cny=e['modeled_after_ads_cny']-bound*delta-unavailable_reserve,associated_profit_not_proven=True)
