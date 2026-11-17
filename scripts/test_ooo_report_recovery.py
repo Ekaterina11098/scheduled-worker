@@ -69,4 +69,31 @@ class Recovery(unittest.TestCase):
   with patch.dict(sys.modules,mods):exec(WORKER.read_text(encoding='utf-8'),ns)
   ns['execute']=lambda*a:(_ for _ in()).throw(AssertionError('Send attempted before target'))
   self.assertEqual(ns['worker']('morning',day='2026-11-14',prepare_only=True)['status'],'already_prepared')
+
+class BudgetCoverage(unittest.TestCase):
+ def setup_budget(self,responses,status=7):
+  import ast
+  self.state={'sources':{'configurations':{'data':{'1':{'status':9},'2':{'status':status}}}}};self.reads=[]
+  def raw(*args,**kw):self.reads.append(1);return {'adverts':responses[min(len(self.reads)-1,len(responses)-1)]}
+  fn=next(n for n in ast.walk(ast.parse(ASSETS['collector']))if isinstance(n,ast.FunctionDef)and n.name=='budgets')
+  ns={'state':self.state,'IDS':[1,2],'raw':raw,'save':lambda:None,'stamp':lambda:'now'}
+  exec(compile(ast.Module(body=[fn],type_ignores=[]),'budget','exec'),ns)
+  return ns['budgets']
+ def test_archived_omission_is_unknown_not_zero(self):
+  read=self.setup_budget([[{'advertId':1,'currency':'KGS','total':500}]])
+  self.assertEqual(read(),{'1':500,'2':None})
+ def test_missing_paused_budget_rejected(self):
+  read=self.setup_budget([[{'advertId':1,'currency':'KGS','total':500}]],status=11)
+  with self.assertRaises(RuntimeError):read()
+ def test_budget_currency_checked(self):
+  read=self.setup_budget([[{'advertId':1,'currency':'RUB','total':500}]])
+  with self.assertRaises(RuntimeError):read()
+ def test_valid_snapshot_reused(self):
+  read=self.setup_budget([[{'advertId':1,'currency':'KGS','total':500}]])
+  read();read();self.assertEqual(len(self.reads),1)
+ def test_invalid_snapshot_can_recover(self):
+  read=self.setup_budget([[],[{'advertId':1,'currency':'KGS','total':500}]])
+  with self.assertRaises(RuntimeError):read()
+  self.assertEqual(read(),{'1':500,'2':None});self.assertEqual(len(self.reads),2)
+
 if __name__=='__main__':unittest.main()
