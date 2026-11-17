@@ -34,7 +34,7 @@ def membership_override(worker, context):
     policy=worker.get('china_agent:price_review_policy:v1') or {}
     return (context.get('status')=='membership_changed'
             and policy.get('changed_membership_veto') is False
-            and policy.get('owner_source')=='codex_owner_2026-11-16'
+            and policy.get('owner_source') in ('codex_owner_2026-11-16','codex_owner_2026-11-16_order_amount_and_count')
             and policy.get('scope')=='price_recommendations')
 
 
