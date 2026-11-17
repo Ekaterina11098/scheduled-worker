@@ -37,7 +37,7 @@ def validate_contract(io,item,before,now=None):
  assert item.get('selected_test')is True and item['kind']=='recover_campaign','Selected test scope missing'
  assert item['selected_test_contract']==CONTRACT+str(item['campaign_id'])+':'+item['id'],'Wrong test contract'
  assert contract.get('status')=='ready_for_human_confirmation' and contract.get('grants_action_permission')is False,'Not a prepared proposal'
- assert contract.get('action_sha256')==digest([item]),'Frozen test action changed'
+ assert contract.get('action_sha256')==digest([item]),'Frozen test action changed: actual='+digest([item])+' expected='+str(contract.get('action_sha256'))
  assert now<datetime.fromisoformat(contract['expires_at']),'Test proposal expired'
  assert before['id']==item['campaign_id'] and before['status']==11 and before['currency']=='CNY','Paused CNY campaign required'
  assert before['bid_type']=='manual' and before['settings']['payment_type']=='cpc'
