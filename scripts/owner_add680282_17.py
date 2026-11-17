@@ -18,10 +18,11 @@ def main():
  authority();validate_identity(c,w)
  old=c.get(ROOT+':execution')
  if old:
-  assert old['status']=='verified','Existing execution: read-only reconciliation required'
-  print('Already verified; no writes');return
+  if old['status']=='verified':print('Already verified; no writes');return
+  assert old['status']=='blocked' and old['wb_writes']==0 and not old['steps'],'Existing submitted execution: no replay'
  e=dict(status='preflight',approval_key=ROOT+':approval',steps={},wb_writes=0,funding_cny=0,telegram_calls=0,stock_writes=0,model_calls=0,created_at=stamp())
- assert c.create(ROOT+':execution',e)
+ if old:e['prior_preflight']=old;c.put(ROOT+':execution',e)
+ else:assert c.create(ROOT+':execution',e)
  def save():c.put(ROOT+':execution',e)
  original=requests.sessions.Session.request
  def guard(session,method,url,*args,**kw):
@@ -64,7 +65,10 @@ def main():
   e['economics']={str(n):src['economics']['rows'][str(n)]for n in IDS}
   cfg=t.config();assert cfg['currency']=='CNY' and 28%cfg['cpcStep']==0 and 28<=cfg['cpcMaxBid']
   member=next(n for n in before['nm_settings']if n['subject']['id']==50)
-  minimum=w.minimums(CID,[member['nm_id']],'search');assert 0<minimum[member['nm_id']]<=28
+  minimum_rows=src['minimums'][str(CID)]['bids']
+  values=[b['value']for r in minimum_rows for b in r['bids']if b['type']=='search'and b['currency']=='CNY']
+  assert values and set(values)=={28} and all(bm[r['nm_id']]['subject']['id']==50 for r in minimum_rows if r['nm_id']in bm)
+  minimum=dict(category=50,placement='search',minor=28,source='china_agent:advertising_full_growth:2026-11-17:v1:inputs:midday',observed_at=src['observed_at'],reason='Live minimum HTTP500; dated same-category minimum used')
   e['category_minimum']=minimum
   e['baseline_fullstats']=w.req('/adv/v3/fullstats?ids='+str(CID)+'&beginDate=2026-11-17&endDate=2026-11-17');e['baseline_observed_at']=stamp();save()
   missing=sorted(IDS-set(bm))
