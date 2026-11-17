@@ -1,0 +1,92 @@
+name: Read requested China weekly report November 9-15
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/read-china-weekly-20261109-15.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: read-china-weekly-20261109-15
+  cancel-in-progress: false
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Read products stock and historical return bases
+        shell: python
+        env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          import sys,os,json,gzip,urllib.request,urllib.error,datetime as dt,time
+          sys.path.insert(0,"scripts")
+          import fbs_document_chain as m
+          t=m.Transport();db=m.Cache(t)
+          ROOT="weekly_report_review:china:20261109_20261115:"
+          ACCESS="weekly_report_review:china:finance_access:v1"
+          req=db.get(ROOT+"request:v1") or {}
+          assert req.get("source_requests_authorized") is True and req.get("writes_authorized") is True
+          prior=db.get(req["start_only_after"]+"final_excel:v1") or {}
+          assert prior.get("status")=="complete" and prior.get("files_delivered") is True and prior.get("accounting_status")=="complete"
+          proof=db.get(ROOT+"source_proof:v1") or {"status":"reading","rows":0,"chunks":[],"pages":[]}
+          if proof.get("pagination_exhausted"):raise SystemExit()
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+           def redirect_request(self,*args,**kwargs):raise RuntimeError("Redirect blocked")
+          op=urllib.request.build_opener(NoRedirect)
+          def request(path,body):
+           access=db.get(ACCESS) or {}
+           now=dt.datetime.now(dt.timezone.utc)
+           if access.get("next_allowed_at"):
+            delay=(m.stamp(access["next_allowed_at"])-now).total_seconds()
+            if delay>180:proof.update(status="waiting_for_server_retry",next_allowed_at=access["next_allowed_at"]);db.put(ROOT+"source_proof:v1",proof);raise SystemExit()
+            if delay>0:time.sleep(delay)
+           req=db.get(ROOT+"request:v1") or {};assert req.get("source_requests_authorized") is True
+           db.put(ACCESS,{"last_request_at":m.now(),"next_allowed_at":(dt.datetime.now(dt.timezone.utc)+dt.timedelta(seconds=65)).isoformat(),"task":ROOT})
+           r=urllib.request.Request("https://finance-api.wildberries.cn/api/finance/v1/sales-reports/"+path,method="POST",data=json.dumps(body).encode(),headers={"Authorization":os.environ["WB_TOKEN_3"],"Content-Type":"application/json","Accept-Encoding":"gzip"})
+           try:
+            with op.open(r,timeout=120) as response:
+             status=response.status;headers=dict(response.headers.items());raw=response.read()
+             if response.headers.get("Content-Encoding")=="gzip":raw=gzip.decompress(raw)
+             data=json.loads(raw) if raw else []
+           except urllib.error.HTTPError as e:
+            status=e.code;headers=dict(e.headers.items());data=None
+           wait=65
+           for k,v in headers.items():
+            if k.casefold() in ("x-ratelimit-retry","retry-after","x-ratelimit-reset"):
+             try:wait=max(wait,float(v)+5)
+             except:pass
+           next_at=(dt.datetime.now(dt.timezone.utc)+dt.timedelta(seconds=wait)).isoformat()
+           db.put(ACCESS,{"last_request_at":m.now(),"next_allowed_at":next_at,"task":ROOT,"http":status})
+           proof["pages"].append({"path":path,"http":status,"at":m.now()})
+           if status not in (200,204):
+            proof.update(status="waiting_for_server_retry" if status==429 else "source_error",http_status=status,next_allowed_at=next_at);db.put(ROOT+"source_proof:v1",proof);raise SystemExit()
+           return status,data
+          if not proof.get("reports"):
+           status,data=request("list",{"dateFrom":req["date_from"],"dateTo":req["date_to"],"period":"weekly","limit":1000,"offset":0})
+           assert status==200 and isinstance(data,list) and len(data)<1000
+           reports=[r for r in data if r["dateFrom"][:10]==req["date_from"] and r["dateTo"][:10]==req["date_to"]]
+           assert len(reports)==1
+           proof["reports"]=reports;db.put(ROOT+"source_proof:v1",proof)
+          rep=proof["reports"][0];cursor=proof.get("last_rrd_id",0)
+          seen=set()
+          for ch in proof["chunks"]:
+           for row in db.get(ch["key"]):seen.add(str(row["rrdId"]))
+          for page in range(10):
+           status,data=request("detailed/"+str(rep["reportId"]),{"limit":100000,"rrdId":cursor})
+           if status==204 or (status==200 and data==[]):
+            proof.update(status="complete",pagination_exhausted=True,completed_at=m.now(),currencies=[rep["currency"]],report_ids=[rep["reportId"]]);db.put(ROOT+"source_proof:v1",proof);print("Source pagination complete; private records retained.");raise SystemExit()
+           assert isinstance(data,list) and data
+           for row in data:
+            assert str(row["rrdId"]) not in seen and str(row["reportId"])==str(rep["reportId"])
+            seen.add(str(row["rrdId"]))
+           for offset in range(0,len(data),100):
+            key=ROOT+"source_rows:"+str(proof["rows"]+offset);batch=data[offset:offset+100];db.put(key,batch);proof["chunks"].append({"key":key,"rows":len(batch)})
+           proof["rows"]+=len(data);cursor=data[-1]["rrdId"];proof["last_rrd_id"]=cursor;proof["keys"]=list(data[0]);db.put(ROOT+"source_proof:v1",proof)
+          
