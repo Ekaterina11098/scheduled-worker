@@ -16,7 +16,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           node --input-type=module - <<'JS'
-          const base='https://api.github.com/repos/Ekaterina11098/veschi-bot-runner';
+          const base='https://api.github.com/repos/Ekaterina11098/scheduled-worker';
           const headers={Authorization:'Bearer '+process.env.GH_TOKEN,Accept:'application/vnd.github+json','Content-Type':'application/json'};
           async function request(path,method='GET',body) {
             const r=await fetch(base+path,{method,headers,body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(15000)});

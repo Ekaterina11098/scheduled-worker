@@ -133,6 +133,6 @@ def verify_rejected_deposit(db,state,token_override):
  db.update(ROOT+':execution',state);print('Read-only verification saved; no marketplace writes')
 
 if __name__=='__main__':
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner'or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Expected repository main')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker'or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Expected repository main')
  run()
 

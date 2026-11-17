@@ -102,7 +102,7 @@ def run():
  if g['nmID']!=851316021 or g['vendorCode']!='143-ReginaBag-black'or g['currencyIsoCode4217']!='RUB'or g['discount']!=46 or g['clubDiscount']!=0 or any(z['price']!=13000 or z['discountedPrice']!=7020 for z in g['sizes']):raise RuntimeError('Final price readback mismatch')
  w.state.update(status='verified',price_after=g,verified_at=w.stamp(),first_full_test_day='2026-11-05',advertising_test_full_days=2,price_test_full_days=3);w.save()
 if __name__=='__main__':
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner'or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Expected main repository')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker'or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Expected main repository')
  if not w.claim(w.state):raise SystemExit('Existing execution retained; no replay')
  try:run()
  except Exception as e:w.state.update(status='attention',error=str(e)if isinstance(e,(RuntimeError,ValueError,PermissionError,KeyError))else type(e).__name__);w.save()

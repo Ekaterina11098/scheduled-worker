@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 from china_advertising_state import AdvertisingIO as IO
 from china_advertising_delivery import deliver,telegram_sender
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  local=datetime.now(ZoneInfo('Europe/Moscow'));day=local.date().isoformat();io=IO()
  if (io.get('china_agent:advertising_delivery:'+day+':v1') or {}).get('status')=='delivered':
   print(json.dumps(dict(status='already_delivered',day=day,telegram_calls=0,wb_writes=0)));return

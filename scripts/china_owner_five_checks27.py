@@ -28,7 +28,7 @@ def stocks():
  if len(rows)!=5 or {r['article'].casefold() for r in rows}!=wanted:raise ValueError('Five unique stock records required')
  return rows
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main' or datetime.now(timezone.utc).date().isoformat()!='2026-10-27':raise ValueError('Dated public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main' or datetime.now(timezone.utc).date().isoformat()!='2026-10-27':raise ValueError('Dated public main only')
  c=Cache()
  if c.get(KEY):print('Already checked; no repeated polling');return
  wb=ReadWB();validate_identity(c,wb)

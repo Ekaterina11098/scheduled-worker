@@ -23,7 +23,7 @@ class W:
   return self.c.req('GET',params)
  def save(self,*a,**kw):raise PermissionError('No dialog or marketplace writes')
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main' or str(datetime.now(MSK).date())!='2026-10-27':raise ValueError('Dated public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main' or str(datetime.now(MSK).date())!='2026-10-27':raise ValueError('Dated public main only')
  c=Cache()
  if c.get(KEY):print('Existing audit; no repeated polling');return
  wb=ReadWB();validate_identity(c,wb);w=W(c);io=IO()

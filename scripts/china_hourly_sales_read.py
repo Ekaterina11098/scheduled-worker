@@ -156,7 +156,7 @@ def collect_funnel(c, cut, nm_ids):
 
 
 def run():
-    if os.environ.get('GITHUB_REPOSITORY') != 'Ekaterina11098/veschi-bot-runner':
+    if os.environ.get('GITHUB_REPOSITORY') != 'Ekaterina11098/scheduled-worker':
         raise RuntimeError('Public owner runner only')
     c = Cache()
     policy = c.get(POLICY) or {}

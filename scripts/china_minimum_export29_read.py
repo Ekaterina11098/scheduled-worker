@@ -7,7 +7,7 @@ from china_cloud_cost_control import Cache
 ROOT='china_agent:minimum_browser_export:2026-10-29:diagnostic:v1'
 def stamp():return datetime.now(timezone.utc).isoformat()
 async def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Registered main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Registered main only')
  c=Cache();cfg=c.get('china_agent:minimum_browser:profile:v1');e=c.get(ROOT)
  if e:print(e['status']);return
  if not cfg or cfg.get('seller_name')!='VESCHI LIMITED' or not os.environ.get('TINYFISH_API_KEY'):raise ValueError('Server configuration missing')

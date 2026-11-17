@@ -24,7 +24,7 @@ jobs:
           assert re.fullmatch('[0-9a-f]{40}',sha)
           root=pathlib.Path('scripts');root.mkdir(exist_ok=True)
           for name in ['china_codex_search_cohort26_v3.py','china_cloud_cost_control.py','china_price_apply.py']:
-              url='https://raw.githubusercontent.com/Ekaterina11098/veschi-bot-runner/'+sha+'/scripts/'+name
+              url='https://raw.githubusercontent.com/Ekaterina11098/scheduled-worker/'+sha+'/scripts/'+name
               root.joinpath(name).write_bytes(urllib.request.urlopen(url,timeout=40).read())
           PY
       - run: pip install requests==2.32.5 > /tmp/dependencies.log 2>&1

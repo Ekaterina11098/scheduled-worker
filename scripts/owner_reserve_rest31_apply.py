@@ -5,7 +5,7 @@ from china_cloud_cost_control import Cache,WB,validate_identity,stamp
 ROOT='china_agent:owner_reserve_rest31:v1'
 def run():
  c=Cache();w=WB();a=c.get(ROOT+':approval')or{}
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or a.get('status')!='approved' or a.get('owner_user_id')!=5122667182 or datetime.now(timezone.utc)>datetime.fromisoformat(a['expires_at']):raise ValueError('Approvalscope')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or a.get('status')!='approved' or a.get('owner_user_id')!=5122667182 or datetime.now(timezone.utc)>datetime.fromisoformat(a['expires_at']):raise ValueError('Approvalscope')
  if [(i['cid'],i['amount'])for i in a['items']]!=[(41055480,100),(41296359,100),(41332083,250)]:raise ValueError('Exactscope')
  old=c.get(ROOT+':execution')
  if old:print(json.dumps({'status':old['status'],'existing':True}));return

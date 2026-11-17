@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 1e20e2e6dfed3559e13aa0ff77b7aef6820b23ca
+          ref: 9917312cdb763709465dbdf7961fa69209d28933
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             ip_bags4_completion_20261105.py

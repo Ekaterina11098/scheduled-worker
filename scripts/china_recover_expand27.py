@@ -69,7 +69,7 @@ def recover(io):
   e.update(status='uncertain' if e.get('status')=='submitting' else 'blocked',reason=str(error) if isinstance(error,(ValueError,RuntimeError)) else type(error).__name__);io.put(R,e)
  return e
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main' or datetime.now(timezone.utc).date().isoformat()!='2026-10-27':raise ValueError('Dated public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main' or datetime.now(timezone.utc).date().isoformat()!='2026-10-27':raise ValueError('Dated public main only')
  io=IO()
  if io.tg('getMe',{})['id']!=8780468043:raise PermissionError('Bot identity')
  recovery=recover(io)

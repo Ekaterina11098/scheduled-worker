@@ -138,7 +138,7 @@ class Transport:
   if set(result)!=set(map(str,ids)):raise ValueError('Incomplete current configuration')
   return result
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Public main only')
  if datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=3))).date().isoformat()!='2026-11-02':raise PermissionError('Dated approval only')
  t=Transport();p=t.get(ROOT)
  if not p or p.get('status')!='authorized_pending_preflight' or len(p.get('scope',[]))!=98 or len({x['nm'] for x in p['scope']})!=98:raise PermissionError('Exact98 owner authorization missing')

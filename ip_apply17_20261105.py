@@ -47,7 +47,7 @@ def item_results(p,current):
   out.append({k:a[k] for k in ('campaign','nm','sku','kind')}|dict(status='verified' if good else 'not_verified',target_bid_minor=a.get('target_bid_minor')))
  return out
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Public main only')
  t=SixTransport();p=t.get(PLAN)
  def guard():
   if not p or p.get('status')!='owner_authorized' or p.get('budgets_authorized')is not False or len(p['actions'])!=17 or digest(p['actions'])!=FROZEN or any(not ready(a,p['period']) for a in p['actions']):raise PermissionError('Exact17approval missing')

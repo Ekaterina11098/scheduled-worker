@@ -15,13 +15,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: eaafc33e2e302f88045a33caa72110c855f7588c
+          ref: 6b06db88c83ee2a0a21a3b22c20ffae88a114689
           sparse-checkout: ip_intraday_diagnosis_20261105.py
           sparse-checkout-cone-mode: false
       - uses: actions/checkout@v4
         with:
           repository: Ekaterina11098/VESCHI_AI
-          ref: 2f798a9509b72030d6fb5ec68fb915c5d216c31b
+          ref: dfa9651d7f18589ca1c8a1c8de020774be963261
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           persist-credentials: false
           path: private-source

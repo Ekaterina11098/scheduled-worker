@@ -137,6 +137,6 @@ def run(resume_binding=False):
   print('Pilot stopped; private receipt preserved; no automatic retry');return
  print('Pilot verified; private delivery and usage receipts saved')
 if __name__=='__main__':
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner'or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Expected main repository')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker'or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Expected main repository')
  started=time.monotonic();run(resume_binding='--continue-binding'in sys.argv)
 

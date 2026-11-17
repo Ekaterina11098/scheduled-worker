@@ -11,7 +11,7 @@ KEY='china_agent:zero_campaign_review:2026-10-28:afternoon:v1'
 CIDS=[41270471,41325622,41270474,40964981,41296359,41187173,41155824]
 CANDIDATES=[(41325622,1535337780,'search'),(40964981,1560345287,'recommendations'),(41187173,1560230896,'recommendations')]
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  c=Cache();w=WB();validate_identity(c,w)
  if c.get(KEY):print('Existing zero campaign check');return
  stats=w.req('/adv/v3/fullstats?ids='+','.join(map(str,CIDS))+'&beginDate=2026-10-25&endDate=2026-10-28');cs=w.campaigns(CIDS)

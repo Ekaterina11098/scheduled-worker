@@ -14,7 +14,7 @@ Deno.serve(async req=>{
  const now=new Date(),slot=dueSlot(now),day=slot.slice(0,10);
  let body={};try{body=await req.json();}catch{}
  const morningAuth={Authorization:'Bearer '+gh,Accept:'application/vnd.github+json','Content-Type':'application/json'};
- try{await checkMorning(sql,morningAuth,'https://api.github.com/repos/Ekaterina11098/veschi-bot-runner',now,body.verify===true);}catch{
+ try{await checkMorning(sql,morningAuth,'https://api.github.com/repos/Ekaterina11098/scheduled-worker',now,body.verify===true);}catch{
  await sql`insert into review_approval.events(id,payload) values ('morning-clock:health:v1',${JSON.stringify({status:'check_failed',checked_at:now.toISOString()})}) on conflict(id) do update set payload=excluded.payload`;
  }
 
@@ -25,7 +25,7 @@ Deno.serve(async req=>{
  const questions=parse(rows.find(r=>r.id==='questions-china-two-hour:'+day)?.payload??'{}');
  const questionReceipt=parse(rows.find(r=>r.id==='questions-china-two-hour:'+day+':summary:'+slot)?.payload??'{}');
  const auth={Authorization:'Bearer '+gh,Accept:'application/vnd.github+json','Content-Type':'application/json'};
- const base='https://api.github.com/repos/Ekaterina11098/veschi-bot-runner';
+ const base='https://api.github.com/repos/Ekaterina11098/scheduled-worker';
  // Workflow-specific endpoint covers all active statuses, independent of unrelated repository activity.
  const response=await fetch(base+'/actions/workflows/reviews-china-two-hour.yml/runs?per_page=100',{headers:auth,signal:AbortSignal.timeout(10000)});
  if(!response.ok)return new Response('Runner status unavailable',{status:503});

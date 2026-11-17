@@ -33,7 +33,7 @@ class ScopedWB(WB):
   if write and(method!='PATCH'or not any(mutation(self.cid,x)==(path,body)for x in self.actions)):raise PermissionError('Mutation outside exact owner scope')
   return super().req(path,method,body,write)
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner'or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Wrong deployment')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker'or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Wrong deployment')
  c=Cache();a=approval(c);cid=a['campaign_id'];actions=a['actions']
  if c.get(ROOT+':execution'):print('Existing execution; no replay');return
  w=ScopedWB(cid,actions);validate_identity(c,w)

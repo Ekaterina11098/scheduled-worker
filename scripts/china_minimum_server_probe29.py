@@ -18,7 +18,7 @@ def probe(config,key):
  p=matches[0]
  return dict(out,status='profile_access_verified',profile_id=p['id'],saved_domains=p.get('domain_count'),browser_login_verified=False,reason='Server API can access configured profile; separate live WB identity/readback still required')
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Registered public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Registered public main only')
  c=Cache();out=probe(c.get(CONFIG),os.environ.get('TINYFISH_API_KEY'))
  out.update(observed_at=datetime.now(timezone.utc).isoformat(),run_id=os.environ['GITHUB_RUN_ID'])
  audit='china_agent:minimum_browser_server_probe:v1:'+out['run_id']

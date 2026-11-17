@@ -5,7 +5,7 @@ import requests
 from china_cloud_cost_control import Cache,WB,stamp
 KEY='china_agent:profit_compare:2026-10-25:2026-10-26:2325:v1'
 def main():
- assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/veschi-bot-runner' and os.environ['GITHUB_REF']=='refs/heads/main'
+ assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/scheduled-worker' and os.environ['GITHUB_REF']=='refs/heads/main'
  c=Cache();w=WB()
  if c.get(KEY):print('Existing report; no repeated collection');return
  out=dict(status='collecting',observed_at=stamp(),cutoff_msk=datetime.now(timezone(timedelta(hours=3))).isoformat(),wb_writes=0,telegram_sends=0)

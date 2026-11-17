@@ -43,7 +43,7 @@ async function handle(req) {
   const inserted=await save(claim,{at:now.toISOString(),status:"submitting",cabinet_scope:cabinets},true);
   if(!inserted.length)return finish("already_claimed",{dispatches:0});
   let status=0;
-  try{status=(await fetch("https://api.github.com/repos/Ekaterina11098/veschi-bot-runner/actions/workflows/fbs-document-chain.yml/dispatches",{method:"POST",headers:auth,body:JSON.stringify({ref:"main",inputs:{mode:"run",execution_kind:"daily"}}),signal:AbortSignal.timeout(8000)})).status;}catch{}
+  try{status=(await fetch("https://api.github.com/repos/Ekaterina11098/scheduled-worker/actions/workflows/fbs-document-chain.yml/dispatches",{method:"POST",headers:auth,body:JSON.stringify({ref:"main",inputs:{mode:"run",execution_kind:"daily"}}),signal:AbortSignal.timeout(8000)})).status;}catch{}
   await save(claim,{at:now.toISOString(),status:status===204?"dispatched":"uncertain",github_status:status,cabinet_scope:cabinets});
   return finish(status===204?"dispatched":"dispatch_uncertain",{github_status:status,dispatches:1});
  }catch{

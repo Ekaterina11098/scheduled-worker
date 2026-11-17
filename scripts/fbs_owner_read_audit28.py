@@ -87,7 +87,7 @@ def finish_names(t,db):
  db.put(REPORT,report);print(json.dumps(dict(status=report['status'],attention=report['attention'],operational_writes=0)))
 
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise Stop('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise Stop('Public main only')
  t=ReadOnly();db=Cache(t)
  if os.environ.get('OWNER_FBS_NAMES_ONLY')=='true':finish_names(t,db);return
  prior=db.get(REPORT)

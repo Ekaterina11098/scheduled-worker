@@ -21,7 +21,7 @@ jobs:
           root=pathlib.Path('scripts');root.mkdir(exist_ok=True)
           names=['china_midday_correction364.py','china_advertising_midday.py','china_advertising_state.py','china_price_apply.py','china_advertising_v2.py','china_advertising_v2_png.py','china_daily_ad_actions.py','china_loss_control.py','china_budget_context.py']
           def fetch(name):
-              root.joinpath(name).write_bytes(urllib.request.urlopen('https://raw.githubusercontent.com/Ekaterina11098/veschi-bot-runner/'+os.environ['GITHUB_SHA']+'/scripts/'+name,timeout=40).read())
+              root.joinpath(name).write_bytes(urllib.request.urlopen('https://raw.githubusercontent.com/Ekaterina11098/scheduled-worker/'+os.environ['GITHUB_SHA']+'/scripts/'+name,timeout=40).read())
           with ThreadPoolExecutor(max_workers=5) as pool:list(pool.map(fetch,names))
           PY
       - run: pip install requests==2.32.5 pillow==11.3.0 > /tmp/dependencies.log 2>&1

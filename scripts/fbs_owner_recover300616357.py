@@ -25,7 +25,7 @@ class ScopedTransport(Transport):
   if base==MS and method=='POST' and isinstance(result,dict) and result.get('id'):self.allowed_ids.add(result['id'])
   return result
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise Stop('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise Stop('Public main only')
  t=ScopedTransport();db=Cache(t);prior=db.get(RECEIPT)
  if prior:print(json.dumps({'status':prior.get('status'),'existing_receipt':True}));return
  c=db.get('fbs_document_chain:china:config:v1');state=db.get(KEY)

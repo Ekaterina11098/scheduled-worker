@@ -52,7 +52,7 @@ jobs:
              raise ValueError("Unapproved read")
             return super().req(path,method,body,write)
           def main():
-           assert os.environ["GITHUB_REPOSITORY"]=="Ekaterina11098/veschi-bot-runner" and os.environ["GITHUB_REF"]=="refs/heads/main"
+           assert os.environ["GITHUB_REPOSITORY"]=="Ekaterina11098/scheduled-worker" and os.environ["GITHUB_REF"]=="refs/heads/main"
            assert datetime.now(timezone(timedelta(hours=3))).date().isoformat()=="2026-10-29"
            c=Cache();w=NarrowWB();validate_identity(c,w);a=c.get(ROOT+":approval")
            assert a and a["status"]=="approved" and a["owner_user_id"]==5122667182 and a["rate_policy"]=="fresh_WB_minimum"

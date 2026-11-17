@@ -40,7 +40,7 @@ def put(c,k,v):
  c.put(k,v)
  if c.get(k)!=json.loads(json.dumps(v)):raise ValueError('Private receipt readback mismatch')
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Wrong repository')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Wrong repository')
  c=Cache();a=approval(c)
  prior=c.get(ROOT+':execution')
  if prior:

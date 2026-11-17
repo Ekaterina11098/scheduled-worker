@@ -5,7 +5,7 @@ from china_cloud_cost_control import Cache,WB,stamp,validate_identity
 KEY='china_agent:orders12_followup:2026-10-29:v1'
 IDS=[41270309]
 def main():
- assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/veschi-bot-runner' and os.environ['GITHUB_REF']=='refs/heads/main'
+ assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/scheduled-worker' and os.environ['GITHUB_REF']=='refs/heads/main'
  assert datetime.now(timezone(timedelta(hours=3))).date().isoformat()=='2026-10-29'
  c=Cache();w=WB();validate_identity(c,w)
  if c.get(KEY):print('Existing snapshot; no repeat');return

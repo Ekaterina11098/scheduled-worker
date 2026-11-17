@@ -19,7 +19,7 @@ jobs:
           import os,pathlib,urllib.request
           root=pathlib.Path('scripts');root.mkdir(exist_ok=True)
           for name in ['china_cloud_cost_control.py']:
-              root.joinpath(name).write_bytes(urllib.request.urlopen('https://raw.githubusercontent.com/Ekaterina11098/veschi-bot-runner/'+os.environ['GITHUB_SHA']+'/scripts/'+name,timeout=40).read())
+              root.joinpath(name).write_bytes(urllib.request.urlopen('https://raw.githubusercontent.com/Ekaterina11098/scheduled-worker/'+os.environ['GITHUB_SHA']+'/scripts/'+name,timeout=40).read())
           PY
       - run: pip install requests==2.32.5 > /tmp/dependencies.log 2>&1
       - run: |
@@ -31,7 +31,7 @@ jobs:
           from china_cloud_cost_control import Cache,WB,stamp,validate_identity
           KEY='china_agent:profit_now:2026-10-27:2115:v1'
           def main():
-           assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/veschi-bot-runner' and os.environ['GITHUB_REF']=='refs/heads/main'
+           assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/scheduled-worker' and os.environ['GITHUB_REF']=='refs/heads/main'
            c=Cache();w=WB();validate_identity(c,w)
            if c.get(KEY):print('Existing report; no repeated collection');return
            out=dict(status='collecting',observed_at=stamp(),cutoff_msk=datetime.now(timezone(timedelta(hours=3))).isoformat(),wb_writes=0,telegram_sends=0)

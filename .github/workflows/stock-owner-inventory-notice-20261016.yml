@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Ekaterina11098/VESCHI_AI
-          ref: 036cf7df7dcb28773dd5aa38c39cb5faf062b74c
+          ref: 2bb423a4e5b447e48558cde1331c1d35293b0c86
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           persist-credentials: false
           path: private-source

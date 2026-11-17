@@ -21,7 +21,7 @@ class Wire:
   return r.json() if r.content else {}
  def campaigns(self,ids):return {str(x['id']):x for x in self.req('/api/advert/v2/adverts?ids='+','.join(map(str,ids)))['adverts']}
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise RuntimeError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise RuntimeError('Public main only')
  c=Cache();w=Wire();validate_identity(c,w)
  key='china_agent:owner_search_fund:2026-10-26:v6:execution'
  approval=c.get('china_agent:owner_search_fund:2026-10-26:v1:approval') or {}

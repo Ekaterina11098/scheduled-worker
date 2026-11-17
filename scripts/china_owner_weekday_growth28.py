@@ -12,7 +12,7 @@ class ReadWB(WB):
   if write or method!='GET' and not(method=='POST' and path=='/api/advert/v1/bids/min'):raise ValueError('Read only')
   return super().req(path,method,body,write=False)
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  c=Cache()
  if c.get(KEY):print('Existing weekday growth evidence');return
  base=c.get(ROOT);cut=base['cutoff_msk'][11:19];w=ReadWB();validate_identity(c,w)

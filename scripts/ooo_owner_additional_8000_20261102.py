@@ -12,7 +12,7 @@ def scope():
  if datetime.datetime.now(datetime.timezone.utc)>=datetime.datetime.fromisoformat(a['expires_at']):raise PermissionError('Funding authorization expired')
  return a
 w.authorize=scope
-if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Public main only')
+if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Public main only')
 if not w.claim(w.state):print('Prior additional-funding receipt preserved; no replay');raise SystemExit(0)
 try:
  scope()

@@ -13,7 +13,7 @@ async function handle(req) {
  if(!project||!github||!service)return new Response("Configuration",{status:503});
  const headers={apikey:service,"Content-Type":"application/json"};
  const auth={Authorization:"Bearer "+github,Accept:"application/vnd.github+json","Content-Type":"application/json","X-GitHub-Api-Version":"2022-11-28"};
- const repo="https://api.github.com/repos/Ekaterina11098/veschi-bot-runner";
+ const repo="https://api.github.com/repos/Ekaterina11098/scheduled-worker";
  const now=new Date();
  async function save(key,payload,ignore=false) {
   const r=await fetch(project+"/rest/v1/telegram_api_cache?on_conflict=cache_key",{method:"POST",headers:{...headers,Prefer:(ignore?"resolution=ignore-duplicates":"resolution=merge-duplicates")+",return=representation"},body:JSON.stringify({cache_key:key,payload,updated_at:new Date().toISOString(),expires_at:new Date(Date.now()+7*86400000).toISOString()}),signal:AbortSignal.timeout(8000)});

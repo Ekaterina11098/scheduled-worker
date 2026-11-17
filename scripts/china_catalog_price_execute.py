@@ -139,7 +139,7 @@ def run_one(io,key):
  io.put('china_agent:prices:v1',catalogue_snapshot(io.catalog(),key))
  return p
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  io=CatalogIO()
  keys=[ROOT+day()]
  rows=io.db('telegram_api_cache?cache_key=like.'+ROOT+day()+':sku:*&select=cache_key&order=updated_at.asc&limit=100')

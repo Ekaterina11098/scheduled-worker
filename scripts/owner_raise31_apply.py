@@ -14,7 +14,7 @@ def cash(w,cid):
  if len(rows)!=1 or rows[0]['advertId']!=cid or rows[0]['currency']!='CNY':raise ValueError('Budget identity')
  return rows[0]['total']
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Publicmainonly')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Publicmainonly')
  c=Cache();w=WB();a=c.get(ROOT+':approval')or{}
  if a.get('status')!='approved' or a.get('owner_user_id')!=5122667182 or a.get('source_channel')!='codex' or datetime.now(timezone.utc)>datetime.fromisoformat(a['expires_at']):raise ValueError('Owner approval missing/expired')
  items=a['approved_items']

@@ -99,7 +99,7 @@ class ScopedWB(WB):
   if not r.ok:raise RuntimeError('WB HTTP '+str(r.status_code))
   return r.json()if r.content else{}
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner'or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Execution repository mismatch')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker'or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Execution repository mismatch')
  c=Cache();w=ScopedWB();validate_identity(c,w);r=execute(c,w)
  print(json.dumps({k:r.get(k)for k in ['status','total_verified_cny','wb_write_attempts','reason']}))
 if __name__=='__main__':main()

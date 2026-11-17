@@ -27,7 +27,7 @@ class OwnerIO(IO):
  def get(self,key):return self.approval if key==getattr(self,'approval_key',None)else super().get(key)
  def validate(self,a):
   p=super().get(ROOT+':approval');assert digest(p)==digest(self.command) and a==self.approval
-  assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/veschi-bot-runner' and os.environ['GITHUB_REF']=='refs/heads/main'
+  assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/scheduled-worker' and os.environ['GITHUB_REF']=='refs/heads/main'
  def tg(self,*args,**kwargs):raise RuntimeError('Owner forbids Telegram calls')
  def prices(self,ids):
   prices=super().prices(ids)

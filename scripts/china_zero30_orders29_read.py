@@ -8,7 +8,7 @@ ROOT='china_agent:zero30_order_review:'+DAY+':v1'
 EXEC='china_agent:price_execution:v1:-1004342917488:155:307200273:e6c13e1e7186bedd902c081a1b11745e6e61099bfa6e2754dce69ef53929cbf7'
 MSK=timezone(timedelta(hours=3))
 def main():
- assert os.environ.get('GITHUB_REPOSITORY')=='Ekaterina11098/veschi-bot-runner' and os.environ.get('GITHUB_REF')=='refs/heads/main'
+ assert os.environ.get('GITHUB_REPOSITORY')=='Ekaterina11098/scheduled-worker' and os.environ.get('GITHUB_REF')=='refs/heads/main'
  assert datetime.now(MSK).date().isoformat()==DAY
  c=Cache();w=WB();validate_identity(c,w)
  if c.get(ROOT):print('Private review exists; no repeated requests');return
@@ -64,7 +64,7 @@ def main():
   state.update(status='blocked',error=str(ex) if isinstance(ex,(ValueError,RuntimeError)) else type(ex).__name__,completed_at=stamp());c.put(ROOT,state)
   raise RuntimeError('Orders review incomplete; inspect private state') from None
 def statuses():
- assert os.environ.get('GITHUB_REPOSITORY')=='Ekaterina11098/veschi-bot-runner' and os.environ.get('GITHUB_REF')=='refs/heads/main' and datetime.now(MSK).date().isoformat()==DAY
+ assert os.environ.get('GITHUB_REPOSITORY')=='Ekaterina11098/scheduled-worker' and os.environ.get('GITHUB_REF')=='refs/heads/main' and datetime.now(MSK).date().isoformat()==DAY
  c=Cache();w=WB();validate_identity(c,w)
  key=ROOT+':statuses'
  if c.get(key):print('Existing status read; no repeated request');return

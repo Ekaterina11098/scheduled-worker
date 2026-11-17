@@ -245,7 +245,7 @@ class SixTransport(Transport):
    return json.loads(b) if b else {}
 
 def run_six():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Public main only')
  t=SixTransport();p=t.get(PLAN)
  if not p or p.get('status')!='owner_authorized' or len(p.get('scope',[]))!=6 or scope_hash(p['scope'])!=FROZEN_SCOPE_SHA:raise PermissionError('Frozen six-item approval missing')
  state=dict(status='starting',run_id=os.environ['GITHUB_RUN_ID'],approval_key=PLAN,started_at=stamp(),steps={},items=[],wb_write_attempts=0,wb_accepted_requests=0,telegram_sends=0)

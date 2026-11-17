@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 8f924826323972583e53ffd7796594583c192223
+          ref: 0d5c15d6258872bd71ca4bf6dc0fb906d7d18506
           sparse-checkout: |
             ip_apply_nine_20261103.py
           sparse-checkout-cone-mode: false

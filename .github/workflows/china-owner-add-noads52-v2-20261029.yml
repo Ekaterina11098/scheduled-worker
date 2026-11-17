@@ -57,7 +57,7 @@ jobs:
              raise RuntimeError("WB advertising HTTP "+str(r.status_code))
             return r.json() if r.content else {}
           def main():
-           assert os.environ["GITHUB_REPOSITORY"]=="Ekaterina11098/veschi-bot-runner" and os.environ["GITHUB_REF"]=="refs/heads/main"
+           assert os.environ["GITHUB_REPOSITORY"]=="Ekaterina11098/scheduled-worker" and os.environ["GITHUB_REF"]=="refs/heads/main"
            assert datetime.now(timezone(timedelta(hours=3))).date().isoformat()=="2026-10-29"
            c=Cache();w=NarrowWB();w.cache=c;validate_identity(c,w);a=c.get(ROOT+":approval")
            prior=c.get("china_agent:owner_add_noads52:2026-10-29:v1:execution");assert prior and prior["status"]=="blocked" and prior["wb_writes"]==0 and not prior["steps"]

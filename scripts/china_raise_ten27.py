@@ -20,7 +20,7 @@ def snapshot(stats,items,day):
       for k,f in [('spend','sum'),('amount','sum_price'),('orders','orders'),('clicks','clicks')]:out[key][k]+=n.get(f,0)
  return out
 def run(apply=False):
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main' or datetime.now(timezone.utc).date().isoformat()!='2026-10-27':raise ValueError('Dated public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main' or datetime.now(timezone.utc).date().isoformat()!='2026-10-27':raise ValueError('Dated public main only')
  c=Cache();w=WB();validate_identity(c,w);a=c.get(ROOT+':approval') or {}
  if a.get('status')!='approved' or a.get('source')!='explicit_human_codex_message' or a.get('owner_id')!=5122667182:raise ValueError('Owner instruction missing')
  p=json.loads(a['plan_json']);h=hashlib.sha256(a['plan_json'].encode()).hexdigest()

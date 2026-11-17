@@ -63,7 +63,7 @@ def main():
  from china_moysklad_read import read_stock
  class Prices(AdvertisingIO):
   def __init__(self,token):self.token=token
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner'or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker'or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  c=Cache();a,items=approval(c)
  prior=c.get('china_agent:owner_growth_fresh_apply:2026-11-02:v1:execution')or{}
  if prior.get('status')!='blocked' or prior.get('wb_writes')!=0 or prior.get('steps'):raise ValueError('Recovery requires proven zero-write prior')

@@ -22,7 +22,7 @@ test('owner rework reply uses same isolated route',async()=>{
  assert.equal((await routeReviewApproval(request(),u,cfg,async()=>new Response('OK'))).status,200);
 });
 test('GitHub receives only encrypted callback, no source or owner text',async()=>{
- const config={...cfg,mode:'github-encrypted',ingressKey:Buffer.alloc(32,1).toString('base64'),dispatchToken:'dispatch-secret',receiverURL:'https://api.github.com/repos/Ekaterina11098/veschi-bot-runner/actions/workflows/review-approval-process.yml/dispatches'};
+ const config={...cfg,mode:'github-encrypted',ingressKey:Buffer.alloc(32,1).toString('base64'),dispatchToken:'dispatch-secret',receiverURL:'https://api.github.com/repos/Ekaterina11098/scheduled-worker/actions/workflows/review-approval-process.yml/dispatches'};
  let sent;
  const result=await routeReviewApproval(request(),update(),config,async(url,payload)=>{sent=payload;return new Response(null,{status:204})});
  assert.equal(result.status,200);

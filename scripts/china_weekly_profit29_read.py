@@ -8,7 +8,7 @@ class ReadWB(WB):
   if write or method!='GET':raise ValueError('Read only')
   return super().req(path,method,body,False)
 def main():
- assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/veschi-bot-runner' and os.environ['GITHUB_REF']=='refs/heads/main'
+ assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/scheduled-worker' and os.environ['GITHUB_REF']=='refs/heads/main'
  assert datetime.now(timezone(timedelta(hours=3))).date().isoformat()=='2026-10-29'
  c=Cache();w=ReadWB();validate_identity(c,w)
  if c.get(ROOT):print('Existing result; no repeated collection');return

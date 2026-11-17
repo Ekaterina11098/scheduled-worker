@@ -8,7 +8,7 @@ from china_advertising_plans import economics
 OLD='china_agent:owner_growth_plan:2026-10-27:v1'
 KEY='china_agent:owner_growth_plan:2026-10-27:v2'
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  c=Cache()
  if c.get(KEY):return
  p=c.get(OLD);source=c.get('china_agent:new_ad_source:v1:2026-10-27')

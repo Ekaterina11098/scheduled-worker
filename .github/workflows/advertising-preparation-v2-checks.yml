@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Ekaterina11098/VESCHI_AI
-          ref: ac3b1c439b2ef1bd6ad9e7e8093c91ecb86ae0db
+          ref: 8d4e71e4a195c17dbace4a6d120118edf2fbd334
           fetch-depth: 0
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           persist-credentials: false
@@ -21,19 +21,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Ekaterina11098/VESCHI_AI
-          ref: ddcc5b022d5e8607f78213392930bdc0d611d4fc
+          ref: 7553c66a94d6d19d38c3659c87833e1f08d74926
           fetch-depth: 0
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           persist-credentials: false
           path: financial-source
       - uses: actions/checkout@v4
         with:
-          ref: c1311657f2b6699c4733327b1e99b9317ad283c3
+          ref: 1f05143462f8417ef7378fd52d0439f3765b89e8
           persist-credentials: false
           path: analytics-runner
       - uses: actions/checkout@v4
         with:
-          ref: a57ff06f42afa7bd8d507c5278d64d343cf5f121
+          ref: c52b291f91cc002170e026c852f466881221d2c8
           persist-credentials: false
           path: recovery-runner
       - uses: actions/setup-python@v5

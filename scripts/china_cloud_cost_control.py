@@ -236,7 +236,7 @@ def telegram_funding(c,p,cid,summary,remaining,need,slot,ec):
 def shared_payload(snap):
  return dict(observed_at=snap['observed_at'],source_key=ROOT+'snapshot:'+snap['slot'],campaigns=list(snap['campaigns'].values()),ad_batches=[dict(ids=[x['advertId'] for x in snap['stats']],data=snap['stats'])],budgets=list(snap['budgets'].values()),complete=True)
 def run(preflight=False,cutover=False):
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner':raise RuntimeError('Public runner only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker':raise RuntimeError('Public runner only')
  c=Cache();p=c.get(POLICY)
  if not p or p.get('cabinet')!='token_3':raise RuntimeError('Owner policy missing')
  if preflight:

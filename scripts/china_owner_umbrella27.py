@@ -10,7 +10,7 @@ KEY='china_agent:owner_growth_apply27:2026-10-27:umbrella27:execution'
 PARENT='china_agent:owner_growth_apply27:2026-10-27:v1:execution'
 def stamp():return datetime.now(timezone.utc).isoformat()
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  io=IO();wb=WB();validate_identity(Cache(),wb);a=io.get(APP);prior=io.get(KEY)
  if prior:print(json.dumps(dict(status=prior['status'],existing=True)));return
  if not a or a.get('status')!='approved' or a.get('source_channel')!='codex' or a.get('owner_user_id')!=5122667182 or a.get('nm_id')!=1556488181 or a.get('campaign_id')!=41325637 or a.get('target_minor')!=27:raise ValueError('Exact owner amendment absent')

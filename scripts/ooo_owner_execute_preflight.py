@@ -26,7 +26,7 @@ def latest(source):
     if not rows:raise RuntimeError("Private source unavailable: "+source)
     return rows[0]["payload"]
 state={"status":"preflight","started_at":stamp(),"run_id":os.environ["GITHUB_RUN_ID"],"wb_write_attempts":0,"steps":{},"telegram_calls":0}
-if os.environ.get("GITHUB_REPOSITORY")!="Ekaterina11098/veschi-bot-runner" or os.environ.get("GITHUB_REF")!="refs/heads/main":raise PermissionError("Public main only")
+if os.environ.get("GITHUB_REPOSITORY")!="Ekaterina11098/scheduled-worker" or os.environ.get("GITHUB_REF")!="refs/heads/main":raise PermissionError("Public main only")
 if not create(KEY,state):print("Existing execution receipt preserved; no replay");sys.exit(0)
 def save():cache_put(KEY,state)
 def request(path,method="GET",body=None,write=False):

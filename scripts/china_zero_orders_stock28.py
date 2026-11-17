@@ -19,7 +19,7 @@ class W:
   if p.get('cabinet')!='token_3' or not p.get('rows'):raise ValueError('China catalogue unavailable')
   return [(int(x['nmID']),x['vendorCode']) for x in p['rows']]
 def run(mode):
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  io=AdvertisingIO();e=io.get(ROOT)
  if mode in ['prepare','refresh']:
   if e and (e.get('status')=='sent' or e.get('status')=='prepared' and mode!='refresh'):print(json.dumps(dict(status=e['status'],duplicate_prevented=True)));return

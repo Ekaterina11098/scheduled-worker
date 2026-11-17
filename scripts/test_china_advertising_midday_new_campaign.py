@@ -38,6 +38,6 @@ class CampaignHistory(unittest.TestCase):
   price=types.ModuleType('china_advertising_state');price.AdvertisingIO=lambda:io
   delivery=types.ModuleType('china_advertising_delivery');delivery.deliver=lambda *a,**kw:self.fail('Delivery forbidden');delivery.telegram_sender=lambda *a:self.fail('Sender forbidden')
   actions=types.ModuleType('china_daily_ad_actions');actions.plan=lambda *a:self.fail('Plan forbidden');actions.bind=lambda *a:self.fail('Bind forbidden')
-  with patch.dict(os.environ,{'GITHUB_REPOSITORY':'Ekaterina11098/veschi-bot-runner','GITHUB_REF':'refs/heads/main'}),patch.dict(sys.modules,{'china_advertising_state':price,'china_advertising_delivery':delivery,'china_daily_ad_actions':actions}),patch.object(m,'collect',side_effect=AssertionError('No collection')):
+  with patch.dict(os.environ,{'GITHUB_REPOSITORY':'Ekaterina11098/scheduled-worker','GITHUB_REF':'refs/heads/main'}),patch.dict(sys.modules,{'china_advertising_state':price,'china_advertising_delivery':delivery,'china_daily_ad_actions':actions}),patch.object(m,'collect',side_effect=AssertionError('No collection')):
    m.run()
 if __name__=='__main__':unittest.main()

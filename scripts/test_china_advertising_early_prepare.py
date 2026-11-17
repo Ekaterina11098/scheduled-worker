@@ -18,7 +18,7 @@ class EarlyPrepare(unittest.TestCase):
    def now(tz):return datetime(2026,11,11,14,45,tzinfo=timezone(timedelta(hours=3)))
   scope=dict(os=os,datetime=Clock,MSK=timezone(timedelta(hours=3)),json=json,collect=lambda *a,**kw:{},prepare_midday=lambda *a:{})
   exec(compile(ast.Module(body=[fn],type_ignores=[]),'prepare','exec'),scope)
-  with patch.dict(sys.modules,modules),patch.dict(os.environ,GITHUB_REPOSITORY='Ekaterina11098/veschi-bot-runner',GITHUB_REF='refs/heads/main'):
+  with patch.dict(sys.modules,modules),patch.dict(os.environ,GITHUB_REPOSITORY='Ekaterina11098/scheduled-worker',GITHUB_REF='refs/heads/main'):
    scope['run']()
   calls.sender.assert_not_called();calls.deliver.assert_not_called();calls.plan.assert_not_called()
   return modules

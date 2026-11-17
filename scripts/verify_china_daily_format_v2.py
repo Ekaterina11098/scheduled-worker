@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 from china_price_apply import IO
 from china_advertising_v2 import prepare,save,VERSION
 from china_advertising_v2_png import render
-assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/veschi-bot-runner'
+assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/scheduled-worker'
 io=IO();day=datetime.now(ZoneInfo('Europe/Moscow')).date().isoformat();bundle=prepare(io,day);files=render(bundle);seen=set();images=[]
 for f in files:
  if f['family'] not in seen:images.append(dict(kind=f['kind'],data=base64.b64encode(f['bytes']).decode()));seen.add(f['family'])

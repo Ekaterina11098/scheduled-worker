@@ -12,7 +12,7 @@ class ReadIO(AdvertisingIO):
   return super().wb(path,method,body)
  def tg(self,*args,**kwargs):raise ValueError('No Telegram calls')
 def main():
- assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/veschi-bot-runner' and os.environ['GITHUB_REF']=='refs/heads/main'
+ assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/scheduled-worker' and os.environ['GITHUB_REF']=='refs/heads/main'
  assert datetime.now(timezone(timedelta(hours=3))).date().isoformat()=='2026-10-29'
  io=ReadIO();state=io.get(KEY) or dict(status='collecting',observed_at=stamp(),wb_writes=0,telegram_sends=0)
  if state.get('status')=='complete':print('Existing complete snapshot; no repeat reads');return

@@ -14,7 +14,7 @@ def archive(io,key,value):
   if not io.create(key,value):raise ValueError('Archive race')
  elif old!=value:raise ValueError('Archive mismatch')
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  io=IO();request=io.get(ROOT+':request')or{}
  if request.get('owner_id')!=5122667182 or request.get('job_id')!=194 or request.get('plan_id')!=PID or request.get('scope')!='original_visible_eight_ad_actions_only':raise ValueError('Scoped recovery authorization missing')
  jobs=io.db('business_agent_jobs?id=eq.194&select=id,agent_id,status,request_text,sender_id,chat_id,created_at,tool_trace,update_id,answer')

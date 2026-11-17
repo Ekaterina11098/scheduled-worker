@@ -7,7 +7,7 @@ import requests
 KEY='china_agent:owner_price_review:2026-10-28:afternoon:v1'
 NMS=[1473243916,1473244992,1535337780,1473243909,1473244348,1473242763]
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  c=Cache();wb=WB();validate_identity(c,wb)
  if c.get(KEY):print('Existing price review');return
  source=copy.deepcopy(c.get('china_agent:new_ad_source:v1:2026-10-28'));products={int(p['nm_id']):p for p in source['products']}

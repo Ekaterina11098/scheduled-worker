@@ -14,7 +14,7 @@ def expected(c,items):
  for i in items:next(n for n in out['nm_settings'] if n['nm_id']==i['nm_id'])['bids_kopecks'][i['placement']]=i['target_minor']
  return projection(out)
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main' or datetime.now(timezone.utc).date().isoformat()!='2026-10-27':raise ValueError('Dated public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main' or datetime.now(timezone.utc).date().isoformat()!='2026-10-27':raise ValueError('Dated public main only')
  c=Cache();wb=WB();io=IO();p=c.get(PLAN) or {};a=c.get(ROOT+':approval') or {};items=p.get('items',[])
  if a.get('status')!='approved' or a.get('source_channel')!='codex' or a.get('owner_user_id')!=5122667182 or a.get('items')!=items or len(items)!=24 or digest(items)!=a.get('plan_sha256') or digest(items)!='f38ed58d76ff046daafc3d09473b85e21ad4039d1c8294f1a99cedae77850fd9' or a.get('png_sha256')!=p.get('png_sha256'):raise ValueError('Exact approved24PNG scope mismatch')
  if p.get('status')!='pending_owner_approval' or p.get('invalidated_at') or datetime.now(timezone.utc)>datetime.fromisoformat(p['expires_at']):raise ValueError('Plan expired or revoked')

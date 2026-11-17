@@ -11,7 +11,7 @@ def assess(balance,today,period,hour,horizon):
  needed=rate*horizon
  return dict(risk=rate>0 and balance<needed,rate_per_hour=rate,until_next=needed,proposed=max(0,math.ceil((needed-balance)/50)*50),drr_today=drr(today),drr_3days=drr(period))
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise RuntimeError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise RuntimeError('Public main only')
  c=Cache();w=WB();validate_identity(c,w)
  t=datetime.now(ZoneInfo('Europe/Moscow'));day=t.date().isoformat();slot=day+(':morning' if t.hour<12 else ':afternoon') if os.environ.get('GITHUB_EVENT_NAME')=='schedule' else day+':manual:'+os.environ.get('GITHUB_RUN_ID',stamp())
  key=ROOT+'run:'+slot

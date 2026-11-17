@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 10ca471ebdc30e8979abeb6286434c51fe218931
+          ref: 5521d5c14265d40549d6b73cad4911bff9475b59
           persist-credentials: false
           fetch-depth: 1
           sparse-checkout: scripts
@@ -63,7 +63,7 @@ jobs:
             raise ValueError('Bounded10000row limit')
           def href(x):return x.get('meta',{}).get('href','').split('?')[0]
           def main():
-           assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/veschi-bot-runner'and os.environ['GITHUB_REF']=='refs/heads/main'
+           assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/scheduled-worker'and os.environ['GITHUB_REF']=='refs/heads/main'
            io=IO()
            if io.get(KEY):return
            assert io.create(KEY,dict(status='collecting',wb_writes=0,moysklad_writes=0,telegram_calls=0))

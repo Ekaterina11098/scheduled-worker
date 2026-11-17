@@ -18,7 +18,7 @@ def extract(stats,cid,nm):
  if not rows or any(r.get(k) is None for r in rows for k in FIELDS):return dict(status='missing_sku_or_metrics',metrics=None)
  return dict(status='reported',metrics={k:sum(r[k] for r in rows) for k in FIELDS})
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  c=Cache()
  if c.get(KEY):return
  w=ReadWB();validate_identity(c,w)

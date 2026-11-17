@@ -18,7 +18,7 @@ jobs:
           import os,pathlib,urllib.request
           root=pathlib.Path('scripts');root.mkdir(exist_ok=True)
           for name in ['china_cohort26_reconcile.py','china_cloud_cost_control.py']:
-              root.joinpath(name).write_bytes(urllib.request.urlopen('https://raw.githubusercontent.com/Ekaterina11098/veschi-bot-runner/'+os.environ['GITHUB_SHA']+'/scripts/'+name,timeout=40).read())
+              root.joinpath(name).write_bytes(urllib.request.urlopen('https://raw.githubusercontent.com/Ekaterina11098/scheduled-worker/'+os.environ['GITHUB_SHA']+'/scripts/'+name,timeout=40).read())
           PY
       - run: pip install requests==2.32.5 > /tmp/dependencies.log 2>&1
       - run: python scripts/china_cohort26_reconcile.py

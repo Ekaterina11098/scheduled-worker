@@ -257,7 +257,7 @@ def mark_parent(t,key,parent,after,run_id):
  result['finished_at']=stamp();t.save(key,result)
 
 def run_nine():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Public main only')
  t=SixTransport();p=t.get(PLAN)
  if not p or p.get('status')!='owner_authorized' or len(p.get('scope',[]))!=9 or scope_hash(p['scope'])!=FROZEN_SCOPE_SHA:raise PermissionError('Frozen nine-item approval missing')
  hand=t.get(p['handoff_key'])

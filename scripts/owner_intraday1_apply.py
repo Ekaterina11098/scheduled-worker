@@ -56,7 +56,7 @@ def put(c,key,value):
   if not (str(ex).startswith('Private state HTTP')or type(ex).__name__in['Timeout','ConnectionError','ReadTimeout']):raise
   time.sleep(2);c.put(key,value)
 def main(resume=False):
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  c=Cache();items=approval(c)
  prior=c.get(ROOT+':execution')
  if prior and not resume:print('Existing execution: never repeat');return

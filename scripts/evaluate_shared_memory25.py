@@ -9,7 +9,7 @@ from conversion_watches import runtime,question_request
 from china_analytic_dialog import answer
 ROOT='china_agent:memory_eval:2026-10-25:'
 def main():
- assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/veschi-bot-runner'
+ assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/scheduled-worker'
  io=IO();suite=io.get(ROOT+'cases:v1');assert suite['no_telegram'] and suite['no_wb']
  phase=os.environ.get('EVAL_PHASE','before');key=ROOT+'results:'+phase
  results=io.get(key) or dict(status='running',phase=phase,model='gpt-6.1-sol',cases=[],telegram_sends=0,wb_requests=0)

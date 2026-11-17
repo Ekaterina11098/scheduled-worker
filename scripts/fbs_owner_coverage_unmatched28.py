@@ -22,7 +22,7 @@ def search(t,text):
 def slim(d):
  return dict(id=d['id'],name=d.get('name'),organization=href(d.get('organization') or {}),posted=d.get('applicable'),externalCode=d.get('externalCode'),comment=d.get('description'))
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise Stop('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise Stop('Public main only')
  t=ReadOnly();db=Cache(t);root=db.get(ROOT)
  if not root or root.get('status')!='complete':raise Stop('Full inventory incomplete')
  if db.get(REPORT):print('Existing clarification');return

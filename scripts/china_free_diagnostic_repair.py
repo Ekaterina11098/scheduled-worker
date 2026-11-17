@@ -42,7 +42,7 @@ def repair(w,jid):
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--job-id',required=True,type=int,action='append');args=p.parse_args()
-    if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':
+    if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':
         raise PermissionError('Public runner main only')
     from conversion_watches import runtime,saved_network_guard
     w=runtime()

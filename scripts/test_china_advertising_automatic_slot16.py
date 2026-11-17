@@ -41,7 +41,7 @@ class AutomaticSlot(unittest.TestCase):
   def sender(f):
    sent.append(f)
    return dict(chat=dict(id=-1004342917488),message_id=9000+len(sent))
-  env=dict(GITHUB_REPOSITORY='Ekaterina11098/veschi-bot-runner',GITHUB_REF='refs/heads/main',CHINA_AD_PREPARE_ONLY='true',CHINA_AD_FROZEN_ONLY='false')
+  env=dict(GITHUB_REPOSITORY='Ekaterina11098/scheduled-worker',GITHUB_REF='refs/heads/main',CHINA_AD_PREPARE_ONLY='true',CHINA_AD_FROZEN_ONLY='false')
   with patch.dict(os.environ,env),patch.object(daily,'datetime',Clock),patch.object(daily,'telegram_sender',return_value=sender),patch('china_advertising_v2.prepare',return_value=bundle)as prepare,patch.object(socket.socket,'connect',side_effect=AssertionError('Network forbidden')),redirect_stdout(io.StringIO()):
    daily.run();self.assertEqual(sent,[])
    artifact=cache.get('china_agent:advertising_artifacts:2026-11-16:v2')
@@ -64,7 +64,7 @@ class AutomaticSlot(unittest.TestCase):
   class Clock(datetime):
    @classmethod
    def now(cls,tz=None):return datetime(2026,11,16,7,30,tzinfo=ZoneInfo('Europe/Moscow'))
-  with patch.dict(os.environ,dict(GITHUB_REPOSITORY='Ekaterina11098/veschi-bot-runner',GITHUB_REF='refs/heads/main',CHINA_AD_PREPARE_ONLY='false',CHINA_AD_FROZEN_ONLY='true')),patch.object(daily,'datetime',Clock),patch('china_advertising_v2.prepare')as prepare,patch.object(daily,'telegram_sender')as sender:
+  with patch.dict(os.environ,dict(GITHUB_REPOSITORY='Ekaterina11098/scheduled-worker',GITHUB_REF='refs/heads/main',CHINA_AD_PREPARE_ONLY='false',CHINA_AD_FROZEN_ONLY='true')),patch.object(daily,'datetime',Clock),patch('china_advertising_v2.prepare')as prepare,patch.object(daily,'telegram_sender')as sender:
    with self.assertRaisesRegex(ValueError,'preparation missing'):daily.run()
    prepare.assert_not_called();sender.assert_not_called()
 

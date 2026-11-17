@@ -8,7 +8,7 @@ EXPECTED_RUN='41887045933'
 FROZEN='5688c35ccf0f2312bcad1fd3a205f35e7c0fdd57d99046b2e122a4192b2e43df'
 CHAT=-1004378639510
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner':raise PermissionError('Public runner only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker':raise PermissionError('Public runner only')
  os.environ['WB_TOKEN_2']='NO_WB_PERMISSION';t=SixTransport();e=t.get(EXEC) or {};p=t.get(PLAN) or {}
  if e.get('status')!='verified' or str(e.get('run_id'))!=EXPECTED_RUN or digest(p.get('actions',[]))!=FROZEN or not e.get('readback_at'):return
  expected={(a['campaign'],a['nm']) for a in p['actions']}

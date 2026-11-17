@@ -14,7 +14,7 @@ def proj(v):
  return dict(id=v['id'],status=v['status'],currency=v['currency'],bid_type=v['bid_type'],settings=v['settings'],nm_settings=sorted(v['nm_settings'],key=lambda n:n['nm_id']))
 def save(c,e):c.put(ROOT+':execution',json.loads(json.dumps(e,allow_nan=False)))
 def main():
- assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/veschi-bot-runner' and os.environ['GITHUB_REF']=='refs/heads/main'
+ assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/scheduled-worker' and os.environ['GITHUB_REF']=='refs/heads/main'
  assert datetime.now(timezone(timedelta(hours=3))).date().isoformat()=='2026-10-29'
  c=Cache();w=WB();validate_identity(c,w);a=c.get(ROOT+':approval')
  assert a['status']=='approved' and a['owner_user_id']==5122667182 and a['campaign_id']==CID and a['keep_recommendations'] and a['budget_change']==0

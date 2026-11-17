@@ -20,7 +20,7 @@ jobs:
         run: echo "IP_WORKFLOW_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
         with:
-          ref: 494619e296f9e7078dec42b636714177d8a4aacc
+          ref: a229ee507f8cac05b400ce0d3d1fedbe2e7b3c59
           persist-credentials: false
           sparse-checkout-cone-mode: false
           sparse-checkout: |
@@ -33,7 +33,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Ekaterina11098/VESCHI_AI
-          ref: a0d222353b1fb120fb66a114f64f463e2f936a28
+          ref: 77a3416b9b6c568befd49f809d32278b6a5607df
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           persist-credentials: false
           path: private-source

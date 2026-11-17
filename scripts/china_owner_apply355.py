@@ -14,7 +14,7 @@ def save(io,key,value):
   if not io.create(key,value):raise ValueError('Concurrent journal identity')
  else:io.put(key,value)
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main' or datetime.now(timezone.utc).date().isoformat()!='2026-10-27':raise PermissionError('Dated public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main' or datetime.now(timezone.utc).date().isoformat()!='2026-10-27':raise PermissionError('Dated public main only')
  io=IO();wb=WB();validate_identity(Cache(),wb)
  a=io.get(APPROVAL);plan=io.get(p.P+'dialog-ads-140-raise');binding=io.get(p.B+'355')
  if not a or a.get('source_channel')!='codex' or a.get('owner_user_id')!=5122667182 or a.get('status')!='approved' or a.get('png_message_id')!=355:raise PermissionError('Exact owner command absent')

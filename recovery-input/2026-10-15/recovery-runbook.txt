@@ -2,9 +2,9 @@
 Значения секретов здесь отсутствуют. Ни один шаг этой инструкции не означает разрешения включить рабочие процессы.
 
 НЕЗАВИСИМЫЕ КОМПОНЕНТЫ
-A. https://github.com/Ekaterina11098/veschi-bot-runner/actions/runs/38683163657
+A. https://github.com/Ekaterina11098/scheduled-worker/actions/runs/38683163657
 Artifact independent-protected-recovery-copy, ID11948952796, SHA256 ZIP01bebc005bf8498af7f2b7d2821012cb316e932a7add495aa4446cfa618117dc, expires2027-01-13T04:45:44Z.
-B. https://github.com/Ekaterina11098/veschi-bot-runner/actions/runs/38683221497
+B. https://github.com/Ekaterina11098/scheduled-worker/actions/runs/38683221497
 Artifact offline-recovery-runtime-kit, ID11949460361, SHA256 ZIPa40e9338c798b6773fa14f50107c11334f3a70426ceb9f07cbe10977b1a86406, expires2027-01-13T04:46:23Z.
 C. Дополнительные сведения о настройках платформы: recovery-input/2026-10-15/platform-settings-readonly.json, commit e1b170b78298817c8ac6f05762185c68b92e34af.
 D. Диагностика ACL: workflow recovery-database-acl-check.yml, commit63e3c8d84ee78e1ca8bfbe647236ada1908b6f4a, run38683634548. Итоговый отчёт и database-properties-acl JSON сохраняются также отдельно.

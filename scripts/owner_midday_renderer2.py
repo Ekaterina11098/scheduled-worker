@@ -189,7 +189,7 @@ def render_midday(b):
  for i,f in enumerate(files,1):f.update(kind='drr:'+str(i).zfill(3),page=i,total=len(files))
  return files
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  from china_price_apply import IO
  from china_advertising_delivery import deliver,telegram_sender
  from china_daily_ad_actions import plan,bind

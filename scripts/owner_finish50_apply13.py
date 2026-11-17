@@ -135,7 +135,7 @@ def fund(io,w,source,cid,amount):
  except Exception as e:
   s.update(status='uncertain'if s['status']in['submitting','accepted']else'blocked',reason=str(e),finished_at=stamp());io.put(key,s)
 def main():
- assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/veschi-bot-runner'and os.environ['GITHUB_REF']=='refs/heads/main'
+ assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/scheduled-worker'and os.environ['GITHUB_REF']=='refs/heads/main'
  io=AdvertisingIO();assert io.get(ROOT+':notice_contract'),'A confirmed recovery must register its completion before marketplace work'
  w=ScopedWB();validate_identity(Cache(),w)
  approval=io.get(ROOT+':approval');assert approval['owner_id']==5122667182 and approval['source_channel']=='codex'and approval['status']=='approved'

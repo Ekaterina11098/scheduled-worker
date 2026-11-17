@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 10ca471ebdc30e8979abeb6286434c51fe218931
+          ref: 5521d5c14265d40549d6b73cad4911bff9475b59
           persist-credentials: false
           fetch-depth: 1
           sparse-checkout: scripts
@@ -49,7 +49,7 @@ jobs:
            return r.content,im.convert('RGB')
           def core(c):return {k:v for k,v in c.items()if k not in ['photos','updatedAt']}
           def main():
-           assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/veschi-bot-runner'and os.environ['GITHUB_REF']=='refs/heads/main'
+           assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/scheduled-worker'and os.environ['GITHUB_REF']=='refs/heads/main'
            io=IO()
            if io.get(ROOT):return
            p=io.get('china_agent:owner_blocked_cards:2026-11-09:v1:read');assert p['status']=='complete'

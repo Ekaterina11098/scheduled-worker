@@ -12,7 +12,7 @@ class Checks(unittest.TestCase):
  def setUp(self):
   Fake.data={m.CONFIG:dict(profile_id='p',seller_name='VESCHI LIMITED',seller_ui_id=250184767,currency='CNY'),'china_agent:prices:v1':{'rows':[{'nmID':1473244991,'vendorCode':'sample'}]}}
  def execute(self,post,get):
-  with patch.dict(os.environ,{'GITHUB_REPOSITORY':'Ekaterina11098/veschi-bot-runner','GITHUB_REF':'refs/heads/main','TINYFISH_API_KEY':'offline'}),patch.object(m,'Cache',Fake),patch.object(m.requests,'post',post,create=True),patch.object(m.requests,'get',get,create=True):m.main()
+  with patch.dict(os.environ,{'GITHUB_REPOSITORY':'Ekaterina11098/scheduled-worker','GITHUB_REF':'refs/heads/main','TINYFISH_API_KEY':'offline'}),patch.object(m,'Cache',Fake),patch.object(m.requests,'post',post,create=True),patch.object(m.requests,'get',get,create=True):m.main()
  def ok(self,data):return types.SimpleNamespace(ok=True,json=lambda:data)
  def result(self,seller='VESCHI LIMITED'):
   return self.ok({'status':'COMPLETED','result':dict(seller_name=seller,seller_ui_id='250184767',currency='CNY',article='sample',nm_id='1473244991',seller_price_with_discount='192.72',minimum_price='192',error='')})

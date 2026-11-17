@@ -423,7 +423,7 @@ def daily(budget=60,verify=False):
 if __name__=='__main__':
  import argparse
  p=argparse.ArgumentParser();p.add_argument('--verify',action='store_true');p.add_argument('--budget',type=int,default=60);args=p.parse_args()
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner':raise SystemExit('Public runner only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker':raise SystemExit('Public runner only')
  try:value=daily(max(1,min(args.budget,120)),args.verify)
  except Exception as ex:
   from conversion_watches import runtime

@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 90dcd733c9a7d1aaab759690af081c69c0c1941f
+          ref: 5cbc9b7c3bb4ec395d75d63d2de2e40e6eab00ab
           sparse-checkout: |
             ip_bags_growth_20261104.py
             ip_apply_nine_20261103.py

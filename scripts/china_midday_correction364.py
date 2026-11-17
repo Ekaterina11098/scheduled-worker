@@ -100,7 +100,7 @@ def apply(io):
  e.update(status='completed',completed_at=stamp());io.put(ROOT,e)
  return e
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main' or str(datetime.now(MSK).date())!=DAY:raise ValueError('Dated public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main' or str(datetime.now(MSK).date())!=DAY:raise ValueError('Dated public main only')
  io=AdvertisingIO()
  if sys.argv[1:]==['--prepare']:e=prepare(io)
  elif sys.argv[1:]==['--refresh']:e=refresh(io)

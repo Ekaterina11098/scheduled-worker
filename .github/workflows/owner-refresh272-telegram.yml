@@ -16,7 +16,7 @@ jobs:
         with: {persist-credentials: false, sparse-checkout: scripts}
       - uses: actions/checkout@v4
         with:
-          ref: 0101e5ed968160dc35e0cbbfafa0cea2a4e68601
+          ref: 6dd5a092f4873ee7c6d84a394acbb35e4deb90c3
           path: previous-render
           persist-credentials: false
           sparse-checkout-cone-mode: false

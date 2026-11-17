@@ -17,7 +17,7 @@ class History:
   if method!='GET' or table!='telegram_api_cache':raise ValueError('Read only')
   return self.c.req('GET',params)
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main' or datetime.now(ZoneInfo('Europe/Moscow')).date().isoformat()!='2026-10-28':raise ValueError('Dated public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main' or datetime.now(ZoneInfo('Europe/Moscow')).date().isoformat()!='2026-10-28':raise ValueError('Dated public main only')
  c=Cache()
  prior=c.get(KEY)
  if prior:

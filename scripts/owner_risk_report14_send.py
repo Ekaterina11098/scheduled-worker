@@ -8,7 +8,7 @@ from china_daily_ad_actions import plan,bind
 from china_loss_control import PLAN
 ROOT='china_agent:owner_risk_report:2026-11-14:v1'
 def main():
- assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/veschi-bot-runner'and os.environ['GITHUB_REF']=='refs/heads/main'
+ assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/scheduled-worker'and os.environ['GITHUB_REF']=='refs/heads/main'
  io=AdvertisingIO();data=io.get(ROOT+':prepared');assert data['day']=='2026-11-14'and len(data['actions'])==3
  if(io.get(ROOT+':delivery')or{}).get('status')=='delivered':return
  import requests

@@ -9,7 +9,7 @@ NOTICE='china_agent:catalog_price_notice:2026-10-28:v1'
 REPLY=480;CHAT=-1004342917488;BOT=8780468043;PAVEL=307200273
 def stamp():return datetime.now(timezone.utc).isoformat()
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  c=Cache();p=c.get(ROOT) or {}
  if p.get('status') not in ['verified','partial'] or not p.get('completed_at'):raise ValueError('Completed canonical execution required')
  prior=c.get(NOTICE)

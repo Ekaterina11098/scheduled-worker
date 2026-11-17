@@ -116,7 +116,7 @@ def apply(io,job_id,review=False):
  return e
 
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  io=IO();args=sys.argv[1:]
  if args==['--drain']:
   pending=io.db('telegram_api_cache?cache_key=like.'+ROOT+'*&payload->>status=in.(requested,prepared)&select=cache_key&limit=5')

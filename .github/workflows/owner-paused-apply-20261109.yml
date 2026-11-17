@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 10ca471ebdc30e8979abeb6286434c51fe218931
+          ref: 5521d5c14265d40549d6b73cad4911bff9475b59
           persist-credentials: false
           fetch-depth: 1
           filter: blob:none
@@ -115,7 +115,7 @@ jobs:
            from china_loss_execute import IO
            from china_morning_readiness import current_prices,published_stock
            from china_moysklad_read import read_stock
-           assert os.environ.get('GITHUB_REPOSITORY')=='Ekaterina11098/veschi-bot-runner'and os.environ.get('GITHUB_REF')=='refs/heads/main'
+           assert os.environ.get('GITHUB_REPOSITORY')=='Ekaterina11098/scheduled-worker'and os.environ.get('GITHUB_REF')=='refs/heads/main'
            io=IO()
            def ad(path,method='GET',body=None):
             allowed=(method=='GET'and(path.startswith('/api/advert/v2/adverts?ids=')or path in('/api/advert/v1/config','/adv/v1/balance')or path in['/adv/v0/start?id='+str(cid)for cid,_ in SCOPE]))or(method=='POST'and(path=='/api/advert/v2/budget'or path in['/adv/v1/budget/deposit?id='+str(cid)for cid,_ in SCOPE]))

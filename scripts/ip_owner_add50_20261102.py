@@ -193,7 +193,7 @@ def prepare_additions(plan,parent,root,stock):
   selected.append(a);allactive.add(nm);results.append(dict(r,status='planned',target_bid_minor=a['target_bid_minor']))
  return before,expected,selected,results
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Public main only')
  if datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=3))).date().isoformat()!='2026-11-02':raise PermissionError('Dated owner approval only')
  t=Transport();p=t.get(PLAN);parent=t.get(PREVIOUS);root=t.get(ROOT);stock=t.get('ip_agent:expanded98:fbo60:2026-11-02:v1');policy=t.get('ip_agent:new_ads_fbo_only:2026-11-02:v1')
  if not p or not root or root.get('status')!='authorized_pending_preflight' or not policy or policy.get('status')!='owner_confirmed':raise PermissionError('Owner instructions missing')

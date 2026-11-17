@@ -64,7 +64,7 @@ async function queueSavedDialog(update: any, message: any, text: string) {
     return new Response("Dialog dispatcher unavailable",{status:503});
   }
   try {
-    const response=await fetch("https://api.github.com/repos/Ekaterina11098/veschi-bot-runner/actions/workflows/advertising-dialog.yml/dispatches",{
+    const response=await fetch("https://api.github.com/repos/Ekaterina11098/scheduled-worker/actions/workflows/advertising-dialog.yml/dispatches",{
       method:"POST",headers:{Authorization:"Bearer "+GITHUB,Accept:"application/vnd.github+json","Content-Type":"application/json","X-GitHub-Api-Version":"2022-11-28"},
       body:JSON.stringify({ref:"main",inputs:{job_id:String(job.id)}}),signal:AbortSignal.timeout(8000),
     });
@@ -114,7 +114,7 @@ async function exactPngApproval(update: any, message: any, config: any) {
     {cache_key:key,payload:a,expires_at:p.expires_at},"resolution=ignore-duplicates,return=representation");
   if (!inserted?.length)return new Response("OK");
   try {
-    const response=await fetch("https://api.github.com/repos/Ekaterina11098/veschi-bot-runner/actions/workflows/ip-png-apply.yml/dispatches",{
+    const response=await fetch("https://api.github.com/repos/Ekaterina11098/scheduled-worker/actions/workflows/ip-png-apply.yml/dispatches",{
       method:"POST",headers:{Authorization:"Bearer "+GITHUB,Accept:"application/vnd.github+json","Content-Type":"application/json"},
       body:JSON.stringify({ref:"main",inputs:{approval_key:key}}),signal:AbortSignal.timeout(8000)});
     await database("telegram_api_cache?cache_key=eq."+encodeURIComponent(key),"PATCH",{payload:{...a,dispatch_status:response.ok?"dispatched":"failed"}});
@@ -220,7 +220,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
     if (!Array.isArray(inserted) || inserted.length === 0) return callback ? ack(callback.id,"Запрос уже сохранён.") : new Response("OK");
     if (GITHUB) {
       try {
-        const run = await fetch("https://api.github.com/repos/Ekaterina11098/veschi-bot-runner/actions/workflows/run.yml/dispatches",{
+        const run = await fetch("https://api.github.com/repos/Ekaterina11098/scheduled-worker/actions/workflows/run.yml/dispatches",{
           method:"POST",headers:{Authorization:"Bearer " + GITHUB,Accept:"application/vnd.github+json",
             "Content-Type":"application/json","X-GitHub-Api-Version":"2022-11-28"},
           body:JSON.stringify({ref:"main",inputs:{task:"agent"}}),signal:AbortSignal.timeout(8000),

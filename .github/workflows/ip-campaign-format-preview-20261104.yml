@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 2ec826507f2b7a3d550ad3842bd4420c422d9c55
+          ref: 25d78a051af11a50de6e9e29a88f670e9a8aeb02
           sparse-checkout: |
             advertising_daily_tables_owner.py
             ip_daily_png_contract.py
@@ -29,7 +29,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Ekaterina11098/VESCHI_AI
-          ref: 2f798a9509b72030d6fb5ec68fb915c5d216c31b
+          ref: dfa9651d7f18589ca1c8a1c8de020774be963261
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           persist-credentials: false
           path: private-source

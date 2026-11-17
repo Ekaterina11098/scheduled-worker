@@ -6,7 +6,7 @@ ROOT='china_agent:owner_cpm10_apply29:2026-10-29:v1'
 PHASE=os.environ.get('REVIEW_PHASE','before')
 def save(c,k,p):c.put(k,json.loads(json.dumps(p,allow_nan=False)))
 def main():
- assert os.environ.get('GITHUB_REPOSITORY')=='Ekaterina11098/veschi-bot-runner' and os.environ.get('GITHUB_REF')=='refs/heads/main'
+ assert os.environ.get('GITHUB_REPOSITORY')=='Ekaterina11098/scheduled-worker' and os.environ.get('GITHUB_REF')=='refs/heads/main'
  assert datetime.now(timezone(timedelta(hours=3))).date().isoformat()=='2026-10-29'
  c=Cache();w=WB();validate_identity(c,w)
  approval=c.get(ROOT+':approval');assert approval and approval['status']=='approved'

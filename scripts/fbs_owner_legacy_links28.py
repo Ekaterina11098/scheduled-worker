@@ -25,7 +25,7 @@ def batches(w,typ,field,values):
 def slim(d):
  return dict(id=d['id'],name=d.get('name'),posted=d.get('applicable'),sum=d.get('sum'))
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise Stop('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise Stop('Public main only')
  t=ReadOnly();db=Cache(t);root=db.get(ROOT)
  if db.get(REPORT):print('Existing legacy check');return
  c=db.get('fbs_document_chain:china:config:v1');w=Worker(t,db,c)

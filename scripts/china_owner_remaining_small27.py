@@ -11,7 +11,7 @@ BASE='china_agent:owner_remaining_review:2026-10-27:v1'
 def main():
  from zoneinfo import ZoneInfo
  MSK=ZoneInfo('Europe/Moscow')
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main' or str(datetime.now(MSK).date())!='2026-10-27':raise ValueError('Dated public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main' or str(datetime.now(MSK).date())!='2026-10-27':raise ValueError('Dated public main only')
  c=Cache()
  if c.get(KEY):print('Audit exists; no repeat reads');return
  base=c.get(BASE) or {}

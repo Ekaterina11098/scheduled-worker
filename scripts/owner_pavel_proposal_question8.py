@@ -12,7 +12,7 @@ class Adapter:
   if insert:self.db.once(key,value);return True
   return self.db.update(key,value)
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  db=DB();w=Adapter(db);prior=db.get(KEY)
  if prior:
   if prior.get('status')=='sent':bind(w,263,[prior['message_id']],prior['text'])

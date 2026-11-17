@@ -47,7 +47,7 @@ def coverage(cab,supply,c,ledger,docs):
  if ident=='WB-GI-298590867':out['owner_reviewed_do_not_change']=True
  return out
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise Stop('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise Stop('Public main only')
  t=ReadOnly();db=Cache(t);prior=db.get(REPORT)
  if prior and prior.get('status')=='complete':print('Existing completed coverage inventory');return
  report=dict(status='running',started_at=now(),operational_writes=0,source=[],results=[],errors=[])

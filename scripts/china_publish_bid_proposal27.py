@@ -15,7 +15,7 @@ class ReadWB(cloud.WB):
   if write:raise PermissionError('Proposal cannot change WB')
   return super().req(path,method,body,write=False)
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main' or datetime.now(timezone.utc).date().isoformat()!='2026-10-27':raise ValueError('Dated public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main' or datetime.now(timezone.utc).date().isoformat()!='2026-10-27':raise ValueError('Dated public main only')
  io=IO();cloud.WB=ReadWB
  def db(method,table,params=None,body=None,prefer=None):
   if table not in ['telegram_api_cache','business_agent_config','business_agent_jobs']:raise PermissionError('DB scope')

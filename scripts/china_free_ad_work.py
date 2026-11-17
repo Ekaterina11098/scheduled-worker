@@ -19,7 +19,7 @@ def run(io,job_id):
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--job-id',required=True,type=int);args=p.parse_args()
-    if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':
+    if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':
         raise PermissionError('Public runner main only')
     from china_loss_execute import IO
     print(json.dumps(run(IO(),args.job_id)))

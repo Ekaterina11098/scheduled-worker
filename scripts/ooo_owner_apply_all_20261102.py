@@ -235,7 +235,7 @@ def main():
     state.update(status='complete',completed_at=stamp(),drr_target_pct=5,drr_control_order=['campaign','sku'],first_full_post_change_day=(datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=3))).date()+datetime.timedelta(days=1)).isoformat())
     save()
 if __name__=='__main__':
-    if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Public main only')
+    if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Public main only')
     state={'status':'starting','started_at':stamp(),'run_id':os.environ['GITHUB_RUN_ID'],'authorization_sha256':HASH,'steps':{},'telegram_calls':0}
     if not claim(state):
         previous=get(KEY) or {}

@@ -13,7 +13,7 @@ class Adapter:
   if table!='telegram_api_cache':raise ValueError('Private cache only')
   return self.c.req(method,params,body,prefer)
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or datetime.now(timezone.utc).date().isoformat()!='2026-10-31':raise ValueError('Dated public owner read only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or datetime.now(timezone.utc).date().isoformat()!='2026-10-31':raise ValueError('Dated public owner read only')
  c=Cache();w=ReadOnlyWB()
  if c.get(ROOT):print('Existing immutable owner read preserved');return
  validate_identity(c,w)

@@ -64,7 +64,7 @@ def main():
  from china_moysklad_read import read_stock
  class Prices(AdvertisingIO):
   def __init__(self,token):self.token=token
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner'or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker'or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  c=Cache();a,items=approval(c)
  if c.get(ROOT+':execution'):print('Existing execution: no replay');return
  wb=ScopedWB(items);validate_identity(c,wb);original=requests.sessions.Session.request

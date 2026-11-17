@@ -21,7 +21,7 @@ def collect(call,checks,known):
   reqs.append(dict(key='token_2:'+tool+':'+json.dumps(args,sort_keys=True),cabinet='token_2',tool=tool,arguments=args))
  return execute_reads(call,checks,known,reqs,copy.deepcopy(BIDDER),saved,max_requests=3)
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner':raise PermissionError('Public runner only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker':raise PermissionError('Public runner only')
  if datetime.now(timezone.utc).astimezone(__import__('zoneinfo').ZoneInfo('Europe/Moscow')).date().isoformat()!=DAY:raise PermissionError('Dated diagnostic only')
  if database('GET','telegram_api_cache',params={'cache_key':'eq.'+KEY,'select':'cache_key','limit':1}):raise RuntimeError('Prior diagnostic retained; do not replay')
  pause=database('GET','telegram_api_cache',params={'cache_key':'eq.mpstats:cooldown','expires_at':'gt.'+datetime.now(timezone.utc).isoformat(),'select':'expires_at','limit':1}) or []

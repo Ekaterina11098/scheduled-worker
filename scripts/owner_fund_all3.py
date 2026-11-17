@@ -28,7 +28,7 @@ def allocate(b,spend,available,minimum):
   amounts[cid]+=minimum;available-=minimum
  return {k:v for k,v in amounts.items() if v>0}
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Wrong execution repository')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Wrong execution repository')
  c=Cache();a=c.get(ROOT+':approval') or {}
  if a.get('owner_user_id')!=5122667182 or a.get('source_channel')!='codex' or a.get('campaign_ids')!=IDS or a.get('execution_authorized') is not True or datetime.now(timezone.utc)>=datetime.fromisoformat(a['expires_at']):raise ValueError('Owner authorization missing/expired')
  if c.get(ROOT+':execution'):print('Execution exists; no replay');return

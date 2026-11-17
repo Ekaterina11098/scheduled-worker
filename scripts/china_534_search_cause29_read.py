@@ -4,7 +4,7 @@ from datetime import datetime,timezone,timedelta
 from china_cloud_cost_control import Cache,WB,validate_identity,stamp
 ROOT='china_agent:534_search_cause:2026-10-29:v1'
 def main():
- assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/veschi-bot-runner' and os.environ['GITHUB_REF']=='refs/heads/main'
+ assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/scheduled-worker' and os.environ['GITHUB_REF']=='refs/heads/main'
  assert datetime.now(timezone(timedelta(hours=3))).date().isoformat()=='2026-10-29'
  c=Cache();w=WB();validate_identity(c,w)
  if c.get(ROOT):print('Existing diagnostic; no duplicate read');return

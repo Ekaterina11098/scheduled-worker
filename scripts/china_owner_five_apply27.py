@@ -13,7 +13,7 @@ def expected(c,items):
   next(n for n in out['nm_settings'] if n['nm_id']==item['nm_id'])['bids_kopecks']['recommendations']=31
  return projection(out)
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main' or datetime.now(timezone.utc).date().isoformat()!='2026-10-27':raise ValueError('Dated public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main' or datetime.now(timezone.utc).date().isoformat()!='2026-10-27':raise ValueError('Dated public main only')
  c=Cache();wb=WB();a=c.get(ROOT+':approval') or {};source=c.get(SOURCE) or {}
  scope=[dict(campaign_id=cid,nm_id=nm,article=article,placement='recommendations',old_minor=28,target_minor=31) for cid,nm,article in ITEMS]
  if a.get('status')!='approved' or a.get('owner_user_id')!=5122667182 or a.get('source_channel')!='codex' or a.get('approved_items')!=scope or datetime.now(timezone.utc)>datetime.fromisoformat(a['expires_at']):raise ValueError('Exact five owner approval missing')

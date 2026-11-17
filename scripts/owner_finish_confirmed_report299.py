@@ -3,7 +3,7 @@ import json,os
 from china_loss_execute import IO
 from china_daily_ad_actions import process_and_deliver
 from china_loss_control import APPROVAL,PLAN
-if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main required')
+if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main required')
 io=IO();a=io.get(APPROVAL+'299')
 if not a or a.get('job_id')!=299 or a.get('button_confirmation')!='323d404750bc541ee303bfbe-5122667182':raise ValueError('Exact confirmed approval299 missing')
 p=io.get(PLAN+a['plan_id'])

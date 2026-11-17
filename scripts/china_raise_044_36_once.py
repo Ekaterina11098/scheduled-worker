@@ -5,7 +5,7 @@ from china_cloud_cost_control import Cache,WB,stamp
 ROOT='china_agent:owner_raise_044_36:2026-10-26:v1'
 PLAN=[dict(cid=40933588,nm=1473243894,article='044-NoelBag-black',old=28,target=31),dict(cid=41055480,nm=1473243439,article='36-EthelBag-brown',old=28,target=30)]
 def main():
- assert os.environ.get('GITHUB_REPOSITORY')=='Ekaterina11098/veschi-bot-runner'
+ assert os.environ.get('GITHUB_REPOSITORY')=='Ekaterina11098/scheduled-worker'
  assert os.environ.get('GITHUB_REF')=='refs/heads/main'
  assert datetime.now(timezone.utc)<datetime.fromisoformat('2026-10-26T20:00:00+00:00')
  c=Cache();w=WB();auth=c.get(ROOT+':approval')

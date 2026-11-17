@@ -46,7 +46,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
     enabled: Deno.env.get("REVIEW_APPROVAL_ENABLED") === "true",
     mode: "github-encrypted",
     webhookSecret: WEBHOOK_SECRET,
-    receiverURL: "https://api.github.com/repos/Ekaterina11098/veschi-bot-runner/actions/workflows/review-approval-process.yml/dispatches",
+    receiverURL: "https://api.github.com/repos/Ekaterina11098/scheduled-worker/actions/workflows/review-approval-process.yml/dispatches",
     ingressKey: Deno.env.get("REVIEW_APPROVAL_INGRESS_KEY") ?? "",
     dispatchToken: Deno.env.get("REVIEW_APPROVAL_DISPATCH_TOKEN") ?? "",
     ownerId: Deno.env.get("REVIEW_APPROVAL_OWNER_ID") ?? "",

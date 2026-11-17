@@ -31,7 +31,7 @@ export async function routeReviewApproval(request, update, config, forward = fet
   let stage='start';
   try {
     if (config.mode === 'github-encrypted') {
-      const expected='https://api.github.com/repos/Ekaterina11098/veschi-bot-runner/actions/workflows/review-approval-process.yml/dispatches';
+      const expected='https://api.github.com/repos/Ekaterina11098/scheduled-worker/actions/workflows/review-approval-process.yml/dispatches';
       if (config.receiverURL !== expected) return new Response('Invalid dispatch target', {status:503});
       const bytes=Uint8Array.from(atob(config.ingressKey),c=>c.charCodeAt(0));
       if(bytes.length!==32)return new Response('Invalid ingress key', {status:503});

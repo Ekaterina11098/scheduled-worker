@@ -7,7 +7,7 @@ from china_advertising_cards import enhance
 
 DAY='2026-10-27';KEY='china_agent:morning_correction:'+DAY+':v1'
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main' or str(datetime.now(MSK).date())!=DAY:raise ValueError('Dated public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main' or str(datetime.now(MSK).date())!=DAY:raise ValueError('Dated public main only')
  io=AdvertisingIO()
  if io.get(KEY):print('Source already collected; no repeated WB reads');return
  source=copy.deepcopy(io.get('china_agent:advertising_source:'+DAY+':v2'))

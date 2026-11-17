@@ -83,7 +83,7 @@ def execute():
  if balances[39605581]<=0:raise RuntimeError('Deposit accepted but positive campaign balance not verified')
  w.state.update(status='verified',funding_after=balances,verified_at=w.stamp(),first_full_post_change_day=(datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=3))).date()+datetime.timedelta(days=1)).isoformat());w.save()
 if __name__=='__main__':
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner'or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Expected repository/main required')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker'or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Expected repository/main required')
  if not w.claim(w.state):print('Existing execution receipt retained; no replay');raise SystemExit(0)
  try:execute()
  except Exception as e:

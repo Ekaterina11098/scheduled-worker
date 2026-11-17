@@ -4,7 +4,7 @@ from datetime import datetime,timezone
 from china_cloud_cost_control import Cache,WB,validate_identity
 KEY='china_agent:jam_access_probe:2026-11-02:v1'
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise RuntimeError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise RuntimeError('Public main only')
  c=Cache();w=WB();validate_identity(c,w)
  if c.get(KEY):print('Saved search read exists; no repeat');return
  body=dict(currentPeriod=dict(start='2026-11-01',end='2026-11-01'),pastPeriod=dict(start='2026-10-31',end='2026-10-31'),orderBy=dict(field='avgPosition',mode='asc'),positionCluster='all',includeSubstitutedSKUs=True,includeSearchTexts=True,limit=1,offset=0)

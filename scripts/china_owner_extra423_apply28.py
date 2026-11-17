@@ -33,7 +33,7 @@ class ScopedWB(WB):
    validate_body(body)
   return super().req(path,method,body,write)
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main' or datetime.now(timezone.utc).date().isoformat()!='2026-10-28':raise ValueError('Dated public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main' or datetime.now(timezone.utc).date().isoformat()!='2026-10-28':raise ValueError('Dated public main only')
  c=Cache();wb=ScopedWB();a=c.get(ROOT+':approval') or {};p=c.get(PLAN) or {}
  if a.get('status')!='approved' or a.get('owner_user_id')!=5122667182 or a.get('source_channel')!='codex' or datetime.now(timezone.utc)>datetime.fromisoformat(a['expires_at']):raise ValueError('Exact approval missing or expired')
  for rows in [a.get('approved_items',[]),p.get('items',[])]:

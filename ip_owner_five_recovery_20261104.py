@@ -22,7 +22,7 @@ def verified_items(p,after):
   out.append({k:a[k] for k in ('campaign','nm','sku','kind')}|dict(status='verified' if good else 'not_verified',target_bid_minor=a.get('target_bid_minor')))
  return out
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Public main only')
  t=SixTransport();p=t.get(PLAN);old=t.get(PLAN+':execution');auth=t.get(REC)
  def guard():
   if not auth or auth.get('status')!='owner_authorized_recovery' or auth.get('scope_sha256')!=FROZEN or datetime.datetime.now(datetime.timezone.utc)>=datetime.datetime.fromisoformat(auth['expires_at']):raise PermissionError('Recovery approval missing/expired')

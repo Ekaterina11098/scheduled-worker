@@ -16,11 +16,11 @@ jobs:
     timeout-minutes: 330
     steps:
       - uses: actions/checkout@v4
-        with: {persist-credentials: false, sparse-checkout: scripts, ref: c043b0ce476742f213beea5df444dce2792fc014}
+        with: {persist-credentials: false, sparse-checkout: scripts, ref: f42ac2b2ff5dcf300465c88f909da5aa1eaa01e4}
       - uses: actions/checkout@v4
         with:
           repository: Ekaterina11098/VESCHI_AI
-          ref: 3708405208147b76cb76ad9ae9b432377f652bee
+          ref: d9590af00baa6ce80598945f8009700e04a4c96e
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           persist-credentials: false
           path: private-source

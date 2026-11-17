@@ -247,7 +247,7 @@ def fresh_fbo(t,scope,state,save):
  return result
 
 def run_finish():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Public main only')
  if datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=3))).date().isoformat()!='2026-11-02':raise PermissionError('Dated authorization only')
  t=FinishTransport();p=t.get(PLAN);root=t.get(ROOT);validate_plan(p,root)
  state={'status':'starting','started_at':stamp(),'run_id':os.environ['GITHUB_RUN_ID'],'approval_key':PLAN,'steps':{},'campaigns':[],'telegram_sends':0,'wb_write_attempts':0}

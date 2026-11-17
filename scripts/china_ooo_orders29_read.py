@@ -5,7 +5,7 @@ from collections import Counter
 from china_cloud_cost_control import Cache,stamp
 ROOT='china_agent:ooo_orders_compare:2026-10-29:v1';MSK=timezone(timedelta(hours=3))
 def main():
- assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/veschi-bot-runner' and os.environ['GITHUB_REF']=='refs/heads/main'
+ assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/scheduled-worker' and os.environ['GITHUB_REF']=='refs/heads/main'
  cut=datetime.now(MSK);assert cut.date().isoformat()=='2026-10-29'
  c=Cache()
  if c.get(ROOT):print('Existing comparison');return

@@ -12,7 +12,7 @@ def get_json(url,headers,params=None,body=None):
  if not r.ok:raise RuntimeError('Stock read HTTP '+str(r.status_code)+' '+url.split('.ru')[-1])
  return r.json()
 def main():
- assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/veschi-bot-runner' and os.environ['GITHUB_REF']=='refs/heads/main'
+ assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/scheduled-worker' and os.environ['GITHUB_REF']=='refs/heads/main'
  assert datetime.now(timezone.utc)<datetime.fromisoformat('2026-10-27T00:00:00+00:00')
  c=Cache();w=WB();validate_identity(c,w);auth=c.get('china_agent:owner_restore17764:2026-10-26:v1:approval') or {}
  assert auth.get('status')=='approved' and auth.get('owner_id')==5122667182 and auth.get('plan')==[{"cid":40933588,"nm":1473244337,"article":"177-AngelaBag-brown","placement":"recommendations","target":28,"barcode":"2042655405395"},{"cid":41298169,"nm":1473243916,"article":"64-NoelBag-zchocolate","placement":"search","target":28,"barcode":"2052007102391"}] and auth.get('require_fresh_stock') is True

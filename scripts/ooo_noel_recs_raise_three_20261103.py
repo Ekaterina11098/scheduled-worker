@@ -14,7 +14,7 @@ def scope():
 w.authorize=scope
 def projection(c):
  return {k:copy.deepcopy(c.get(k)) for k in ('id','status','currency','bid_type','settings','restrictions')}|{'nm_settings':sorted(copy.deepcopy(c['nm_settings']),key=lambda n:n['nm_id'])}
-if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Public main only')
+if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Public main only')
 if not w.claim(w.state):print('Existing exact bid receipt preserved; no replay');raise SystemExit(0)
 try:
  scope()

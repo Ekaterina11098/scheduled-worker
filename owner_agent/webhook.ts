@@ -8,7 +8,7 @@ Deno.serve((request:Request)=>handle(request,{
   dispatchJob:async(id:number)=>{
     const token=Deno.env.get('GITHUB_WORKFLOW_DISPATCH_TOKEN');
     if(!token)throw new Error('Dispatcher missing');
-    const r=await fetch('https://api.github.com/repos/Ekaterina11098/veschi-bot-runner/actions/workflows/owner-agent.yml/dispatches',{
+    const r=await fetch('https://api.github.com/repos/Ekaterina11098/scheduled-worker/actions/workflows/owner-agent.yml/dispatches',{
       method:'POST',headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'},
       body:JSON.stringify({ref:'main',inputs:{job_id:String(id)}}),signal:AbortSignal.timeout(8000)
     });

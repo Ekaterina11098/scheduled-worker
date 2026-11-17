@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 788f2a602888387e35a57eadd0ba3d0050b93879
+          ref: bc23332bce63db8eae786cffb0c11aa885362afd
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             ip_owner_five_recovery_20261104.py

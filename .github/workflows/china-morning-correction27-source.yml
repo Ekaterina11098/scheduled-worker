@@ -21,7 +21,7 @@ jobs:
           import os,pathlib,urllib.request
           root=pathlib.Path('scripts');root.mkdir(exist_ok=True)
           for name in ['china_morning_correction27_source.py','china_advertising_state.py','china_price_apply.py','china_advertising_v2.py','china_advertising_cards.py']:
-              root.joinpath(name).write_bytes(urllib.request.urlopen('https://raw.githubusercontent.com/Ekaterina11098/veschi-bot-runner/'+os.environ['GITHUB_SHA']+'/scripts/'+name,timeout=40).read())
+              root.joinpath(name).write_bytes(urllib.request.urlopen('https://raw.githubusercontent.com/Ekaterina11098/scheduled-worker/'+os.environ['GITHUB_SHA']+'/scripts/'+name,timeout=40).read())
           PY
       - run: pip install requests==2.32.5 > /tmp/dependencies.log 2>&1
       - run: PYTHONPATH=scripts python scripts/china_morning_correction27_source.py

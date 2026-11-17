@@ -7,7 +7,7 @@ from china_moysklad_read import read_stock
 ROOT='china_agent:revenue_diagnosis:2026-10-31:15:v1:conditions'
 TARGETS={1473245494:'143-ReginaBag-black',1473243916:'64-NoelBag-zchocolate',1473243825:'52-NoelBag-fuchsia',1473244341:'448-AngelaBag-lbrown',1473243239:'542-CelineaBag-darkbrown'}
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or datetime.now(timezone.utc).date().isoformat()!='2026-10-31':raise ValueError('Dated public owner read only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or datetime.now(timezone.utc).date().isoformat()!='2026-10-31':raise ValueError('Dated public owner read only')
  c=Cache(); w=ReadOnlyWB()
  if c.get(ROOT):print('Existing immutable conditions preserved');return
  validate_identity(c,w)

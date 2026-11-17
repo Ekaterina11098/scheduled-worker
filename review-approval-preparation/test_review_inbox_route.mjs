@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {routeReviewApproval} from './review_callback_route.mjs';
 const request=new Request('https://example.org',{headers:{'X-Telegram-Bot-Api-Secret-Token':'secret'}});
 const event={update_id:101,callback_query:{id:'query',data:'rv1:card:p1',from:{id:1},message:{message_id:9,chat:{id:2,type:'private'},from:{id:3}}}};
-const base={enabled:true,mode:'github-encrypted',webhookSecret:'secret',receiverURL:'https://api.github.com/repos/Ekaterina11098/veschi-bot-runner/actions/workflows/review-approval-process.yml/dispatches',ingressKey:Buffer.alloc(32,7).toString('base64'),dispatchToken:'dispatch',ownerId:'1',chatId:'2',botId:'3'};
+const base={enabled:true,mode:'github-encrypted',webhookSecret:'secret',receiverURL:'https://api.github.com/repos/Ekaterina11098/scheduled-worker/actions/workflows/review-approval-process.yml/dispatches',ingressKey:Buffer.alloc(32,7).toString('base64'),dispatchToken:'dispatch',ownerId:'1',chatId:'2',botId:'3'};
 let stored=[],calls=0;
 const persistInbox=async (update,sealed)=>{stored.push({update,sealed});};
 let response=await routeReviewApproval(request,event,{...base,persistInbox},async()=>{

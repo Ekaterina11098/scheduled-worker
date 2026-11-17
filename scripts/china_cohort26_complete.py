@@ -7,7 +7,7 @@ def iso():return datetime.now(timezone.utc).isoformat()
 def members(c):return {str(n['nm_id']):dict(subject_id=n['subject']['id'],bids=dict(n['bids_kopecks'])) for n in c['nm_settings']}
 def stable(c):return {k:c[k] for k in ['id','status','currency','bid_type','settings']}
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise RuntimeError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise RuntimeError('Public main only')
  c=Cache();w=WB();validate_identity(c,w);a=c.get(ROOT+'approval') or {}
  if a.get('status')!='approved' or a.get('owner_id')!=5122667182 or a.get('no_new_campaign_creation')is not True:raise RuntimeError('Exact continuation approval missing')
  if (datetime.now(timezone.utc)-datetime.fromisoformat(a['created_at'])).total_seconds()>7200:raise RuntimeError('Approval expired')

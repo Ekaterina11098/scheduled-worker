@@ -107,7 +107,7 @@ def apply(io):
  e.update(status='completed',completed_at=stamp(),new_message_ids=[p['message_id'] for p in result['parts']]);io.put(ROOT,e)
  return e
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main' or str(datetime.now(__import__('zoneinfo').ZoneInfo('Europe/Moscow')).date())!=DAY:raise ValueError('Dated public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main' or str(datetime.now(__import__('zoneinfo').ZoneInfo('Europe/Moscow')).date())!=DAY:raise ValueError('Dated public main only')
  io=NoMarketIO();mode=sys.argv[1:]
  e=prepare(io) if mode==['--prepare'] else apply(io) if mode==['--apply'] else None
  if not e:raise ValueError('Choose prepare or apply')

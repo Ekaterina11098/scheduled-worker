@@ -24,7 +24,7 @@ jobs:
           names=['china_cloud_cost_control','china_moysklad_read','moysklad_warehouses','china_loss_control','china_execution_notice','owner_044_raise_fund13']
           root=pathlib.Path('executor');root.mkdir()
           for name in names:
-              url='https://raw.githubusercontent.com/Ekaterina11098/veschi-bot-runner/'+os.environ['GITHUB_SHA']+'/scripts/'+name+'.py'
+              url='https://raw.githubusercontent.com/Ekaterina11098/scheduled-worker/'+os.environ['GITHUB_SHA']+'/scripts/'+name+'.py'
               (root/(name+'.py')).write_bytes(urllib.request.urlopen(url,timeout=45).read())
           subprocess.run([sys.executable,str(root/'owner_044_raise_fund13.py')],check=True)
           PY

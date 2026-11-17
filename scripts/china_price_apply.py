@@ -287,7 +287,7 @@ def main():
         cfg=io.db('business_agent_config?agent_id=eq.china&select=chat_id,bot_id,active')
         if cfg!=[dict(chat_id=CHAT,bot_id=BOT,active=True)]:raise ValueError('Configuration mismatch')
         print(json.dumps(result));return
-    if os.environ.get('GITHUB_EVENT_NAME')!='workflow_dispatch' or os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':
+    if os.environ.get('GITHUB_EVENT_NAME')!='workflow_dispatch' or os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':
         raise ValueError('Only explicit public main dispatch may apply WB prices')
     # GitHub replaces a third pending run in a concurrency group. Drain durable
     # same-day confirmations too, so overlapping participants cannot lose intent.

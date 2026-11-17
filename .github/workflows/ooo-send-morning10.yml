@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 1eaa421838919299001ef6d27e1bd0b4d062a6d5
+          ref: c1839e31338f55d86c2c71f91c3590464de7bd6b
           persist-credentials: false
           sparse-checkout: scripts
       - uses: actions/setup-python@v5

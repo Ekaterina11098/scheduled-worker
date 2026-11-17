@@ -6,7 +6,7 @@ import requests
 from china_cloud_cost_control import Cache,WB,stamp
 KEY='china_agent:technical_cancels:40933588:2026-10-20:2026-10-26:v1'
 def main():
- assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/veschi-bot-runner' and os.environ['GITHUB_REF']=='refs/heads/main'
+ assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/scheduled-worker' and os.environ['GITHUB_REF']=='refs/heads/main'
  c=Cache();w=WB()
  if c.get(KEY):print('Existing private report; no repeat reads');return
  stats=w.req('/adv/v3/fullstats?ids=40933588&beginDate=2026-10-20&endDate=2026-10-26')

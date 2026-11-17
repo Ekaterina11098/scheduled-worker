@@ -10,7 +10,7 @@ class ReadWB(WB):
   if write:raise ValueError('This worker cannot write WB')
   return super().req(path,method,body,False)
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  c=Cache();q=c.get(ROOT+':read_request')or{}
  if q.get('status')!='approved_read_only' or q.get('owner_user_id')!=5122667182 or q.get('cabinet')!='token_3' or q.get('wb_writes_allowed')is not False or datetime.now(timezone.utc)>=datetime.fromisoformat(q['expires_at']):raise ValueError('Dated read request missing')
  if c.get(ROOT+':snapshot'):print('Existing read result preserved');return

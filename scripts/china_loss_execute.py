@@ -49,7 +49,7 @@ class IO(BaseIO):
   if len(sids)!=1 or claims.get('sid') not in sids:raise ValueError('WB seller scope unknown')
 
 def run(job_id=None):
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  io=IO()
  from china_advertising_plans import process as process_advertising_plans
  if job_id is None:process_advertising_plans(io)

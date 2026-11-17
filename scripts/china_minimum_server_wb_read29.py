@@ -7,7 +7,7 @@ ROOT='china_agent:minimum_browser_server_wb_read:2026-10-29:v1'
 CONFIG='china_agent:minimum_browser:profile:v1'
 def stamp():return datetime.now(timezone.utc).isoformat()
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Registered main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Registered main only')
  c=Cache();cfg=c.get(CONFIG);e=c.get(ROOT)
  if e and e['status'] in ['verified_read','failed','uncertain_submitting']:print(e['status']);return
  if not cfg or not os.environ.get('TINYFISH_API_KEY'):raise ValueError('Server profile/key unavailable')

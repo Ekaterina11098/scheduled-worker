@@ -121,7 +121,7 @@ async function migration(config: any, old: number, target: number, evidence: unk
 
 async function launch(job: number, action = 'dialog') {
   if(!GITHUB)throw new Error('Dispatch unavailable');
-  const r=await fetch('https://api.github.com/repos/Ekaterina11098/veschi-bot-runner/actions/workflows/china-conversion-watches.yml/dispatches',{method:'POST',headers:{Authorization:'Bearer '+GITHUB,Accept:'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'},body:JSON.stringify({ref:'main',inputs:{action,job_id:String(job)}}),signal:AbortSignal.timeout(8000)});
+  const r=await fetch('https://api.github.com/repos/Ekaterina11098/scheduled-worker/actions/workflows/china-conversion-watches.yml/dispatches',{method:'POST',headers:{Authorization:'Bearer '+GITHUB,Accept:'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'},body:JSON.stringify({ref:'main',inputs:{action,job_id:String(job)}}),signal:AbortSignal.timeout(8000)});
   if(!r.ok)throw new Error('Dispatch pending');
 }
 
@@ -248,7 +248,7 @@ async function handlePriceApproval(config:any,message:any,text:string,updateId:n
 
 async function launchPrice(approval_key:string) {
  if(!GITHUB)throw Error('Price dispatch unavailable');
- const r=await fetch('https://api.github.com/repos/Ekaterina11098/veschi-bot-runner/actions/workflows/china-price-apply.yml/dispatches',{
+ const r=await fetch('https://api.github.com/repos/Ekaterina11098/scheduled-worker/actions/workflows/china-price-apply.yml/dispatches',{
  method:'POST',headers:{Authorization:'Bearer '+GITHUB,Accept:'application/vnd.github+json','Content-Type':'application/json'},
  body:JSON.stringify({ref:'main',inputs:{approval_key,mode:'apply'}}),signal:AbortSignal.timeout(8000)});
  if(!r.ok)throw Error('Price dispatch pending');

@@ -12,7 +12,7 @@ class ReadWB(WB):
 def save(c,key,p):c.put(key,json.loads(json.dumps(p,allow_nan=False)))
 def metric(d):return {k:d.get(v) for k,v in FIELDS.items()}
 def main():
- assert os.environ.get('GITHUB_REPOSITORY')=='Ekaterina11098/veschi-bot-runner' and os.environ.get('GITHUB_REF')=='refs/heads/main'
+ assert os.environ.get('GITHUB_REPOSITORY')=='Ekaterina11098/scheduled-worker' and os.environ.get('GITHUB_REF')=='refs/heads/main'
  assert datetime.now(MSK).date().isoformat()==DAY
  c=Cache();w=ReadWB();validate_identity(c,w)
  if c.get(ROOT):print('Existing diagnosis; no repeated collection');return

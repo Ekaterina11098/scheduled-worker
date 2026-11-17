@@ -7,7 +7,7 @@ from china_daily_ad_actions import execute,EXEC
 from china_loss_control import PLAN,APPROVAL
 ROOT='china_agent:owner_exclude98:2026-10-28:v1:41055480:execution'
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  io=IO();old=io.get(ROOT)
  if old:
   print(json.dumps(dict(status=old['status'],duplicate_prevented=True)));return

@@ -21,7 +21,7 @@ class ReadWB(WB):
 def metric(d):
  return {k:d.get(v) for k,v in FIELDS.items()}
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  c=Cache()
  if c.get(ROOT):print('Existing owner review; no repeated reads');return
  w=ReadWB();validate_identity(c,w);cut=datetime.now(MSK)

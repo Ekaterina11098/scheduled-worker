@@ -8,7 +8,7 @@ class ReadOnly(SixTransport):
   if url.startswith(HOST) and (method!='GET' or not url.startswith(HOST+'/api/advert/v2/adverts?ids=40192945')):raise PermissionError('Only exact campaign GET allowed')
   return super().raw(url,headers,method,body)
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner':raise PermissionError('Public runner only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker':raise PermissionError('Public runner only')
  t=ReadOnly();state=dict(status='reading',run_id=os.environ['GITHUB_RUN_ID'],started_at=stamp(),wb_writes=0,actor='owner_manual',campaign=40192945,nm=493953813)
  if not t.create(KEY,state):return
  def progress(path,until):

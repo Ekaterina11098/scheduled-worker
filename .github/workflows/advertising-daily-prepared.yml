@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 1cfcce5a0054ebc1e4a9ed31e503b6c268a582f2
+          ref: 9eabfaf3fdacf6b0328f8630d92af3ae8014f93d
           persist-credentials: false
           sparse-checkout-cone-mode: false
           sparse-checkout: |
@@ -31,7 +31,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Ekaterina11098/VESCHI_AI
-          ref: 2f798a9509b72030d6fb5ec68fb915c5d216c31b
+          ref: dfa9651d7f18589ca1c8a1c8de020774be963261
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           persist-credentials: false
           path: private-source

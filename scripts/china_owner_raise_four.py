@@ -7,7 +7,7 @@ PLAN={40933588:{1473245494:'143-ReginaBag-black',1473244340:'447-AngelaBag-burgu
 def norm(c):
  return dict(status=c['status'],currency=c['currency'],bid_type=c['bid_type'],settings=c['settings'],members={str(n['nm_id']):dict(subject_id=n['subject']['id'],bids=dict(n['bids_kopecks'])) for n in c['nm_settings']})
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise RuntimeError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise RuntimeError('Public main only')
  c=Cache();w=WB();validate_identity(c,w)
  auth=c.get('china_agent:owner_raise_four:2026-10-26:v1:approval') or {}
  if auth.get('status')!='approved' or auth.get('target_minor')!=31 or auth.get('owner_id')!=5122667182:raise RuntimeError('Exact approval missing')

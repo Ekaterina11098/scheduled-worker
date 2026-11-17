@@ -21,7 +21,7 @@ def exact(before,after,items):
   expected[k]['bids'][i['placement']]=i['target_minor']
  return members(after)==expected and all(after[k]==before[k] for k in ['status','currency','bid_type','settings'])
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main' or datetime.now(timezone.utc).date().isoformat()!='2026-10-27':raise ValueError('Dated public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main' or datetime.now(timezone.utc).date().isoformat()!='2026-10-27':raise ValueError('Dated public main only')
  io=IO();wb=WB();validate_identity(Cache(),wb)
  a=io.get(APP);p=io.get(PLAN)
  if not a or a.get('status')!='approved' or a.get('source_channel')!='codex' or a.get('owner_user_id')!=5122667182:raise PermissionError('Owner command absent')

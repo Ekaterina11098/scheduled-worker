@@ -6,7 +6,7 @@ from china_cloud_cost_control import Cache,WB,validate_identity
 from china_owner_growth_apply27 import PLAN,APP,EXEC,stamp,exact,digest,projection
 KEY=EXEC+':reconcile:v1'
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  io=IO();wb=WB();validate_identity(Cache(),wb);p=io.get(PLAN);a=io.get(APP);e=io.get(EXEC)
  if io.get(KEY):print('Reconciliation exists; no blind repeats');return
  if not a or a.get('status')!='approved' or a.get('source_channel')!='codex' or a.get('owner_user_id')!=5122667182 or p.get('status')!='pending_owner_approval' or a.get('plan_sha256')!=p.get('plan_sha256') or digest(p['items'])!=p['plan_sha256'] or projection(p['items'])!=a['items']:raise ValueError('Exact approval changed')

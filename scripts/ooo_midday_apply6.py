@@ -110,6 +110,6 @@ def run():
  except Exception as e:
   state.update(status='attention',safe_error=str(e)if isinstance(e,(RuntimeError,PermissionError))else type(e).__name__,observed_at=stamp());save();print('Stopped; private receipt saved; no blind replay')
 if __name__=='__main__':
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner'or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Expected repository main')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker'or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Expected repository main')
  run()
 

@@ -8,7 +8,7 @@ def save(c,k,p):c.put(k,json.loads(json.dumps(p,allow_nan=False)))
 def projection(x):
  return dict(id=x['id'],status=x['status'],currency=x['currency'],bid_type=x['bid_type'],settings=x['settings'],nm_settings=sorted(x['nm_settings'],key=lambda z:z['nm_id']))
 def main():
- assert os.environ.get('GITHUB_REPOSITORY')=='Ekaterina11098/veschi-bot-runner' and os.environ.get('GITHUB_REF')=='refs/heads/main'
+ assert os.environ.get('GITHUB_REPOSITORY')=='Ekaterina11098/scheduled-worker' and os.environ.get('GITHUB_REF')=='refs/heads/main'
  assert datetime.now(timezone(timedelta(hours=3))).date().isoformat()=='2026-10-29'
  c=Cache();w=WB();validate_identity(c,w)
  a=c.get(ROOT+':approval');assert a['status']=='approved' and a['rate_policy']=='fresh_WB_minimum'

@@ -32,7 +32,7 @@ def budgets(w,ids):
  if {r['advertId']for r in rows}!=set(ids)or any(r.get('currency')!='CNY'for r in rows):raise ValueError('Budget currency or coverage unknown')
  return {r['advertId']:r['total']for r in rows}
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner'or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Wrong repository')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker'or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Wrong repository')
  c=Cache();a=approval(c);items=a['items'];ids=[i['campaign_id']for i in items]
  prior=c.get(ROOT+':execution')
  if prior:

@@ -21,7 +21,7 @@ jobs:
         shell: python
         run: |
           import urllib.request,hashlib,json,time,datetime,os
-          url='https://raw.githubusercontent.com/Ekaterina11098/veschi-bot-runner/356e2247e20d903815f61be5eaf103b8807f31e7/scripts/ip_owner_finish_20261102.py'
+          url='https://raw.githubusercontent.com/Ekaterina11098/scheduled-worker/356e2247e20d903815f61be5eaf103b8807f31e7/scripts/ip_owner_finish_20261102.py'
           source=urllib.request.urlopen(url,timeout=45).read()
           if hashlib.sha256(source).hexdigest()!='8c6100ff5a6066e63157271ba2f7931155f301e49aaa903fb8296fe5c9ee5c98':raise ValueError('Source integrity')
           ns={'__name__':'budget_deposit_worker'};exec(compile(source,url,'exec'),ns)

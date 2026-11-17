@@ -19,21 +19,21 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Ekaterina11098/VESCHI_AI
-          ref: 30a8854cfab31f7a4a3fdc1f20471fa5d35fd608
+          ref: 98c4913f10bc32a23b29a7f188dc0a5ee87a8727
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           path: revised
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: Ekaterina11098/VESCHI_AI
-          ref: 755b69c266ad39beafd334e60aa900c07814cae8
+          ref: c31bf74ebcb3427b05da8d14990425a03b2f2852
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           path: baseline
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: Ekaterina11098/VESCHI_AI
-          ref: 99ab899dd306835642d4b33ef8bb6254644ea17c
+          ref: 0b8f7c33163dfef0def0bdb267d5bb4ccb8e8912
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           path: prepared-storage
           persist-credentials: false

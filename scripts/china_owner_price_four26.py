@@ -6,7 +6,7 @@ KEY='china_agent:codex_price_four:2026-10-26:v1:execution'
 AUTH='china_agent:codex_price_four:2026-10-26:v1:approval'
 SS=json.loads('[{"nm_id":"1473243916","article":"64-NoelBag-zchocolate","current_cny":216,"target_cny":226.8,"base_cny":360,"seller_discount":40,"club_discount":0},{"nm_id":"1473243909","article":"57-NoelBag-burgundy","current_cny":198,"target_cny":207.9,"base_cny":360,"seller_discount":45,"club_discount":0},{"nm_id":"1535337780","article":"17-FurPanama-leo","current_cny":120,"target_cny":126,"base_cny":240,"seller_discount":50,"club_discount":0},{"nm_id":"1473245502","article":"524-SamiraBag-black","current_cny":299.5,"target_cny":314.5,"base_cny":599,"seller_discount":50,"club_discount":0}]')
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise RuntimeError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise RuntimeError('Public main only')
  os.environ.setdefault('CHINA_TELEGRAM_BOT_TOKEN','')
  io=IO();a=io.get(AUTH) or {}
  if a.get('owner_id')!=5122667182 or a.get('selections')!=SS or a.get('status')!='approved' or a.get('stock_recheck') is not False:raise RuntimeError('Exact approval missing')

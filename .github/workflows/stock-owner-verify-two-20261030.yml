@@ -19,7 +19,7 @@ jobs:
         with:
           path: private-source
           repository: Ekaterina11098/VESCHI_AI
-          ref: 3102bb39ecfe3c5a93f5c7c97aafebe6ecb3ae4d
+          ref: c1aabd0791fd5f0722069f35c8c7c0b2e8a7e1bc
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           persist-credentials: false
       - uses: actions/setup-python@v5

@@ -4,7 +4,7 @@ from datetime import datetime,timezone
 from china_price_apply import IO
 KEY='china_agent:codex_pavel_reply:2026-10-27:321:v1'
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main' or datetime.now(timezone.utc).date().isoformat()!='2026-10-27':raise ValueError('Dated public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main' or datetime.now(timezone.utc).date().isoformat()!='2026-10-27':raise ValueError('Dated public main only')
  io=IO();p=io.get(KEY)
  if not p or p.get('status')!='prepared' or p.get('chat_id')!=-1004342917488 or p.get('bot_id')!=8780468043 or p.get('reply_message_id')!=321 or not 1<=len(p.get('text',''))<=4000:raise ValueError('Reviewed reply missing')
  digest=hashlib.sha256(p['text'].encode()).hexdigest();k=KEY+':execution'

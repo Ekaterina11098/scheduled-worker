@@ -292,7 +292,7 @@ def daily(w):
  w.save(ROOT+'latest_collection',summary);return summary
 
 if __name__=='__main__':
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner':raise SystemExit('Public runner only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker':raise SystemExit('Public runner only')
  from conversion_watches import runtime
  print(json.dumps(daily(runtime())))
 

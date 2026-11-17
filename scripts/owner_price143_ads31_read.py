@@ -7,7 +7,7 @@ from owner_143_funnel31_read import Adapter
 from china_wb_evidence import Reports,FUNNEL,normalize_funnel
 ROOT='china_agent:price143_unit_economics:2026-10-31:v1'
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner':raise ValueError('Public owner runner only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker':raise ValueError('Public owner runner only')
  c=Cache();w=ReadOnlyWB();key=ROOT+':advertising_funnel'
  q=c.get(ROOT+':read_request')or{}
  if q.get('status')!='approved_read_only'or q.get('wb_writes_allowed')is not False or datetime.now(timezone.utc)>=datetime.fromisoformat(q['expires_at']):raise ValueError('Dated read authorization unavailable')

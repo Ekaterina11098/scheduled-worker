@@ -19,7 +19,7 @@ class Adapter:
   if len(rows)!=1 or rows[0].get('active')is not True or rows[0].get('chat_id')!=CHAT or rows[0].get('bot_id')!=BOT:raise ValueError('Active scope mismatch')
   return rows[0]
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  io=IO();w=Adapter(io)
  rows=io.db('business_agent_jobs?id=eq.266&agent_id=eq.china&select=id,chat_id,sender_id,request_text,tool_trace,created_at,update_id')
  if len(rows)!=1 or rows[0].get('sender_id')!=307200273 or rows[0].get('chat_id')!=CHAT:raise ValueError('Exact Pavel job missing')

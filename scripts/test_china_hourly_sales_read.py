@@ -42,7 +42,7 @@ class CollectorTest(unittest.TestCase):
         clock=datetime.now(timezone.utc);cut=clock.astimezone(m.MSK).replace(minute=0,second=0,microsecond=0)
         c=self.cache();c.put(m.POLICY,dict(enabled=True,cabinet='token_3',wb_writes=0));c.put(m.slot_key(cut),self.snapshot(cut))
         with (patch.object(m,'Cache',return_value=c),patch.object(m,'ReadOnlyWB',side_effect=AssertionError('Repeated WB read')),patch.object(m,'validate_identity',side_effect=AssertionError('Repeated identity')),
-              patch.dict('os.environ',GITHUB_REPOSITORY='Ekaterina11098/veschi-bot-runner')):
+              patch.dict('os.environ',GITHUB_REPOSITORY='Ekaterina11098/scheduled-worker')):
             m.run()
         self.assertEqual(c.get(m.ROOT+':latest')['source_key'],m.slot_key(cut))
     def test_active_lease_blocks_duplicate(self):

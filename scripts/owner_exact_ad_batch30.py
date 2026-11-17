@@ -52,7 +52,7 @@ def read(url,token,params=None,body=None):
  if not r.ok:raise ValueError('Preflight read HTTP '+str(r.status_code))
  return r.json()
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  c=Cache();items=approve(c);old=c.get(ROOT+':execution')
  if old:print(json.dumps({'existing':True,'status':old['status']}));return
  w=ScopedWB(items);validate_identity(c,w)

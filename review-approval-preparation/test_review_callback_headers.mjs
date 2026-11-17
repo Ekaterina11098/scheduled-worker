@@ -11,7 +11,7 @@ for(const text of ['обычное поручение','Пример [Вопро
 assert.equal(isReviewApprovalUpdate({callback_query:{data:'rv1:token:v1'}}),true);
 assert.equal(isReviewApprovalUpdate({callback_query:{data:'agent:ask'}}),false);
 console.log('Question/review routing: 8 header forms, unrelated messages, callbacks and disabled isolation passed');
-const cfg={enabled:true,mode:'github-encrypted',webhookSecret:'test-secret',receiverURL:'https://api.github.com/repos/Ekaterina11098/veschi-bot-runner/actions/workflows/review-approval-process.yml/dispatches',ingressKey:Buffer.alloc(32,7).toString('base64'),dispatchToken:'test-token',ownerId:'1',chatId:'2',botId:'3'};
+const cfg={enabled:true,mode:'github-encrypted',webhookSecret:'test-secret',receiverURL:'https://api.github.com/repos/Ekaterina11098/scheduled-worker/actions/workflows/review-approval-process.yml/dispatches',ingressKey:Buffer.alloc(32,7).toString('base64'),dispatchToken:'test-token',ownerId:'1',chatId:'2',botId:'3'};
 const request=new Request('https://example.org',{headers:{'X-Telegram-Bot-Api-Secret-Token':'test-secret'}});
 const update=msg('Кабинет: ООО\n[Вопросы:согласование]\nquestion');
 let calls=0;

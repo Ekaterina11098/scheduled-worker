@@ -5,7 +5,7 @@ from china_moysklad_read import read_stock,MoySkladReadError
 ROOT='china_agent:moysklad_read_check:2026-10-30:v2'
 PARENT='china_agent:owner_five_bid_actions:2026-10-30:v2'
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner':raise ValueError('Public runner only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker':raise ValueError('Public runner only')
  c=Cache();parent=c.get(PARENT+':execution') or {}
  if parent.get('status')!='verified':raise ValueError('Advertising scope must be completed first')
  if c.get(ROOT):print('Existing read-check receipt preserved');return

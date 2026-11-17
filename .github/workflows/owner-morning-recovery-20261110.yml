@@ -17,6 +17,6 @@ jobs:
         run: |
           python3 - <<'PY'
           import urllib.request,os,json
-          req=urllib.request.Request("https://api.github.com/repos/Ekaterina11098/veschi-bot-runner/actions/workflows/china-advertising-daily.yml/dispatches",data=json.dumps({"ref":"main"}).encode(),headers={"Authorization":"Bearer "+os.environ["GH_TOKEN"],"Accept":"application/vnd.github+json","Content-Type":"application/json"},method="POST")
+          req=urllib.request.Request("https://api.github.com/repos/Ekaterina11098/scheduled-worker/actions/workflows/china-advertising-daily.yml/dispatches",data=json.dumps({"ref":"main"}).encode(),headers={"Authorization":"Bearer "+os.environ["GH_TOKEN"],"Accept":"application/vnd.github+json","Content-Type":"application/json"},method="POST")
           with urllib.request.urlopen(req,timeout=30) as r:print("dispatch_http_status",r.status)
           PY

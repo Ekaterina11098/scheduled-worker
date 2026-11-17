@@ -16,7 +16,7 @@ Deno.serve(async(req)=>{
  const jobs=(await pending.json()).filter((j:any)=>(j.attempts??0)<3&&j.tool_trace?.some((x:any)=>x.name==='china_saved_question'));
  if(!jobs.length)return Response.json({status:'idle',wb_requests:0,telegram_sends:0});
  const auth={Authorization:'Bearer '+gh,Accept:'application/vnd.github+json','Content-Type':'application/json'};
- const active=await fetch('https://api.github.com/repos/Ekaterina11098/veschi-bot-runner/actions/runs?per_page=100',{headers:auth});
+ const active=await fetch('https://api.github.com/repos/Ekaterina11098/scheduled-worker/actions/runs?per_page=100',{headers:auth});
  if(!active.ok)return new Response('Runner unavailable',{status:503});
  const runs=(await active.json()).workflow_runs;
  if(runs.some((r:any)=>r.path==='.github/workflows/china-conversion-watches.yml'&&['queued','in_progress','waiting','requested','pending'].includes(r.status)))return Response.json({status:'dialog_run_active'});
@@ -26,7 +26,7 @@ Deno.serve(async(req)=>{
  if(!create.ok)return new Response('Claim unavailable',{status:503});
  if(!(await create.json()).length)return Response.json({status:'claimed'});
  let status=0;
- try{status=(await fetch('https://api.github.com/repos/Ekaterina11098/veschi-bot-runner/actions/workflows/china-conversion-watches.yml/dispatches',{method:'POST',headers:auth,body:JSON.stringify({ref:'main',inputs:{action:'dialog',job_id:String(jobs[0].id)}}),signal:AbortSignal.timeout(10000)})).status;}catch{}
+ try{status=(await fetch('https://api.github.com/repos/Ekaterina11098/scheduled-worker/actions/workflows/china-conversion-watches.yml/dispatches',{method:'POST',headers:auth,body:JSON.stringify({ref:'main',inputs:{action:'dialog',job_id:String(jobs[0].id)}}),signal:AbortSignal.timeout(10000)})).status;}catch{}
  row.payload={...row.payload,status:status===204?'dispatched':'uncertain'};
  await fetch(url+'/rest/v1/telegram_api_cache?on_conflict=cache_key',{method:'POST',headers:{...headers,Prefer:'resolution=merge-duplicates'},body:JSON.stringify(row)});
  return Response.json({status:row.payload.status,job_id:jobs[0].id,wb_requests:0,telegram_sends:0},{status:status===204?200:503});

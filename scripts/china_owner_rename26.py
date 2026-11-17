@@ -9,7 +9,7 @@ def stable(c):
  c['nm_settings']=sorted(c['nm_settings'],key=lambda n:n['nm_id'])
  return c
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise RuntimeError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise RuntimeError('Public main only')
  cache=Cache();wb=WB();validate_identity(cache,wb)
  if cache.get(KEY):raise RuntimeError('Receipt exists: no repeat writes')
  before=wb.campaigns(list(PLAN))

@@ -21,7 +21,7 @@ jobs:
           python3 - <<'PY'
           import os,sys,pathlib,urllib.request,importlib.abc,importlib.util,unittest
           root=pathlib.Path('checked');root.mkdir();sys.path.insert(0,str(root))
-          base='https://raw.githubusercontent.com/Ekaterina11098/veschi-bot-runner/'+os.environ['GITHUB_SHA']+'/scripts/'
+          base='https://raw.githubusercontent.com/Ekaterina11098/scheduled-worker/'+os.environ['GITHUB_SHA']+'/scripts/'
           class Finder(importlib.abc.MetaPathFinder):
               def find_spec(self,fullname,path=None,target=None):
                   if '.' in fullname or not fullname.startswith(('china_','moysklad_','owner_risk_report14')):return None

@@ -137,7 +137,7 @@ def apply(io,key):
  return e
 if __name__=='__main__':
  parser=argparse.ArgumentParser();parser.add_argument('--mode',choices=['publish','apply'],required=True);parser.add_argument('--approval-key',default='');args=parser.parse_args()
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  io=IO();result=publish(io) if args.mode=='publish' else apply(io,args.approval_key)
  from stock_deploy_support import seal
  seal('ip-png-plan',result)

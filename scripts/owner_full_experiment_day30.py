@@ -8,7 +8,7 @@ class ReadWB(WB):
   if write:raise ValueError('Read only')
   return super().req(path,method,body,False)
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  c=Cache()
  if c.get(ROOT):print('Existing observation preserved');return
  q=c.get('china_agent:full_experiment_review:2026-10-30:v2:read_request')or{}

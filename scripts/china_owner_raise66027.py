@@ -27,7 +27,7 @@ def stock():
  if any(not isinstance(out[k],(int,float)) for k in ['stock','reserve']) or out['stock']-out['reserve']<=0:raise ValueError('No confirmed available MSK stock')
  return dict(out,available=out['stock']-out['reserve'],observed_at=stamp())
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main' or datetime.now(timezone.utc).date().isoformat()!='2026-10-27':raise ValueError('Dated public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main' or datetime.now(timezone.utc).date().isoformat()!='2026-10-27':raise ValueError('Dated public main only')
  c=Cache();wb=WB();a=c.get(ROOT+':approval') or {}
  if a.get('status')!='approved' or a.get('owner_user_id')!=5122667182 or a.get('source_channel')!='codex' or any(a.get(k)!=v for k,v in dict(campaign_id=CID,nm_id=NM,article=ARTICLE,placement='recommendations',old_minor=28,target_minor=31).items()) or datetime.now(timezone.utc)>datetime.fromisoformat(a['expires_at']):raise ValueError('Exact owner approval missing')
  prior=c.get(ROOT+':execution')

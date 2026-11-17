@@ -6,7 +6,7 @@ KEY='china_agent:codex_price38:2026-10-26:v1:execution'
 AUTH='china_agent:codex_price38:2026-10-26:v1:approval'
 S=dict(nm_id='1560345289',article='38-FurManizhka-white',current_cny=247.5,target_cny=260.15,base_cny=450,seller_discount=45,club_discount=0)
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise RuntimeError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise RuntimeError('Public main only')
  os.environ.setdefault('CHINA_TELEGRAM_BOT_TOKEN','')
  io=IO();a=io.get(AUTH) or {}
  if a.get('owner_id')!=5122667182 or a.get('selection')!=S or a.get('status')!='approved':raise RuntimeError('Exact approval missing')

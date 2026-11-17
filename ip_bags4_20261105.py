@@ -69,7 +69,7 @@ def unchanged(before,current,scope,allow_added=False,allow_bids=False):
  return all(projection(baseline[k])==projection(observed[k]) for k in baseline)
 
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Public main only')
  t=SixTransport();p=t.get(PLAN)
  if not p or p.get('status')!='owner_authorized' or len(p['scope'])!=4 or digest(p['scope'])!=FROZEN_SCOPE_SHA:raise PermissionError('Frozen approval missing')
  state=dict(status='preflight',run_id=os.environ['GITHUB_RUN_ID'],started_at=stamp(),approval_key=PLAN,steps={},items=[],wb_write_attempts=0,wb_accepted_requests=0,telegram_sends=0)

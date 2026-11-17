@@ -8,7 +8,7 @@ REPLIES={
 264:(758,'Отдельного «прежнего агента» нет — я неверно выразился. Пишите этому же боту без /codex. Команды к актуальному PNG исполняются с проверкой WB. Ваши 7 изменений ставок уже проверены WB, результат — в ответе на команду. Исключения не выполнялись.'),
 263:(754,'59, 63, 668, 527 и 144 ещё не запущены. Это было предварительное предложение, без готового плана запуска. Свежая экономика и наличие есть; ещё нужны точные РК, минимальные ставки, бюджет и проверка прежних исключений. Запрос на запуск сохраняю; выполненным его не считаю.')}
 def main():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise ValueError('Public main only')
  db=DB()
  e=db.get('china_agent:daily_ad_execution:v2:daily-2026-11-08-drr-0-bids-job265')or{}
  if e.get('wb_writes')!=7 or len(e.get('items',[]))!=7 or any(x.get('status')!='verified'for x in e['items']):raise ValueError('Seven changes not verified')

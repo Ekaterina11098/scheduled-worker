@@ -1,0 +1,38 @@
+name: Scheduled worker rename read-only check
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check exact repository identity
+        run: test "$GITHUB_REPOSITORY" = 'Ekaterina11098/scheduled-worker'
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/scheduled-worker
+          ref: main
+          persist-credentials: false
+          sparse-checkout: verify_runner.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: 36a88f851775ac08ddcecdb5a44ac64c97fd6b96
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          path: private-source
+          persist-credentials: false
+          sparse-checkout: tg_agent_new.py
+          sparse-checkout-cone-mode: false
+      - name: Verify checkout without executing application code
+        shell: python
+        run: |
+          import os, pathlib, subprocess
+          assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/scheduled-worker'
+          assert pathlib.Path('verify_runner.py').is_file()
+          assert pathlib.Path('private-source/tg_agent_new.py').is_file()
+          actual=subprocess.check_output(['git','-C','private-source','rev-parse','HEAD'],text=True).strip()
+          assert actual=='36a88f851775ac08ddcecdb5a44ac64c97fd6b96'
+          print('PASS: new repository identity, public checkout and private SOURCE_READ_TOKEN checkout; no application code executed')

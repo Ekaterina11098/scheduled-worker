@@ -27,7 +27,7 @@ class Run:
   assert self.m and self.m['item_count']==221 and sha(self.m['items'])==EXPECTED==self.m['items_sha256']
   claims=json.loads(base64.urlsafe_b64decode(self.token.split('.')[1]+'==='))
   assert claims.get('sid')==self.m['expected_sid'] and claims.get('exp',0)>time.time()
-  assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/veschi-bot-runner'
+  assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/scheduled-worker'
   self.items={r['nm_id']:r for r in self.m['items']};self.progress={'status':'preflight','checked_at':stamp(),'items_sha256':EXPECTED,'items':{},'wb_update_requests':0,'telegram_sends':0}
  def save(self):self.progress['checked_at']=stamp();self.c.put(ROOT+':progress',self.progress)
  def read(self,path,body):

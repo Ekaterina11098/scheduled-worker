@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Ekaterina11098/VESCHI_AI
-          ref: afde6671de3928fdbe7917a45a8c49759da97c69
+          ref: 68a9126c6a112a2150eac4db39a9e333418cb37d
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           persist-credentials: false
       - uses: actions/setup-python@v5

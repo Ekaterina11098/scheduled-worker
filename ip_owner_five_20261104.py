@@ -43,7 +43,7 @@ def expected_state(p,before):
   else:raise PermissionError('Unknown operation')
  return expected
 def run_owner():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Public main only')
  t=SixTransport();plan_key=PLAN;p=t.get(PLAN);validate_owner(p);approval={'origin':'explicit_owner_Codex_confirmation'}
  ek=plan_key+':execution';state=dict(status='preflight',run_id=os.environ['GITHUB_RUN_ID'],approval=approval,steps={},wb_write_attempts=0,wb_accepted_requests=0,started_at=stamp())
  if not t.create(ek,state):print('Prior execution retained; no replay');return

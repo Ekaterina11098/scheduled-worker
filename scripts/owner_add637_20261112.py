@@ -18,7 +18,7 @@ def verify(before,after):
         and all(v==0 for zone,v in new[NM]['bids_kopecks'].items() if zone!='search'))
 
 def main():
-    if os.environ['GITHUB_REPOSITORY']!='Ekaterina11098/veschi-bot-runner' or os.environ['GITHUB_REF']!='refs/heads/main':raise ValueError('Exact public main required')
+    if os.environ['GITHUB_REPOSITORY']!='Ekaterina11098/scheduled-worker' or os.environ['GITHUB_REF']!='refs/heads/main':raise ValueError('Exact public main required')
     io=AdvertisingIO();approval=io.get(ROOT+':approval')
     assert approval['owner_id']==5122667182 and approval['source_channel']=='codex' and approval['status']=='approved'
     assert approval['campaign_id']==CID and approval['nm_id']==NM and approval['target_minor']==BID

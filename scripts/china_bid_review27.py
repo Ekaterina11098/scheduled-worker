@@ -10,7 +10,7 @@ class ReadWB(WB):
   if write:raise PermissionError('Read-only review')
   return super().req(path,method,body,write=False)
 def run():
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main' or datetime.now(timezone.utc).date().isoformat()!='2026-10-27':raise ValueError('Dated public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main' or datetime.now(timezone.utc).date().isoformat()!='2026-10-27':raise ValueError('Dated public main only')
  cache=Cache()
  if cache.get(KEY):print('Review already collected; no polling');return
  wb=ReadWB();validate_identity(cache,wb)

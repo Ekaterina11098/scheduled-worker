@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: b01da1f5e8e619c52794289df29b0e8ca743bb5b
+          ref: 1a2145ce77856c023a17fb49fce311f159154f8d
           sparse-checkout: |
             ip_morning_recover_20261104.py
             advertising_budget_evidence.py
@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Ekaterina11098/VESCHI_AI
-          ref: 2f798a9509b72030d6fb5ec68fb915c5d216c31b
+          ref: dfa9651d7f18589ca1c8a1c8de020774be963261
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           persist-credentials: false
           path: private-source

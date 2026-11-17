@@ -298,7 +298,7 @@ def daily_loss():
 if __name__=='__main__':
  import sys,os
  if sys.argv[1:]!=['--daily-loss']:raise SystemExit('Expected --daily-loss')
- if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/veschi-bot-runner' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise SystemExit('Public main only')
+ if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise SystemExit('Public main only')
  print(json.dumps(dict(status=daily_loss(),wb_writes=0)))
 
 

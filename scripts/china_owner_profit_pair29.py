@@ -5,7 +5,7 @@ from china_cloud_cost_control import Cache,WB,stamp,validate_identity
 DAY='2026-10-29'
 KEY='china_agent:profit_pair:2026-10-29:owner-now:v1'
 def main():
- assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/veschi-bot-runner' and os.environ['GITHUB_REF']=='refs/heads/main'
+ assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/scheduled-worker' and os.environ['GITHUB_REF']=='refs/heads/main'
  assert datetime.now(timezone(timedelta(hours=3))).date().isoformat()==DAY
  c=Cache();w=WB()
  if c.get(KEY):print('Existing private snapshot; no repeated collection');return
