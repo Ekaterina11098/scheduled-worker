@@ -65,3 +65,5 @@ jobs:
 # Read-only transport: bounded retry after transient WB connection failure; preserve prepared economics and report identity.
 
 #17Nov: omit discarded intraday minimum dependency; completed-day checked actions remain mandatory.
+
+# Cached warehouse evidence must match the verified current campaign composition.

@@ -7,6 +7,8 @@ def stamp():return datetime.now(timezone.utc).isoformat()
 def fresh(at,h=24):
  try:return timedelta(0)<=datetime.now(timezone.utc)-datetime.fromisoformat(at.replace('Z','+00:00'))<=timedelta(hours=h)
  except (ValueError,TypeError,AttributeError):return False
+def reusable_evidence(evidence,ids):
+ return bool(evidence and fresh(evidence.get('stock',{}).get('observed_at')) and fresh(evidence.get('published',{}).get('observed_at')) and {r.get('nmID')for r in evidence.get('cards',{}).get('rows',[])}==set(ids) and set(evidence.get('published',{}).get('size_to_nm',{}).values())==set(ids))
 def guangzhou_models(v,route,evidence,policy):
  from china_advertising_economic_review import model_rows
  if evidence['stock'].get('warehouse_id')!=route['warehouse_id']or evidence['published'].get('warehouse_id')!=route['published_warehouse_id']:
@@ -50,7 +52,7 @@ def collect(io,v,source,day):
    if receipt.get('status')!='verified'or after.get('id')!=state['id']or {n['nm_id']for n in after.get('nm_settings',[])}!=ids:raise ValueError('Campaign route membership has no matching verified receipt')
    route=dict(route,nm_ids=sorted(ids),composition_receipt=registry[cid]);policy['campaigns'][cid]=route;io.put(POLICY,policy)
   key=ROOT+day+':v1:'+cid;evidence=io.get(key)
-  if not evidence or not fresh(evidence.get('stock',{}).get('observed_at'))or not fresh(evidence.get('published',{}).get('observed_at')):
+  if not reusable_evidence(evidence,ids):
    import requests
    from china_moysklad_read import read_stock
    def req(host,path,body):
