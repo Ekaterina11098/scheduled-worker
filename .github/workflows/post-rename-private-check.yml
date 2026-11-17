@@ -22,6 +22,49 @@ jobs:
         run: |
           python -m unittest discover -s tests -p test_wb_sources.py -v
           python -m unittest discover -s tests -p test_campaign_review.py -v
+  rejected-return-diagnosis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read existing rejected return links and save the diagnosis privately
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        shell: python
+        run: |
+          import os,json,gzip,re,datetime,urllib.request,urllib.parse,urllib.error
+          assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/scheduled-worker'
+          sb=os.environ['SUPABASE_URL'].rstrip('/')+'/rest/v1/telegram_api_cache'
+          sh={'apikey':os.environ['SUPABASE_SECRET_KEY'],'Content-Type':'application/json'}
+          ms='https://api.moysklad.ru/api/remap/1.2/'
+          mh={'Authorization':'Bearer '+os.environ['MOYSKLAD_API_TOKEN'],'Accept':'application/json;charset=utf-8','Accept-Encoding':'gzip'}
+          def get(url,headers):
+              with urllib.request.urlopen(urllib.request.Request(url,headers=headers,method='GET'),timeout=30) as r:
+                  raw=r.read(3_000_000)
+                  if r.headers.get('Content-Encoding','').lower()=='gzip':raw=gzip.decompress(raw)
+                  return json.loads(raw)
+          query=urllib.parse.urlencode({'cache_key':'like.fbs_document_chain:china:supply:v1:*','payload->>status':'eq.salesreturn_rejected','select':'cache_key,payload','limit':10})
+          states=get(sb+'?'+query,sh);results=[]
+          def facts(doc):
+              return {k:doc.get(k) for k in ('id','name','externalCode','description','applicable','sum','moment','store','organization','agent','demand','salesReturns') if k in doc}
+          for row in states:
+              state=row['payload'];ident=state.get('documents',{}).get('demand',{}).get('id')
+              if not ident:continue
+              assert re.fullmatch('[0-9a-f-]{36}',ident)
+              demand=get(ms+'entity/demand/'+ident,mh)
+              item={'cache_key':row['cache_key'],'demand':facts(demand),'demand_positions':get(ms+'entity/demand/'+ident+'/positions?limit=1000',mh).get('rows',[])}
+              try:
+                  url=ms+'entity/salesreturn?'+urllib.parse.urlencode({'filter':'demand='+ms+'entity/demand/'+ident,'limit':100})
+                  returns=get(url,mh).get('rows',[])
+                  item['returns']=[facts(d) for d in returns]
+                  item['return_positions']={d['id']:get(ms+'entity/salesreturn/'+d['id']+'/positions?limit=1000',mh).get('rows',[]) for d in returns}
+              except urllib.error.HTTPError as e:item['linked_return_read_http']=e.code
+              results.append(item)
+          record={'cache_key':'diagnostic:fbs_rejected_returns:20261117','payload':{'observed_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'run_id':os.environ['GITHUB_RUN_ID'],'results':results,'moysklad_writes':0},'expires_at':'2026-12-17T00:00:00Z'}
+          request=urllib.request.Request(sb+'?on_conflict=cache_key',data=json.dumps(record).encode(),headers={**sh,'Prefer':'resolution=merge-duplicates'},method='POST')
+          with urllib.request.urlopen(request,timeout=30) as r:assert r.status in (200,201,204)
+          print('Read-only return diagnosis saved privately; no MoySklad documents changed')
   fbs-read-only-diagnosis:
     runs-on: ubuntu-latest
     timeout-minutes: 5
