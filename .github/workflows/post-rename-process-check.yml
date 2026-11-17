@@ -1,0 +1,155 @@
+name: Post rename process verification and stale queue repair
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*.py
+            /scripts/
+            /tests/
+            /.github/workflows/
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests==2.32.5 Pillow==12.3.0 python-dotenv==1.1.1 simplejson==4.2.0
+      - name: Advertising arithmetic and duplicate safeguards
+        run: PYTHONPATH=scripts python -m unittest discover -s scripts -p 'test_china_advertising_*.py'
+      - name: Runner isolation and task selectors
+        run: python -m unittest -v test_runner_isolation.py test_mpstats_selector.py test_finance_daily_selector.py test_daily_selector.py test_analytics_pause.py
+      - name: Advertising reports and spend guards
+        run: |
+          python -m unittest discover -s tests -p test_advertising_daily_tables.py
+          python -m unittest discover -s tests -p test_advertising_daily_png.py
+          python -m unittest discover -s tests -p test_advertising_weekly_png.py
+          python -m unittest discover -s tests -p test_no_order_spend.py
+  read-only-integrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Check three WB cabinets, MoySklad and private state without writes
+        env:
+          WB_TOKEN_1: ${{ secrets.WB_TOKEN_1 }}
+          WB_TOKEN_2: ${{ secrets.WB_TOKEN_2 }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        shell: python
+        run: |
+          import os,json,gzip,time,urllib.request,urllib.error
+          assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/scheduled-worker'
+          def read(label,url,headers,payload=None):
+              for attempt in range(3):
+                  request=urllib.request.Request(url,headers=headers,data=None if payload is None else json.dumps(payload).encode(),method='GET' if payload is None else 'POST')
+                  try:
+                      with urllib.request.urlopen(request,timeout=30) as r:
+                          raw=r.read(2_000_000)
+                          if r.headers.get('Content-Encoding','').lower()=='gzip':raw=gzip.decompress(raw)
+                          data=json.loads(raw)
+                          print(label,'HTTP',r.status,'read_only=true')
+                          return data
+                  except urllib.error.HTTPError as e:
+                      if e.code in (429,500,502,503,504) and attempt<2:
+                          time.sleep(min(30,max(5,int(e.headers.get('Retry-After','10')))));continue
+                      raise RuntimeError(label+' HTTP '+str(e.code)+'; response suppressed') from None
+              raise RuntimeError(label+' retry bound reached')
+          for i in (1,2,3):
+              token=os.environ['WB_TOKEN_'+str(i)]
+              assert token,'WB token missing'
+              host='https://content-api.wildberries.cn' if i==3 else 'https://content-api.wildberries.ru'
+              d=read('WB cabinet '+str(i),host+'/content/v2/get/cards/list',{'Authorization':token,'Content-Type':'application/json'},{'settings':{'cursor':{'limit':1},'filter':{'withPhoto':-1}}})
+              assert isinstance(d.get('cards'),list),'WB card response missing'
+          d=read('MoySklad','https://api.moysklad.ru/api/remap/1.2/entity/product?limit=1',{'Authorization':'Bearer '+os.environ['MOYSKLAD_API_TOKEN'],'Accept':'application/json;charset=utf-8','Accept-Encoding':'gzip'})
+          assert isinstance(d.get('rows'),list),'MoySklad response missing'
+          d=read('Private state',os.environ['SUPABASE_URL'].rstrip('/')+'/rest/v1/telegram_api_cache?select=cache_key&limit=1',{'apikey':os.environ['SUPABASE_SECRET_KEY']})
+          assert isinstance(d,list),'Private state response missing'
+  active-process-inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/workflows
+      - run: pip install PyYAML==6.0.3
+      - name: Inspect every scheduled and completion-triggered process
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import os,json,pathlib,yaml,urllib.request
+          assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/scheduled-worker'
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'}
+          base='https://api.github.com/repos/'+os.environ['GITHUB_REPOSITORY']+'/actions/workflows/'
+          names=set()
+          for p in pathlib.Path('.github/workflows').glob('*.yml'):
+              d=yaml.safe_load(p.read_text());on=d.get('on',d.get(True))
+              if isinstance(on,dict) and ('schedule' in on or 'workflow_run' in on):names.add(p.name)
+          names.update(['fbs-document-chain.yml','ozon-fbs-daily-1900.yml','label-catalog-refresh.yml','china-cloud-cost-control.yml','advertising-dialog.yml','ip-daily-png-apply.yml','ip-png-apply.yml'])
+          for name in sorted(names):
+              with urllib.request.urlopen(urllib.request.Request(base+name,headers=headers),timeout=30) as r:d=json.load(r)
+              with urllib.request.urlopen(urllib.request.Request(base+name+'/runs?per_page=1',headers=headers),timeout=30) as r:runs=json.load(r)['workflow_runs']
+              latest=runs[0] if runs else {}
+              print(json.dumps({'workflow':name,'state':d['state'],'latest_run':latest.get('id'),'status':latest.get('status'),'conclusion':latest.get('conclusion'),'sha':latest.get('head_sha')},sort_keys=True))
+          print('WORKFLOW_INVENTORY_COUNT',len(names))
+  stale-queue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Cancel only the five known stale pre-rename runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import os,json,time,urllib.request,urllib.error
+          repo=os.environ['GITHUB_REPOSITORY']
+          assert repo=='Ekaterina11098/scheduled-worker'
+          base='https://api.github.com/repos/'+repo
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'}
+          def api(path,method='GET'):
+              try:
+                  with urllib.request.urlopen(urllib.request.Request(base+path,headers=headers,method=method),timeout=30) as r:
+                      raw=r.read();return r.status,json.loads(raw) if raw else {}
+              except urllib.error.HTTPError as e:
+                  try:message=json.loads(e.read()).get('message','')
+                  except Exception:message=''
+                  return e.code,{'message':message}
+          targets={44159521553:'review-approval-process.yml',43098575975:'test.yml',43098575916:'all-cabinet-model-audit.yml',43098268944:'all-cabinet-model-audit.yml',43098269024:'test.yml'}
+          unresolved=[]
+          for run_id,workflow in targets.items():
+              path='/actions/runs/'+str(run_id)
+              code,run=api(path)
+              assert code==200 and run['repository']['id']==1403427904
+              assert run['path']=='.github/workflows/'+workflow
+              assert run['created_at']<'2026-11-17T19:54:00Z'
+              assert str(run_id)!=os.environ['GITHUB_RUN_ID']
+              if run['status']=='completed':
+                  print(run_id,'already completed',run.get('conclusion'));continue
+              code,body=api(path+'/cancel','POST');print(run_id,'cancel HTTP',code,body.get('message',''))
+              time.sleep(3)
+              _,run=api(path)
+              if run['status']!='completed':
+                  code,body=api(path+'/force-cancel','POST');print(run_id,'force-cancel HTTP',code,body.get('message',''))
+              for attempt in range(6):
+                  _,run=api(path)
+                  if run['status']=='completed':break
+                  time.sleep(5)
+              print(run_id,'final status',run['status'],run.get('conclusion'))
+              if run['status']!='completed':unresolved.append(run_id)
+          if unresolved:raise RuntimeError('GitHub left stale runs unresolved: '+str(unresolved))

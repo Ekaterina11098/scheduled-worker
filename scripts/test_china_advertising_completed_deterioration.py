@@ -7,7 +7,12 @@ class CompletedDeterioration(unittest.TestCase):
   b,s,m=fixture(spend=spend,orders=orders,amount=amount,clicks=clicks,bid=bid)
   b.update(day='2026-11-16',days=['2026-11-13','2026-11-14','2026-11-15'])
   c=s['batches']['0']['campaigns']['adverts'][0];c.update(status=9);c['settings']['payment_type']='cpc'
-  s['batches']['0']['stats']=[dict(advertId=1,days=[dict(date='2026-11-15T00:00:00Z',apps=[dict(nms=[dict(nmId=10,sum=last_spend,orders=last_orders,sum_price=last_amount,clicks=last_clicks,views=2000)])])])]
+  # Rebuild the complete period from dated rows, including the two earlier days.
+  daily=[]
+  for day in b['days'][:-1]:
+   daily.append(dict(date=day+'T00:00:00Z',apps=[dict(nms=[dict(nmId=10,sum=(spend-last_spend)/2,orders=(orders-last_orders)/2,sum_price=(amount-last_amount)/2,clicks=(clicks-last_clicks)/2,views=2000)])]))
+  daily.append(dict(date='2026-11-15T00:00:00Z',apps=[dict(nms=[dict(nmId=10,sum=last_spend,orders=last_orders,sum_price=last_amount,clicks=last_clicks,views=2000)])]))
+  s['batches']['0']['stats']=[dict(advertId=1,days=daily)]
   s['economics']['rows']['10'].update(sample_size=100,buyout_fallback=False,commission_policy_fallback=False)
   return b,s,m
  def test_good_three_day_own_model_does_not_hide_last_completed_day_without_orders(self):

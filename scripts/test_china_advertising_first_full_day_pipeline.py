@@ -65,9 +65,14 @@ class FirstFullDay(unittest.TestCase):
   b,s,m=self.selected(post=metrics(30,3,300));self.assertIsNone(apply(b,s,m)['campaigns'][0]['focus'][0]['action'])
 
  def test_pending_first_day_clears_inherited_action(self):
-  b,s,m=self.selected();r=b['campaigns'][0]['focus'][0];r['pending_first_day']=True
+  b,s,m=self.selected();r=b['campaigns'][0]['focus'][0]
+  # No completed post-change day remains after this verified price change.
+  s['experience']=[dict(payload=dict(started_at='2026-11-14T12:00:00+03:00',action=dict(kind='price_change',nm_ids=[10])))]
   r['action']=dict(kind='ad_set_bid',old_minor=34,target_minor=28)
-  self.assertIsNone(apply(b,s,m)['campaigns'][0]['focus'][0]['action'])
+  result=apply(b,s,m)['campaigns'][0]['focus'][0]
+  self.assertTrue(result['pending_first_day'])
+  self.assertEqual(result['decision_window']['days'],[])
+  self.assertIsNone(result['action'])
 
  def test_missing_initial_shortlist_uses_same_first_day(self):
   b,s,cp,ds,event,m=fixture();r=apply(b,s,m)['campaigns'][0]['focus'][0]
