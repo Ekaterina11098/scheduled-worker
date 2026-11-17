@@ -11,7 +11,7 @@ def pure_function(file,name,scope):
 tracked=pure_function('china_morning_pair.py','tracked_rows',dict(datetime=datetime,timedelta=timedelta,MSK=timezone(timedelta(hours=3))))
 windows=pure_function('china_daily_expected_control.py','comparison_windows',dict(timedelta=timedelta))
 DAY=date(2026,11,1)
-CAT=dict(cabinet='token_3',rows=[dict(vendorCode='143-ReginaBag-black',nmID=1473245494,currencyIsoCode4217='CNY',discount=45,sizes=[dict(price=901,discountedPrice=495.55)])])
+CAT=dict(cabinet='token_3',rows=[dict(vendorCode='143-ReginaBag-black',nmID=1473245494,currencyIsoCode4217='CNY',discount=50,sizes=[dict(price=991.1,discountedPrice=495.55)])])
 def review(days=1):
  return dict(report_date=str(DAY),status='complete_disclosed_forecast_model',model_version='wb_profit_floor_price_hypothesis_v4',products=[dict(article='143-ReginaBag-black',before_price=450.5,after_price=495.55,full_days=days,buyout_fallback=False,buyout_sample=94,result=dict(status='rollback_review',early_review_criteria_met=True),economic_target=dict(basis='profit_floor_demand_hypothesis',status='recommended',price_cny=471,base_cny=942,discount=50,expected_profit_advantage_per_day=100,predicted_profit_per_day=200))])
 class PriceRules(unittest.TestCase):
@@ -123,6 +123,6 @@ class PriceRules(unittest.TestCase):
   self.assertIsNone(windows(date(2026,10,30),date(2026,10,31)))
   self.assertEqual(windows(date(2026,10,30),DAY)[1],(date(2026,10,31),date(2026,10,31)))
  def test_pending_window_remains_fresh(self):
-  self.assertEqual(windows(date(2026,10,30),date(2026,11,10))[1],(date(2026,11,6),date(2026,11,9)))
+  self.assertEqual(windows(date(2026,10,30),date(2026,11,10))[1],(date(2026,11,7),date(2026,11,9)))
 if __name__=='__main__':unittest.main()
 
