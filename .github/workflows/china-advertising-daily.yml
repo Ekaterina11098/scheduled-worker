@@ -104,7 +104,7 @@ jobs:
         run: PYTHONPATH=scripts python scripts/china_advertising_daily.py
   followup:
     needs: daily
-    if: github.run_attempt == 1
+    if: github.run_attempt == 1 && github.event_name != 'push'
     concurrency:
       group: bot-mpstats-data
       cancel-in-progress: false

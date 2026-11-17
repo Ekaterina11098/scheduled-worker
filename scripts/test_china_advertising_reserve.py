@@ -46,21 +46,16 @@ class Reserve(unittest.TestCase):
         saved=dict(bundle={})
         with patch.dict(sys.modules,{'china_advertising_v2':types.SimpleNamespace(http=lambda *a: self.fail('Unexpected WB read'))}):
             self.assertIs(refresh_before_send(io,'2026-11-13',saved,'artifact'),saved)
-    def test_send_rebuilds_unsigned_plan_only_when_budget_data_missing(self):
+    def test_send_preserves_full_unsigned_plan_when_budget_data_missing(self):
         io=IO();a=addition();saved=dict(day='2026-11-13',status='frozen',bundle=dict(campaigns=[dict(focus=[dict(action=a)],attention=[dict(action=a)])]),files=[dict(plan_id='old')])
+        before=copy.deepcopy(saved)
         io.state['china_agent:loss_plan:v1:old']=dict(report_message_ids=[])
-        pages=[dict(kind='drr',family='drr',page=1,total=1,bytes=b'png',actions=[])]
-        def plan(io,day,f,index,slot):
-            self.assertTrue(slot.startswith('reserve-'));self.assertEqual(f['actions'],[])
-            return dict(plan_id='new',plan_sha256='newhash',items=[])
-        mods={'china_advertising_v2':types.SimpleNamespace(http=lambda *a,**kw:dict(adverts=[])),
-              'china_advertising_v2_png':types.SimpleNamespace(render=lambda b:pages),
-              'china_daily_ad_actions':types.SimpleNamespace(plan=plan)}
-        with patch.dict(sys.modules,mods):out=refresh_before_send(io,'2026-11-13',saved,'artifact')
-        self.assertEqual(out['files'][0]['action_count'],0)
-        self.assertIn('invalidated_at',io.state['china_agent:loss_plan:v1:old'])
-        self.assertEqual(io.state['artifact'],out)
-        self.assertEqual(saved['files'][0]['plan_id'],'old')
+        with self.api(dict(adverts=[])):
+            with self.assertRaisesRegex(RuntimeError,'keep frozen full proposal and retry'):
+                refresh_before_send(io,'2026-11-13',saved,'artifact')
+        self.assertEqual(saved,before)
+        self.assertEqual(io.state['china_agent:loss_plan:v1:old'],dict(report_message_ids=[]))
+        self.assertNotIn('artifact',io.state)
     def test_send_does_not_remove_offer_for_shortfall(self):
         io=IO();a=addition();saved=dict(bundle=dict(campaigns=[dict(focus=[dict(action=a)],attention=[dict(action=a)])]))
         with self.api(response(0)):self.assertIs(refresh_before_send(io,'2026-11-13',saved,'artifact'),saved)
