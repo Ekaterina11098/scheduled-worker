@@ -11,7 +11,7 @@ def main():
  assert {byid[s['id']]['campaign_id']for s in blocked}=={41298169,41779660,41332083}
  assert all(not s.get('steps')and not s.get('request')and not s.get('wb_writes')for s in blocked)
  assert all(s['status']=='verified'for s in e['items']if s not in blocked)
- key='china_agent:owner_budget341_preflight_recovery:2026-11-17:v1'
+ key='china_agent:owner_budget341_preflight_recovery:2026-11-17:v2'
  assert not io.get(key),'Existing recovery audit; inspect before retry'
  assert io.create(key,dict(status='preflight',original_execution=copy.deepcopy(e),job_id=341,scope=[s['id']for s in blocked]))
  e['preflight_recovery_key']=key;e['items']=[s for s in e['items']if s not in blocked];e['status']='running'
