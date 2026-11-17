@@ -1,0 +1,86 @@
+name: Read-only FBS stock shortage investigation
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  investigate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Read current stock and related documents, save findings privately
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        shell: python
+        run: |
+          import os,sys,datetime,collections
+          sys.path.insert(0,'scripts')
+          import fbs_document_chain as m
+          assert os.environ['GITHUB_REPOSITORY']=='Ekaterina11098/scheduled-worker'
+          class ReadOnlyTransport(m.Transport):
+              def request(self,base,path,method='GET',body=None,params=None):
+                  if base==m.WB:raise m.Stop('WB calls prohibited in stock-only investigation')
+                  if base==m.MS and method!='GET':raise m.Stop('MoySklad writes prohibited')
+                  return super().request(base,path,method,body,params)
+          t=ReadOnlyTransport();db=m.Cache(t);config=db.get(m.CONFIG);worker=m.Worker(t,db,config)
+          states=[r for r in db.pending() if r['payload'].get('error')=='Insufficient available stock; shipment blocked pending owner decision']
+          assert len(states)==2,'Expected exactly the two known stock-blocked supply chains'
+          def href(x):return m.href(x).split('?')[0]
+          def facts(doc):
+              return {k:doc.get(k) for k in ('id','name','description','moment','applicable','externalCode','store','sourceStore','targetStore','customerOrder','demands','returns','state') if k in doc}
+          wanted={p['product_href'] for r in states for p in r['payload']['stock_shortages']}
+          products={}
+          for url in sorted(wanted):
+              assert url.startswith(m.MS+'entity/product/')
+              d=t.request(m.MS,url[len(m.MS):])
+              products[url]={k:d.get(k) for k in ('id','name','article','code','archived','updated','created')}
+          stores=worker.ms_rows('entity/store',{'filter':'archived=false'})
+          store_names={href(s):s['name'] for s in stores}
+          source_stores={href(config['templates']['demand']['store'])}
+          source_stores.update(m.MS+'entity/store/'+r['payload']['warehouse_routing']['source_store_id'] for r in states if r['payload'].get('warehouse_routing'))
+          current={}
+          for store in sorted(source_stores):
+              rows=worker.ms_rows('report/stock/all',{'filter':'store='+store,'stockMode':'all','quantityMode':'all'})
+              current[store]={href(r):{k:r.get(k) for k in ('name','article','stock','reserve','quantity','inTransit')} for r in rows if href(r) in wanted}
+          bystore=worker.ms_rows('report/stock/bystore',{'stockMode':'all','quantityMode':'all'})
+          product_stores={href(r):r for r in bystore if href(r) in wanted}
+          supplies=[];same_day_documents=[];seen=set()
+          for record in states:
+              state=record['payload'];supply=state['supply'];order_id=state['documents']['customerorder']['id']
+              order=t.request(m.MS,'entity/customerorder/'+order_id)
+              order_positions=worker.ms_rows('entity/customerorder/'+order_id+'/positions')
+              origin=href(order['store'])
+              expected=collections.Counter()
+              for p in state['positions']:expected[href(p['assortment'])]+=p['quantity']
+              item={'supply':supply,'status':state['status'],'last_error_at':state.get('last_error_at'),'old_shortages':state['stock_shortages'],'order':facts(order),'order_positions':order_positions,'source_store':{'href':origin,'name':store_names.get(origin)},'current_shortages':[],'linked_demands':[]}
+              for url in sorted(wanted & set(expected)):
+                  stock=current.get(origin,{}).get(url,{})
+                  item['current_shortages'].append({'product_href':url,'product':products[url],'needed':expected[url],'stock':stock.get('stock',0),'reserve':stock.get('reserve',0),'available':stock.get('quantity',0),'row_present':bool(stock)})
+              for link in order.get('demands',[]):
+                  url=href(link)
+                  assert url.startswith(m.MS+'entity/demand/')
+                  doc=t.request(m.MS,url[len(m.MS):]);positions=worker.ms_rows('entity/demand/'+doc['id']+'/positions')
+                  item['linked_demands'].append({'document':facts(doc),'positions':positions})
+              supplies.append(item)
+              day=m.stamp(supply['closedAt']).astimezone(datetime.timezone(datetime.timedelta(hours=3))).date().isoformat()
+              for typ in ('demand','move','enter','loss'):
+                  filt='moment>='+day+' 00:00:00;moment<='+day+' 23:59:59'
+                  docs=worker.ms_rows('entity/'+typ,{'filter':filt})
+                  assert len(docs)<=100,'Same-day document scope exceeds investigation bound'
+                  for doc in docs:
+                      if (typ,doc['id']) in seen:continue
+                      seen.add((typ,doc['id']))
+                      involved={href(doc.get(k,{})) for k in ('store','sourceStore','targetStore')}
+                      if not (involved & source_stores):continue
+                      positions=worker.ms_rows('entity/'+typ+'/'+doc['id']+'/positions')
+                      matched=[p for p in positions if href(p.get('assortment',{})) in wanted]
+                      if matched:same_day_documents.append({'type':typ,'document':facts(doc),'matching_positions':matched,'all_positions':positions})
+          result={'observed_at':m.now(),'run_id':os.environ['GITHUB_RUN_ID'],'products':products,'stock_by_store':product_stores,'store_names':store_names,'supplies':supplies,'same_day_documents':same_day_documents,'moysklad_writes':0,'wb_writes':0}
+          db.put('diagnostic:fbs_stock_shortages:20261117',result)
+          print('Stock investigation complete; findings stored privately; commercial writes=0')
