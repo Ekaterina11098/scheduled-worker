@@ -135,7 +135,10 @@ def execute(io,a,p):
   return after['status']==before['status'] and after['settings']==before['settings'] and sorted(after['nm_settings'],key=lambda n:n['nm_id'])==sorted(expected,key=lambda n:n['nm_id'])
  for item in execution_order(p['items']):
   state=next((x for x in e['items'] if x['id']==item['id']),None)
-  if state:
+  from china_confirmed_report_recovery import retryable,recheck
+  retry=state is not None and retryable(state)
+  if retry:recheck(state);save()
+  if state and not retry:
    if item['kind']=='recover_campaign':continue # A partially submitted recovery is never replayed automatically.
    if state['status'] in ['submitting','accepted','uncertain']:
     try:state['status']='verified' if verified(item,state) else 'uncertain'
@@ -143,7 +146,7 @@ def execute(io,a,p):
     if state['status']=='verified':state.setdefault('verified_at',datetime.now(timezone.utc).isoformat())
     save()
    continue
-  state=dict(id=item['id'],status='preflight');e['items'].append(state);save()
+  if state is None:state=dict(id=item['id'],status='preflight');e['items'].append(state);save()
   try:
    require(io,p)
    cid=item['campaign_id']
@@ -231,10 +234,12 @@ def execute(io,a,p):
   from china_selected_campaign_test import publish_preparation
   publish_preparation(io,p['items'],e['items'],key)
  e['status']='done' if all(x['status'] in ['verified','blocked','approved_pending_conditions'] for x in e['items']) else 'attention';e['completed_at']=datetime.now(timezone.utc).isoformat();save()
+ from china_confirmed_report_recovery import register_campaigns
+ register_campaigns(io,p,e)
  from china_execution_notice import deliver_result
  deliver_result(io,a,p,e)
  notice=io.get('china_agent:daily_ad_result:v2:'+p['plan_id'])
- if e['status']=='done' and notice and notice.get('status')=='sent':
+ if e['status']=='done' and notice and notice.get('status')=='sent' and not any(retryable(s)for s in e['items']):
   completed=dict(a,status='completed',result_status=e['status'],execution_key=key,result_message_id=notice.get('message_id'))
   io.put(APPROVAL+str(a['job_id']),completed)
  return e

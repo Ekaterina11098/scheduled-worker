@@ -79,6 +79,8 @@ def deliver(w):
             if response.status_code>=500:w.uncertain=True
             raise RuntimeError('Telegram rejected price report: '+str(response.status_code))
         return value['result']
+    from china_scheduled_price_release import wait_for_release
+    wait_for_release(w)
     me=tg('getMe',{})
     if me.get('id')!=8780468043 or w.chat!=-1004342917488:raise RuntimeError('Price report recipient mismatch')
     message_ids=[];receipts=[]
@@ -132,4 +134,3 @@ def install(root):
     end=text.index('        except Exception:\n',start)
     text=text[:start]+marker+'            from china_price_delivery import deliver\n            deliver(self)\n'+text[end:]
     path.write_text(text,encoding='utf-8')
-

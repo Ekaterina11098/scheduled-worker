@@ -43,7 +43,12 @@ def collect(io,v,source,day):
   state=states.get(int(cid))
   if not state or state.get('status')not in(9,11):continue
   ids={n['nm_id']for n in state['nm_settings']}
-  if ids!=set(route['nm_ids'])or route.get('warehouse_role')!='guangzhou':raise ValueError('Explicit campaign route membership changed; review route scope')
+  if route.get('warehouse_role')!='guangzhou':raise ValueError('Explicit campaign warehouse route changed')
+  if ids!=set(route['nm_ids']):
+   registry=io.get('china_agent:verified_campaign_state:v1')or{}
+   receipt=io.get(registry.get(cid,''))or{};after=receipt.get('after')or{}
+   if receipt.get('status')!='verified'or after.get('id')!=state['id']or {n['nm_id']for n in after.get('nm_settings',[])}!=ids:raise ValueError('Campaign route membership has no matching verified receipt')
+   route=dict(route,nm_ids=sorted(ids),composition_receipt=registry[cid]);policy['campaigns'][cid]=route;io.put(POLICY,policy)
   key=ROOT+day+':v1:'+cid;evidence=io.get(key)
   if not evidence or not fresh(evidence.get('stock',{}).get('observed_at'))or not fresh(evidence.get('published',{}).get('observed_at')):
    import requests
@@ -73,4 +78,3 @@ def collect(io,v,source,day):
   for nm in models['rows']:v['economics']['missing'].pop(nm,None)
   v.setdefault('campaign_routes',{})[cid]=dict(warehouse_role='guangzhou',evidence_key=key,source_ref=route['source_ref'])
  return v
-

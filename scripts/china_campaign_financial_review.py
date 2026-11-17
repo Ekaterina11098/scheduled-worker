@@ -15,6 +15,7 @@ def apply(io,bundle,source,minima):
  own={int(r['nm_id']):r for r in data.get('own',{}).get('rows',[])}
  fx=(data.get('fx')or{}).get('rub_per_cny');changes=history(source.get('executions',[]))
  holds=(io.get('china_agent:budget_owner_policy:v1')or{}).get('do_not_fund',{})
+ labels={str(r['nmID']):r['vendorCode']for r in source.get('catalogue',{}).get('rows',[])}
  def fresh(e):
   try:return all(0<=(now-datetime.fromisoformat(e[k].replace('Z','+00:00'))).total_seconds()<=24*3600 for k in ['observed_at','stock_observed_at','price_observed_at'])
   except (KeyError,TypeError,ValueError):return False
@@ -85,7 +86,7 @@ def apply(io,bundle,source,minima):
      stable_contribution+=downside;stress+=downside
    if stress<=0 or any(v[1]<=0 or v[0].get('buyout_fallback')for v in member_models.values())or not all(target<r['bids_kopecks'][zone]for r in st['nm_settings']):continue
    minimum=source['config']['minTopUp']/100;reserve=spend*3/len(closed);amount=max(minimum,math.ceil(max(0,reserve-c['balance'])/50)*50)
-   evidence.update(modeled_after_ads_cny=stable_contribution-spend,stress_after_ads_cny=stress,expected_bids={str(n['nm_id']):n['bids_kopecks']for n in st['nm_settings']},member_inputs={str(nm):dict(price=v[0]['seller_price_cny'],cost=v[0]['own_cogs_rub'])for nm,v in member_models.items()})
+   evidence.update(modeled_after_ads_cny=stable_contribution-spend,stress_after_ads_cny=stress,expected_bids={str(n['nm_id']):n['bids_kopecks']for n in st['nm_settings']},member_inputs={str(nm):dict(article=labels.get(str(nm),str(nm)),price=v[0]['seller_price_cny'],cost=v[0]['own_cogs_rub'])for nm,v in member_models.items()})
    action=dict(id='recover:'+str(c['id']),kind='recover_campaign',campaign_id=c['id'],status_before=11,nm_ids=sorted(members),placement=zone,target_minor=target,amount_cny=amount,balance_before=c['balance'],recovery_evidence=evidence,supersedes_temporary_hold=holds.get(str(c['id'])))
    decision='Все '+str(len(members))+' ставок → '+str(target/100)+' CNY; пополнить на '+str(amount)+' CNY и возобновить.'
   if action:
@@ -96,4 +97,3 @@ def apply(io,bundle,source,minima):
    for section in out.get('recommendation_directions',{}).values():section['rows']=[r for r in section.get('rows',[])if r.get('campaign_id')!=c['id']];section['count']=len(section['rows'])
  out['campaign_financial_review']=dict(revision='completed_risk_restart_v1',audit=audit,wb_writes=0,model_calls=0)
  return out
-

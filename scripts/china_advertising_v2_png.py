@@ -45,7 +45,7 @@ def _budget_column_base(c):
  if (c.get('financial_action')or{}).get('selected_test'):
   a=c['financial_action']
   return 'Тест: пополнить на '+str(a['amount_cny'])+' CNY.\nВозобновить после проверки состава четырёх товаров в рекламном PNG. Плановый выкуп 40%; эффективность ещё не доказана.'
- if (c.get('financial_action')or{}).get('kind')=='recover_campaign':return 'Пополнить на '+str(c['financial_action']['amount_cny'])+' CNY.\nВключает снижение всех ставок до '+str(c['financial_action']['target_minor']/100)+' CNY и возобновление.'
+ if (c.get('financial_action')or{}).get('kind')=='recover_campaign':return 'Пополнить на '+str(c['financial_action']['amount_cny'])+' CNY.\n'+('После проверки рекламных изменений возобновить; состав и ставки сохранить.'if c['financial_action'].get('keep_existing_bids')else'Включает снижение всех ставок до '+str(c['financial_action']['target_minor']/100)+' CNY и возобновление.')
  if (c.get('financial_action')or{}).get('kind')=='pause_campaign':return 'Не пополнять.\nПредлагается приостановить РК.'
  if c.get('owner_budget_refused'):return 'Пока не пополнять'
  if c.get('budget_audit_state')in('owner_decided_no_fund','owner_limited_test_ready','reviewed_no_fund'):return c['budget_short_note']

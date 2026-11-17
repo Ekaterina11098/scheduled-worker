@@ -2,7 +2,7 @@ name: China price morning report only
 on:
   push:
     branches: [main]
-    paths: ['china-price-morning-request.json']
+    paths: ['china-price-morning-request.json', '.github/workflows/china-price-morning.yml']
   workflow_call:
     inputs:
       action:
@@ -34,7 +34,7 @@ on:
         options: [run, verify]
         default: verify
   schedule:
-    - cron: '30,45 7 * * *'
+    - cron: '5,15,30,45 7 * * *'
     - cron: '0,15 8 * * *'
 permissions:
   contents: read
@@ -45,7 +45,7 @@ jobs:
   report:
     if: github.run_attempt == 1
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    timeout-minutes: 45
     concurrency:
       group: china-price-report-data
       cancel-in-progress: false
@@ -60,6 +60,7 @@ jobs:
             /scripts/
             /.github/
             /*request*.json
+      - run: python -m unittest discover -s scripts -p test_china_scheduled_report_transport.py
       - name: Skip completed reports and check fallback time
         id: due
         env:
@@ -151,7 +152,11 @@ jobs:
           correction=early and request.get('correct_candidates') is True
           sys.argv=['morning_pair','--section','candidates']+(['--send-now']if early else[])+(['--correct-candidates']if correction else[])
           from china_agent.morning_pair import main
-          main()
+          if early:
+              main()
+          else:
+              from china_scheduled_price_release import main as scheduled_main
+              scheduled_main()
           PY
           fi
 

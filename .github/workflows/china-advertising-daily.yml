@@ -4,7 +4,7 @@ on:
     branches: [main]
     paths: ['.github/workflows/china-advertising-daily.yml']
   schedule:
-    - cron: '55 3 * * *'
+    - cron: '45 3 * * *'
     - cron: '0,15,30,45 4 * * *'
     - cron: '0,15 5 * * *'
   workflow_dispatch:
@@ -20,7 +20,7 @@ jobs:
       group: bot-mpstats-data
       cancel-in-progress: false
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,6 +53,7 @@ jobs:
       - run: pip install requests==2.32.5 pillow==11.3.0 python-dotenv simplejson==4.2.0 openai==3.42.1
       - name: Check advertising arithmetic and duplicate safeguards
         run: PYTHONPATH=scripts python -m unittest discover -s scripts -p 'test_china_advertising_*.py'
+      - run: PYTHONPATH=scripts python -m unittest discover -s scripts -p test_china_scheduled_report_transport.py
       - name: Prepare and freeze the existing daily identity without Telegram calls
         env:
           CHINA_AD_PREPARE_ONLY: 'true'
@@ -83,13 +84,13 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - run: pip install requests==2.32.5
-      - name: Wait for 07:30 MSK after preparation
+      - name: Finish preflight from 07:29 MSK; transport releases at 07:30
         run: |
           python - <<'PY'
           import time
           from datetime import datetime, timezone
           now = datetime.now(timezone.utc)
-          target = now.replace(hour=4, minute=30, second=0, microsecond=0)
+          target = now.replace(hour=4, minute=29, second=0, microsecond=0)
           while (remaining := (target - datetime.now(timezone.utc)).total_seconds()) > 0:
               time.sleep(min(remaining, 15))
           PY

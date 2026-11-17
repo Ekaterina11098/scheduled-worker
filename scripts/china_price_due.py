@@ -5,8 +5,9 @@ from zoneinfo import ZoneInfo
 
 def in_window(now,mode):
     value=now.hour*60+now.minute
-    low=630 if mode=='morning' else 900
-    return low<=value<low+46
+    low=605 if mode=='morning' else 900
+    high=676 if mode=='morning' else 946
+    return low<=value<high
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--mode',choices=['morning','intraday'],required=True);a=p.parse_args()
