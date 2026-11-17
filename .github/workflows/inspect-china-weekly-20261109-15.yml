@@ -162,3 +162,5 @@ jobs:
           out["status"]="prepared";out["completed_at"]=m.now();save()
           print("Read-only preflight finished; private results saved.")
           
+
+# Resume after official pagination exhaustion
