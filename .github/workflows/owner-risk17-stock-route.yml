@@ -1,0 +1,33 @@
+name: Owner new Guangzhou warehouse read17
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-risk17-stock-route.yml]
+permissions: {contents: read}
+concurrency:
+  group: bot-mpstats-data
+  cancel-in-progress: false
+jobs:
+  read:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-risk17-stock-route] Read owner named new Guangzhou warehouse'
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5
+      - env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          OPENAI_API_KEY: ''
+        run: python scripts/owner_risk17_stock_route.py
