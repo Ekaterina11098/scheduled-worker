@@ -53,7 +53,8 @@ def finalize(io,bundle,source,minima):
   cp['focus']=[additions.get((cp['id'],r['nm']),r)for r in cp.get('focus',[])]
   cp['attention']=[r for r in cp['focus']if r.get('action')]
  out=attach(out,source)
- rows=[]
+ rows=[];ledger_key='china_agent:advertising_decisions:v1:'+REVISION+':'+out['day']
+ prior=(io.get(ledger_key)or{})if io is not None else {};ledger=copy.deepcopy(prior)
  for cp in out['campaigns']:
   for r in cp.get('focus',[]):
    window=r.get('decision_window')
@@ -63,12 +64,15 @@ def finalize(io,bundle,source,minima):
    facts=dict(cid=cp['id'],nm=r['nm'],window=window,cumulative=r.get('completed_exposure_guard'),status=cp.get('status'),blocker=r.get('data_blocker'),pending=r.get('pending_first_day'),current_bid=r.get('current_bid_minor'),minimum=r.get('minimum_bid_minor'),economics={k:e.get(k)for k in ('seller_price_cny','stock_free','published_stock','own_cogs_rub','buyout','sample_size','logistics_cny','commission_pct','expected_margin_before_ads_cny')})
    hh=hashlib.sha256(json.dumps(facts,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
    row=dict(campaign_id=cp['id'],nm_id=r['nm'],article=r['article'],facts_sha256=hh,decision=r.get('decision'),action=r.get('action'),decision_window=window,reason=r.get('reason'))
-   key='china_agent:advertising_decision:v1:'+REVISION+':'+hh
+   key=str(cp['id'])+':'+str(r['nm'])
    if io is not None:
-    old=io.get(key)
-    if old and (old.get('action')!=row['action']or old.get('decision')!=row['decision']):raise ValueError('Same verified facts produced conflicting recommendation')
-    if not old:io.create(key,row)
+    old=ledger.get(key)
+    if old and old.get('facts_sha256')==hh and (old.get('action')!=row['action']or old.get('decision')!=row['decision']):raise ValueError('Same verified facts produced conflicting recommendation')
+    ledger[key]=row
    rows.append(row)
+ if io is not None and ledger!=prior:
+  if prior:io.put(ledger_key,ledger)
+  else:io.create(ledger_key,ledger)
  out['decision_contract']=dict(revision=REVISION,rows=rows,deterministic=True,model_calls=0,wb_writes=0)
  return out
 
