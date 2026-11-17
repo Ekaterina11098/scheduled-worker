@@ -161,7 +161,11 @@ def execute(io,a,p):
                and item.get('status_before')==11 and before['status']==11
                and type(item.get('target_minor'))is int and type(item.get('old_minor'))is int
                and 0<item['target_minor']<item['old_minor'])
-   if before['status']!=9 and not paused_cut:raise ValueError('Campaign no longer active')
+   paused_exclusion=False
+   if item.get('paused_exclusion_only')is True:
+    from china_selected_campaign_test import validate_preparation_item
+    paused_exclusion=validate_preparation_item(io,item,before)
+   if before['status']!=9 and not(paused_cut or paused_exclusion):raise ValueError('Campaign no longer active')
    if item.get('paused_reduction_only')and not paused_cut:raise ValueError('Paused reduction scope changed')
    kind=item['kind'];method='PATCH'
    if kind=='topup_campaign' and {str(n['nm_id']):n['bids_kopecks']for n in before['nm_settings']}!=(item.get('budget_evidence')or{}).get('expected_bids')and item.get('budget_evidence'):
@@ -219,6 +223,9 @@ def execute(io,a,p):
    save()
   except Exception as ex:
    state.update(status='uncertain' if state['status']=='submitting' else state['status'] if state['status'] in ['accepted','uncertain','verified'] else 'blocked',reason=str(ex) if isinstance(ex,(ValueError,RuntimeError)) else type(ex).__name__);save()
+ if any(x.get('preparation_ref')for x in p['items']):
+  from china_selected_campaign_test import publish_preparation
+  publish_preparation(io,p['items'],e['items'],key)
  e['status']='done' if all(x['status'] in ['verified','blocked','approved_pending_conditions'] for x in e['items']) else 'attention';e['completed_at']=datetime.now(timezone.utc).isoformat();save()
  from china_execution_notice import deliver_result
  deliver_result(io,a,p,e)

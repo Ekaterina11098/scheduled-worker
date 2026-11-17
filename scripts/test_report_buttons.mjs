@@ -47,3 +47,13 @@ function fixture(family='drr'){
  const page=keyboard(TOKEN,{family:'budgets',items:Array.from({length:13},(_,i)=>({id:String(i),campaign_id:i,amount_cny:100}))},[],1);assert.ok(page.inline_keyboard.flat().some(b=>b.callback_data.endsWith('p2')));
 }
 console.log('PASS: no execution on selection/review; exact scoped confirmation; duplicate callback; double confirm; competing actor; stale review/report; budget amount; uncertain root; foreign chat; pagination');
+
+
+{
+ const w=fixture('budgets');w.cache.get('china_agent:loss_plan:v1:test').items.find(i=>i.id==='fund').requires_preparation_key='test-preparation';
+ await w.click('i0');await w.click('review');const r=w.cache.get(ROOT+'review_message:1000');
+ assert.match((await w.click('confirm'+r.selection_hash,7,1000)).text,/Сначала подтвердите состав/);assert.equal(w.jobs.length,0);assert.equal(w.cache.get('china_agent:daily_action_claim:v1:test'),undefined);
+ w.cache.set('test-preparation',{status:'verified'});await w.click('confirm'+r.selection_hash,7,1000);assert.equal(w.jobs.length,1);
+}
+console.log('PASS: separate funding confirmation waits for WB-verified ad preparation; no job or claim before it');
+

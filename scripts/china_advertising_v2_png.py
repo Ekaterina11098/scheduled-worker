@@ -39,6 +39,8 @@ def recommendations(c):
 
 def budget_column(c):
  """Owner-approved display only; execution conditions remain in the structured plan."""
+ if (c.get('financial_action')or{}).get('selected_test'):
+  return 'Тест: пополнить на '+str(c['financial_action']['amount_cny'])+' CNY.\nПосле проверки рекламного PNG: состав 027, 68, 160, 161 по 0,28 CNY. Возобновить. Плановый выкуп 40%: +37,93 CNY; при 32%: −25,44. Малая выборка, есть риск минуса.'
  if (c.get('financial_action')or{}).get('kind')=='recover_campaign':return 'Пополнить на '+str(c['financial_action']['amount_cny'])+' CNY.\nВключает снижение всех ставок до '+str(c['financial_action']['target_minor']/100)+' CNY и возобновление.'
  if (c.get('financial_action')or{}).get('kind')=='pause_campaign':return 'Не пополнять.\nПредлагается приостановить РК.'
  if c.get('owner_budget_refused'):return 'Пока не пополнять'
@@ -126,7 +128,7 @@ def _render_legacy(bundle):
   a=c.get('financial_action')or{}
   if a.get('kind')=='recover_campaign':
    ref=a['recovery_evidence'].get('spend_cny',c.get('period',{}).get('spend'))
-   c.update(budget_reference_need=ref,budget_cash_gap=max(0,ref-c['balance'])if ref is not None else None,budget_average_daily=ref/3 if ref is not None else None,budget_reference_label='Расход за 3 дня: ')
+   c.update(budget_reference_need=ref,budget_cash_gap=max(0,ref-c['balance'])if ref is not None else None,budget_average_daily=ref/3 if ref is not None else None,budget_reference_label='Ориентир 3 дней нового теста: 'if a.get('selected_test')else'Расход за 3 дня: ')
  im,d=canvas('Китай · бюджеты и суммы пополнения');y=240;actions=[]
  selected=[c for c in bundle['campaigns'] if c.get('budget_review_required')or c.get('financial_action')or c.get('budget_audit_state')=='reviewed_no_fund']
  for c in selected:
@@ -208,6 +210,8 @@ def render(bundle):
   parts=[f for f in files if f['family']==family]
   for index,f in enumerate(parts,1):f.update(kind=family+':'+str(index).zfill(3),page=index,total=len(parts))
  return files
+
+
 
 
 

@@ -3,6 +3,10 @@ import copy
 from datetime import datetime,timezone
 
 def execute(*args,**kwargs):
+ if args[1].get('selected_test')is True:
+  from china_selected_campaign_test import execute as selected_test
+  try:return selected_test(*args,**kwargs)
+  except AssertionError as error:raise ValueError(str(error)or'Selected test preflight failed')from None
  try:return _execute(*args,**kwargs)
  except AssertionError as error:raise ValueError(str(error)or'Recovery preflight failed')from None
 def _execute(io,item,state,save,req,campaign,budget):
@@ -99,3 +103,5 @@ def _execute(io,item,state,save,req,campaign,budget):
   except Exception:
    state['policy_reconciliation_required']=True;save()
  return state['wb_writes']
+
+

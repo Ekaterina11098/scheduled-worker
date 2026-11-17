@@ -53,6 +53,7 @@ export async function handleReportButtons(config,cb,updateId,deps){
  if(op.startsWith('confirm')){
   if(!onReview||review.selection_hash!==op.slice(7)||review.revision!==s.revision||JSON.stringify(review.selected_ids)!==JSON.stringify(s.selected_ids)||!s.selected_ids.length)return answer('Выбор изменён. Откройте выбранное снова.',true);
   const selected=p.items.filter(i=>s.selected_ids.includes(i.id));if(selected.length!==s.selected_ids.length)return answer('Пункты выбора изменились.',true);
+  for(const item of selected){const action=original.items.find(i=>i.id===item.id);if(action?.requires_preparation_key){const prepared=await get(action.requires_preparation_key);if(prepared?.status!=='verified')return answer('Сначала подтвердите состав и ставки в рекламном PNG и дождитесь результата WB. Затем подтвердите пополнение здесь.',true);}}
   const owner='button:'+token+'-'+actor.id,gateKey=GATE+p.plan_id;let acquired=false;
   for(let n=0;n<4;n++){let g=await get(gateKey);if(!g){await insert(gateKey,{domains:{}});g=await get(gateKey);}if(g.domains?.[p.family]&&g.domains[p.family]!==owner)return answer('Эта часть плана уже подтверждена. Повтор закрыт.',true);if(g.domains?.[p.family]===owner){acquired=true;break;}const next={...g,domains:{...g.domains,[p.family]:owner}};if(await cas(gateKey,g,next)){acquired=true;break;}}
   if(!acquired)return answer('Одновременное подтверждение. Откройте выбор снова.',true);
@@ -96,4 +97,6 @@ export async function handleReportButtons(config,cb,updateId,deps){
  await deps.telegram('editMessageReplyMarkup',{chat_id:config.chat_id,message_id:m.message_id,reply_markup:keyboard(token,p,selected,page)});
  await put(event,{status:'applied',actor_id:actor.id,token,op});return answer('Выбрано: '+selected.length+'.');
 }
+
+
 
