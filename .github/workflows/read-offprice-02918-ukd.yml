@@ -1,0 +1,55 @@
+name: Read owner-requested OFFPRICE correction source
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/read-offprice-02918-ukd.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: offprice-02918-read
+  cancel-in-progress: false
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Read shipment and linked documents without mutations
+        shell: python
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          import sys
+          sys.path.insert(0,'scripts')
+          import fbs_document_chain as m
+          class ReadOnly(m.Transport):
+           def request(self,base,path,method='GET',body=None,params=None):
+            if base==m.MS and method!='GET':raise RuntimeError('MS mutations prohibited')
+            return super().request(base,path,method,body,params)
+          t=ReadOnly();db=m.Cache(t);w=m.Worker(t,db,{})
+          ROOT='offprice_ukd:02918:20261117:'
+          docs=w.ms_rows('entity/demand',{'filter':'name=02918','expand':'agent,organization,contract'})
+          out={'at':m.now(),'status':'reading','matches':len(docs),'shipments':[]}
+          for d in docs:
+           agent=d.get('agent',{})
+           if 'ОФФПРАЙС' not in agent.get('name','').upper():continue
+           item={'demand':d,'positions':w.ms_rows('entity/demand/'+d['id']+'/positions',{'expand':'assortment'}),'linked':[]}
+           for typ,field in [('salesreturn','returns'),('factureout','factureOut')]:
+            refs=d.get(field,[])
+            if isinstance(refs,dict):refs=[refs]
+            for ref in refs:
+             path=m.href(ref).split('?')[0].replace(m.MS,'',1)
+             if not path.startswith('entity/'+typ+'/'):continue
+             detail=t.request(m.MS,path)
+             if typ=='salesreturn':detail['_positions']=w.ms_rows(path+'/positions',{'expand':'assortment'})
+             item['linked'].append({'type':typ,'document':detail})
+           item['files']=w.ms_rows('entity/demand/'+d['id']+'/files')
+           out['shipments'].append(item)
+          out['status']='read_complete';out['completed_at']=m.now();db.put(ROOT+'source:v1',out)
+          print('Read-only shipment and linked document source saved privately.')
