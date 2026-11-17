@@ -38,9 +38,12 @@ class Selection(unittest.TestCase):
     def test_repeat_conversion_maintained_does_not_require_profit_growth(self):
         answer,a=self.select(self.change('2026-11-04'),profit=-100)
         self.assertEqual(a['assessment']['candidate_count'],1)
-    def test_changed_day_and_three_full_days_do_not_qualify(self):
-        _,a=self.select(self.change('2026-11-05'))
+    def test_two_full_days_do_not_qualify(self):
+        _,a=self.select(self.change('2026-11-06'))
         self.assertEqual(a['assessment']['candidate_count'],0)
+    def test_three_full_days_qualify_when_conversion_held(self):
+        _,a=self.select(self.change('2026-11-05'))
+        self.assertEqual(a['assessment']['candidate_count'],1)
     def test_declining_conversion_and_holds_do_not_raise(self):
         for kwargs in ({'before':.2,'after':.1},{'nm':'1473245494'}):
             with self.subTest(kwargs=kwargs):
