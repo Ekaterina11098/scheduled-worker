@@ -151,14 +151,17 @@ jobs:
               code,jobs=api(path+'/jobs?per_page=100')
               assert code==200 and jobs['total_count']==0 and not jobs['jobs'],'Run has jobs; deletion prohibited'
               eligible.append(run_id)
+          refused=[]
           for run_id in eligible:
               path='/actions/runs/'+str(run_id)
               code,body=api(path,'DELETE')
               print(run_id,'DELETE HTTP',code,body.get('message',''))
-              assert code in (204,404),'GitHub refused approved empty-record removal'
+              if code not in (204,404):
+                  refused.append({'id':run_id,'http':code,'message':body.get('message','')});continue
               for attempt in range(6):
                   code,_=api(path)
                   if code==404:break
                   time.sleep(2)
               assert code==404,'Removal readback not confirmed'
               print(run_id,'removed and verified absent')
+          if refused:raise RuntimeError('GitHub refused these approved removals: '+json.dumps(refused))
