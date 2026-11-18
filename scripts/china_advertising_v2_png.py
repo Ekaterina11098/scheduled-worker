@@ -139,7 +139,7 @@ def _render_legacy(bundle):
    ref=a['recovery_evidence'].get('spend_cny',c.get('period',{}).get('spend'))
    c.update(budget_reference_need=ref,budget_cash_gap=max(0,ref-c['balance'])if ref is not None else None,budget_average_daily=ref/3 if ref is not None else None,budget_reference_label='Резерв по темпу вчера (3 дня): 'if a.get('manual_continuation')else'Ориентир 3 дней нового теста: 'if a.get('selected_test')else'Расход за 3 дня: ')
  im,d=canvas('Китай · бюджеты и суммы пополнения');y=240;actions=[]
- selected=[c for c in bundle['campaigns'] if c.get('budget_review_required')or c.get('financial_action')or c.get('budget_audit_state')=='reviewed_no_fund']
+ selected=[c for c in bundle['campaigns'] if not c.get('never_started') and (c.get('budget_review_required')or c.get('financial_action')or c.get('budget_audit_state')=='reviewed_no_fund')]
  for c in selected:
   need=c.get('budget_reference_need');gap=c.get('budget_cash_gap')
   title=wrap(d,'РК '+str(c['id'])+' · '+c['name'],730,29,True)
@@ -219,3 +219,4 @@ def render(bundle):
   parts=[f for f in files if f['family']==family]
   for index,f in enumerate(parts,1):f.update(kind=family+':'+str(index).zfill(3),page=index,total=len(parts))
  return files
+

@@ -17,6 +17,9 @@ def contract(io,item):
  return record
 
 def validate_funding(io,item,before):
+ if item.get('owner_requested_test_20261118'):
+  from china_owner_test18_contract import validate
+  return validate(io,item,before)
  contract(io,item)
  from china_morning_readiness import current_prices,published_stock
  from china_moysklad_read import read_stock
@@ -52,3 +55,4 @@ def validate_funding(io,item,before):
  bound=e.get('attributed_orders',e.get('metrics',{}).get('orders'))
  if type(bound)not in(int,float)or bound<0 or len(unavailable)==len(actual)or e['modeled_after_ads_cny']-bound*delta-unavailable_reserve<=0:raise ValueError('Current COGS no longer supports disclosed manual scenario')
  return dict(current_cost_delta_cny=bound*delta,unavailable_nm_ids=unavailable,unavailable_contribution_upper_bound_cny=unavailable_reserve,remaining_modeled_after_ads_cny=e['modeled_after_ads_cny']-bound*delta-unavailable_reserve,associated_profit_not_proven=True)
+
