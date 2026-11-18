@@ -8,7 +8,7 @@ class Delivery(unittest.TestCase):
     def worker(self,n):
         answer='\n\n'.join('Повышение · '+str(i)+'-Bag-black Продавец: 100 → 105 ¥\nПокупатель: 1000 → 1050 ₽' for i in range(n))
         return types.SimpleNamespace(job=dict(id=280,answer=answer,tool_trace=[]),chat=-1004342917488,day=date(2026,11,9),now=datetime(2026,11,9,19,tzinfo=timezone.utc),mode='morning',audit={},uncertain=False,patch=lambda b:[b],get=lambda k:{})
-    def run_delivery(self,w,db=None,fail=False):
+    def run_delivery(self,w,db=None,fail=False,identity_fail=False):
         db={} if db is None else db;calls=[]
         class Cache:
             def get(self,k):return db.get(k)
@@ -25,7 +25,9 @@ class Delivery(unittest.TestCase):
                 self.assertIn('json',kw)
                 self.assertNotIn('data',kw)
                 self.assertIsInstance(body.get('reply_markup'),dict)
-            if action=='getMe':v={'id':8780468043}
+            if action=='getMe':
+                if identity_fail and calls.count('getMe')==1:raise ConnectionError('identity read transient')
+                v={'id':8780468043}
             else:
                 if fail:raise TimeoutError()
                 v={'chat':{'id':w.chat},'message_id':900}
@@ -40,6 +42,11 @@ class Delivery(unittest.TestCase):
         with patch.dict(sys.modules,modules),patch.dict('os.environ',{'CHINA_TELEGRAM_BOT_TOKEN':'test'}):
             deliver(w)
         return db,calls
+    def test_identity_read_retry_cannot_duplicate_delivery(self):
+        w=self.worker(1)
+        with patch('time.sleep',lambda _:None):db,calls=self.run_delivery(w,identity_fail=True)
+        self.assertEqual(calls,['getMe','getMe','sendMessage'])
+        self.assertFalse(w.uncertain)
     def test_six_rows_png_bound_to_full_answer_and_no_writes(self):
         w=self.worker(6);db,calls=self.run_delivery(w)
         self.assertEqual(calls,['getMe','sendPhoto'])
