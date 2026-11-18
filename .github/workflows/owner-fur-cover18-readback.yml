@@ -1,0 +1,79 @@
+name: Owner gray6 cover readback only
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-fur-cover18-readback.yml]
+permissions: {}
+concurrency:
+  group: bot-mpstats-data
+  cancel-in-progress: false
+jobs:
+  readback:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-fur-cover18-readback] Verify accepted upload without marketplace writes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5 pillow==11.3.0
+      - name: Read accepted image without writes or repeats
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+        shell: python
+        run: |
+          import os,json,time,base64,hashlib,io,copy
+          from datetime import datetime,timezone
+          import requests
+          from PIL import Image,ImageChops,ImageStat
+          ROOT='china_agent:owner_fur_cover18'
+          sb=os.environ['SUPABASE_URL'].rstrip('/');sk=os.environ['SUPABASE_SECRET_KEY']
+          sh={'apikey':sk,'Authorization':'Bearer '+sk,'Content-Type':'application/json'};wh={'Authorization':os.environ['WB_TOKEN_3']}
+          def stamp():return datetime.now(timezone.utc).isoformat()
+          def cache(k):
+           r=requests.get(sb+'/rest/v1/telegram_api_cache',headers=sh,params={'cache_key':'eq.'+k,'select':'payload'},timeout=45);r.raise_for_status();rows=r.json();return rows[0]['payload'] if rows else None
+          def put(k,p,create=False):
+           r=requests.post(sb+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**sh,'Prefer':'resolution='+('ignore-duplicates' if create else 'merge-duplicates')+',return=representation'},json={'cache_key':k,'payload':p,'updated_at':stamp(),'expires_at':'2036-11-18T00:00:00Z'},timeout=45);r.raise_for_status()
+           if create:assert len(r.json())==1,'Already claimed'
+          def card():
+           r=requests.post('https://content-api.wildberries.ru/content/v2/get/cards/list',headers=wh,json={'settings':{'cursor':{'limit':100},'filter':{'textSearch':'2216111729','withPhoto':-1}}},timeout=45);r.raise_for_status();rows=[c for c in r.json()['cards'] if c['nmID']==2216111729];assert len(rows)==1 and rows[0]['vendorCode']=='6-furcoat-gray';return rows[0]
+          def price():
+           r=requests.get('https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter',headers=wh,params={'limit':100,'offset':0,'filterNmID':2216111729},timeout=45);r.raise_for_status();rows=[g for g in r.json()['data']['listGoods'] if g['nmID']==2216111729];assert len(rows)==1;return rows[0]
+          def core(c):
+           d=copy.deepcopy(c)
+           for k in ('photos','updatedAt'):d.pop(k,None)
+           d['characteristics']=sorted(d.get('characteristics',[]),key=lambda x:str(x['id']))
+           return d
+          
+          e=cache(ROOT+':execution');assert e and e['http_status']==200
+          before=e['before'];a=cache(ROOT+':approval')
+          b=base64.b64decode(''.join(cache(ROOT+':source:part:'+str(i))['data'] for i in range(3)),validate=True)
+          assert hashlib.sha256(b).hexdigest()==a['image_sha256']
+          reference=Image.open(io.BytesIO(b)).convert('RGB').resize((192,256))
+          for attempt in range(16):
+           after=card();oldcore=core(before);newcore=core(after)
+           changed=[k for k in set(oldcore)|set(newcore) if oldcore.get(k)!=newcore.get(k)]
+           assert not set(changed)-{'sizes'},'Unexpected content change'
+           assert len(after['photos'])==21 and after['photos'][1:]==before['photos'][1:]
+           for k in ('skus','chrtID','techSize'):assert [s.get(k) for s in before['sizes']]==[s.get(k) for s in after['sizes']]
+           r=requests.get(after['photos'][0]['big'],params={'verify':str(int(time.time()))},timeout=45);r.raise_for_status()
+           got=Image.open(io.BytesIO(r.content)).convert('RGB')
+           diff=sum(ImageStat.Stat(ImageChops.difference(got.resize((192,256)),reference)).mean)/3
+           e.update(after=after,readback_at=stamp(),mean_pixel_difference=round(diff,4),non_photo_changed_keys=changed,readback_only_attempt=attempt+1,size_readback_difference={'before':before['sizes'],'after':after['sizes']} if 'sizes' in changed else None)
+           put(ROOT+':execution',e)
+           if diff<8:break
+           time.sleep(20)
+          else:raise RuntimeError('Main image remains old; no marketplace writes')
+          e.update(status='verified_photo',verified_at=stamp(),prices_after=price(),remaining_photo_urls_unchanged=True)
+          e['prices_unchanged']=e['prices_after']==e['prices_before'];assert e['prices_unchanged']
+          e['description_unchanged']=after['description']==before['description'];assert e['description_unchanged']
+          put(ROOT+':execution',e)
+          event={'record_type':'verified_action','event_id':'owner-fur-cover18-gray6','source_key':ROOT+':execution','started_at':e['submitted_at'],'verified_at':e['verified_at'],'action':{'kind':'main_photo_change','nm_ids':[2216111729],'article':'6-furcoat-gray','before':before['photos'][0]['big'],'after':a['image_sha256']},'evaluation':{'excluded_change_day':'2026-11-18','first_full_day':'2026-11-19','early_review':'2026-11-20','normal_review':'2026-11-22','confounders':['price','promotion','description','main_photo']},'grants_action_permission':False,'telegram_allowed':False}
+          k='china_agent:experience:v1:owner-fur-cover18-gray6'
+          if cache(k) is None:put(k,event,True)
+          tk='china_agent:owner_fur_price_test:2026-11-18:v1:tracking';tracking=cache(tk)
+          tracking['main_photo_intervention']={'execution_key':ROOT+':execution','verified_at':e['verified_at'],'nm_id':2216111729,'combined_test':True};put(tk,tracking)
+          e['reporting_registered']=True;put(ROOT+':execution',e)
+          print(json.dumps({'status':e['status'],'difference':e['mean_pixel_difference'],'size_difference':e['size_readback_difference']}))
+          
