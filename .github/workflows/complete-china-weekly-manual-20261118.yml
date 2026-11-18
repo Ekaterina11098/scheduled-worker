@@ -26,7 +26,7 @@ jobs:
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           WEEKLY_PHASE: preflight
         run: |
-            import sys, os, json, collections, datetime, time
+          import sys, os, json, collections, datetime, time
           from decimal import Decimal, ROUND_FLOOR
           sys.path.insert(0, 'scripts')
           import fbs_document_chain as m
