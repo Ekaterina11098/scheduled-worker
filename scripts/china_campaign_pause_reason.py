@@ -27,7 +27,8 @@ def classify(state,balance,records=(),previous=None,previous_audit=None,transiti
  def walk(x,root,key):
   if not isinstance(x,dict):return
   after=x.get('after');when=x.get('verified_at')or root.get('verified_at')or root.get('completed_at')
-  action=x.get('action')or{};request=x.get('request')or{}
+  action=x.get('action');action=action if isinstance(action,dict) else {}
+  request=x.get('request');request=request if isinstance(request,dict) else {}
   path=x.get('path')or request.get('path')or''
   is_pause=action.get('kind')=='pause_campaign' or x.get('kind')=='pause_campaign' or path in('/adv/v0/pause?id='+str(cid),'/adv/v0/pause')
   owner=(x.get('owner_id')or root.get('owner_id'))==5122667182 or bool(x.get('approval_key')or root.get('approval_key'))
@@ -37,6 +38,7 @@ def classify(state,balance,records=(),previous=None,previous_audit=None,transiti
    xs=x.get(k,[])
    for child in xs.values()if isinstance(xs,dict)else xs if isinstance(xs,list)else[]:walk(child,root,key)
  for r in records:
+  if not isinstance(r,dict):continue
   x=r.get('payload',r);walk(x,x,r.get('cache_key'))
  if commands:
   _,key,when=max(commands)
