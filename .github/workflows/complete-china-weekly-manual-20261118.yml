@@ -24,7 +24,7 @@ jobs:
           MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-          WEEKLY_PHASE: preflight
+          WEEKLY_PHASE: execute
         run: |
           import sys, os, json, collections, datetime, time
           from decimal import Decimal, ROUND_FLOOR
@@ -133,6 +133,7 @@ jobs:
               prep['stock_exceptions']=exceptions;prep['fresh_stock_at']=m.now()
               return byid
           stock=check_stock()
+          db.put(ROOT+'manual_prepare:v1',prep)
           groups=collections.defaultdict(dict)
           for a,q in returns.items():
               progress('checking_return_basis')
@@ -145,9 +146,15 @@ jobs:
                   used.update(counts(positions('salesreturn',r['id'])))
               assert cap[a]-used[a]>=q,'Return basis capacity changed'
               prep['basis'][a]={'id':ident,'name':basis['name'],'moment':basis['moment'],'capacity':cap[a],'returned':used[a]};groups[ident][a]=q
-              current=stock.get(norm(products[a][0]),{});unit=Decimal(str(current.get('price') or 0))
-              assert unit>0,'Missing current return cost'
-              prep['return_costs'][a]={'unit_kopecks':str(unit),'source':'current FBO stock','at':m.now()}
+              current=stock.get(norm(products[a][0]),{});unit=Decimal(str(current.get('price') or 0));cost_source='current FBO stock'
+              if unit<=0:
+                  historical=[p for p in positions('demand',ident,True) if norm(p['assortment'])==norm(products[a][0])]
+                  assert historical and all(Decimal(str(p.get('stock',{}).get('cost') or 0))>0 and p['quantity']>0 for p in historical),'Missing historical return cost'
+                  units={Decimal(str(p['stock']['cost']))/Decimal(str(p['quantity'])) for p in historical}
+                  assert len(units)==1,'Ambiguous historical return unit cost'
+                  unit=next(iter(units));cost_source='live historical return basis '+basis['name']
+              assert unit>0
+              prep['return_costs'][a]={'unit_kopecks':str(unit),'source':cost_source,'at':m.now()}
           prep['prepared_on']=moment[:10];prep['moment']=moment;prep['sales_units']=sum(sales.values());prep['return_units']=sum(returns.values());prep['status']='ready' if not prep['stock_exceptions'] and not prep['duplicates'] else 'blocked';prep['completed_at']=m.now()
           db.put(ROOT+'manual_prepare:v1',prep)
           if MODE=='preflight':
