@@ -45,5 +45,7 @@ def validate(items,states,campaign,pause=time.sleep):
     if any(i['id']==s['id']and i.get('campaign_id')in bad for i in items)and s.get('status')in('verified','accepted','uncertain','submitting'):
      s.setdefault('historical_step_status',s['status']);s['status']='uncertain';s['final_readback_error']=next(bad[i['campaign_id']]for i in items if i['id']==s['id']);s['requires_read_only_reconciliation']=True
    break
+ if result['status']=='verified':
+  from china_package_proof import reconcile
+  result['reconciled_item_ids']=reconcile(items,states,result['rounds'])
  return result
-

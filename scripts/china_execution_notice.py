@@ -4,6 +4,9 @@ from datetime import datetime,timezone
 from china_loss_control import CHAT,BOT
 PREFIX='china_agent:daily_ad_result:v2:'
 def proven(item,state):
+ if state.get('package_reconciliation'):
+  from china_package_proof import proves
+  return proves(item,state)
  if state.get('status')!='verified':return False
  before=state.get('before');after=state.get('after')
  if not isinstance(before,dict) or not isinstance(after,dict) or before.get('id')!=item['campaign_id'] or after.get('id')!=item['campaign_id']:return False
