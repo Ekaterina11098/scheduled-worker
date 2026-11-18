@@ -1,0 +1,75 @@
+name: Owner fur photo experiment gray4 black gallery
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-fur-cover-experiment18-restore.yml]
+permissions: {}
+concurrency:
+  group: bot-mpstats-data
+  cancel-in-progress: false
+jobs:
+  apply:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-fur-cover-experiment18-restore] Restore only five confirmed missing gray photos'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5 pillow==11.3.0
+      - name: Apply approved photo slots with unchanged video
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+        shell: python
+        run: |
+          import os,json,time,base64,hashlib,io
+          from datetime import datetime,timezone
+          import requests
+          from PIL import Image,ImageChops,ImageStat
+          ROOT='china_agent:owner_fur_cover_experiment18'
+          sb=os.environ['SUPABASE_URL'].rstrip('/');sk=os.environ['SUPABASE_SECRET_KEY']
+          sh={'apikey':sk,'Authorization':'Bearer '+sk,'Content-Type':'application/json'};wh={'Authorization':os.environ['WB_TOKEN_3']}
+          def stamp():return datetime.now(timezone.utc).isoformat()
+          def cache(k):
+           r=requests.get(sb+'/rest/v1/telegram_api_cache',headers=sh,params={'cache_key':'eq.'+k,'select':'payload'},timeout=45);r.raise_for_status();rows=r.json();return rows[0]['payload'] if rows else None
+          def put(k,p,create=False):
+           r=requests.post(sb+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**sh,'Prefer':'resolution='+('ignore-duplicates' if create else 'merge-duplicates')+',return=representation'},json={'cache_key':k,'payload':p,'updated_at':stamp(),'expires_at':'2036-11-18T00:00:00Z'},timeout=45);r.raise_for_status()
+           if create:assert len(r.json())==1,'Already claimed; no replay'
+          def card():
+           r=requests.post('https://content-api.wildberries.ru/content/v2/get/cards/list',headers=wh,json={'settings':{'cursor':{'limit':100},'filter':{'textSearch':'2216111729','withPhoto':-1}}},timeout=45);r.raise_for_status();rows=[c for c in r.json()['cards'] if c['nmID']==2216111729];assert len(rows)==1 and rows[0]['vendorCode']=='6-furcoat-gray';return rows[0]
+          def price():
+           r=requests.get('https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter',headers=wh,params={'limit':100,'offset':0,'filterNmID':2216111729},timeout=45);r.raise_for_status();rows=[g for g in r.json()['data']['listGoods'] if g['nmID']==2216111729];assert len(rows)==1;return rows[0]
+          def stable(c):
+           d={k:c.get(k) for k in ('nmID','vendorCode','title','description','brand','video','characteristics','dimensions')}
+           d['characteristics']=sorted(d.get('characteristics') or [],key=lambda x:x['id'])
+           return d
+          ids={'gray':2216111729,'black':2216167898}
+          vendors={'gray':'6-furcoat-gray','black':'7-furcoat-black'}
+          def getcard(n):
+           r=requests.post('https://content-api.wildberries.ru/content/v2/get/cards/list',headers=wh,json={'settings':{'cursor':{'limit':100},'filter':{'textSearch':str(ids[n]),'withPhoto':-1}}},timeout=45);r.raise_for_status();rows=[c for c in r.json()['cards'] if c['nmID']==ids[n]];assert len(rows)==1 and rows[0]['vendorCode']==vendors[n];return rows[0]
+          def getprice(n):
+           r=requests.get('https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter',headers=wh,params={'limit':100,'offset':0,'filterNmID':ids[n]},timeout=45);r.raise_for_status();rows=[g for g in r.json()['data']['listGoods'] if g['nmID']==ids[n]];assert len(rows)==1;return rows[0]
+          def thumb(b):return Image.open(io.BytesIO(b)).convert('RGB').resize((192,256))
+          def download(url):
+           r=requests.get(url,params={'verify':str(int(time.time()))},timeout=45);r.raise_for_status();return r.content
+          e=cache(ROOT+':execution');audit=cache(ROOT+':actual_audit');refs=cache(ROOT+':expected')
+          assert audit['status']=='audited' and [m['expected_slot'] for m in audit['mappings']['gray']]==[1,2,3,4,10,11] and all(m['matches'] for m in audit['mappings']['gray'])
+          before=getcard('gray');assert len(before['photos'])==6 and stable(before)==stable(e['before']['gray'])
+          sources=[]
+          for expected in range(5,10):
+           p=cache('china_agent:owner_fur_gallery18_v6:source:'+str(expected-1));b=base64.b64decode(p['data']);assert hashlib.sha256(b).hexdigest()==p['sha256'];ref=Image.open(io.BytesIO(base64.b64decode(refs['gray'][expected-1]['data']))).convert('RGB');assert sum(ImageStat.Stat(ImageChops.difference(thumb(b),ref)).mean)/3<8;sources.append((expected,b))
+          j={'status':'claimed','created_at':stamp(),'before':before,'steps':[],'wb_writes':0,'reason':'Actual audited gray lacks expected5..9; append missing only then UI reorder size and bag'};put(ROOT+':restore_missing',j,True)
+          try:
+           for slot,(expected,b) in enumerate(sources,7):
+            st={'slot':slot,'expected_slot':expected,'status':'submitting','submitted_at':stamp()};j['steps'].append(st);j['wb_writes']+=1;put(ROOT+':restore_missing',j)
+            r=requests.post('https://content-api.wildberries.ru/content/v3/media/file',headers={**wh,'X-Nm-Id':str(ids['gray']),'X-Photo-Number':str(slot)},files={'uploadfile':('gray-restore.jpg',b,'image/jpeg')},timeout=90);st['http_status']=r.status_code;r.raise_for_status();st['response']=r.json();assert st['response'].get('error') is False;st['status']='accepted';put(ROOT+':restore_missing',j);time.sleep(10)
+           time.sleep(25);after=getcard('gray');j['after']=after;assert len(after['photos'])==11 and stable(after)==stable(before),'Restored count/content mismatch'
+           order=[1,2,3,4,10,11,5,6,7,8,9];matches=[]
+           for slot,expected in enumerate(order,1):
+            got=thumb(download(after['photos'][slot-1]['big']));ref=Image.open(io.BytesIO(base64.b64decode(refs['gray'][expected-1]['data']))).convert('RGB');diff=sum(ImageStat.Stat(ImageChops.difference(got,ref)).mean)/3;matches.append({'slot':slot,'expected_slot':expected,'difference':round(diff,4),'matches':diff<8})
+           j['matches']=matches;assert all(m['matches'] for m in matches);j.update(status='verified_pending_ui_reorder',verified_at=stamp());put(ROOT+':restore_missing',j)
+           e.update(status='ready_for_ui_finalize',gray_restored_order=order,restore_key=ROOT+':restore_missing');put(ROOT+':execution',e)
+           print(json.dumps({'status':j['status'],'gray_count':11,'order':order}))
+          except Exception as ex:
+           j.update(status='needs_readback_no_replay',reason=type(ex).__name__+': '+str(ex)[:250]);put(ROOT+':restore_missing',j);raise
