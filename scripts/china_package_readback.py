@@ -47,5 +47,11 @@ def validate(items,states,campaign,pause=time.sleep):
    break
  if result['status']=='verified':
   from china_package_proof import reconcile
-  result['reconciled_item_ids']=reconcile(items,states,result['rounds'])
+  snapshot=copy.deepcopy(states)
+  try:
+   result['reconciled_item_ids']=reconcile(items,states,result['rounds'])
+  except ValueError as exc:
+   # Missing acknowledgement remains uncertain; never fabricate a submitted receipt.
+   states[:]=snapshot
+   result.update(status='uncertain',reconciled_item_ids=[],reconciliation_error=str(exc))
  return result
