@@ -33,7 +33,30 @@ jobs:
           OOO_TELEGRAM_BOT_TOKEN: ${{ secrets.OOO_TELEGRAM_BOT_TOKEN }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-        run: python scripts/ooo_sol_dialog.py --verify
+        run: |
+          python - <<'PY'
+          import json
+          import subprocess
+          import sys
+          import time
+
+          for attempt in range(3):
+              result = subprocess.run(
+                  [sys.executable, "scripts/ooo_sol_dialog.py", "--verify"],
+                  text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+              )
+              print(result.stdout, end="", flush=True)
+              if result.returncode == 0:
+                  break
+              try:
+                  error = json.loads(result.stdout.strip().splitlines()[-1]).get("error_type")
+              except (ValueError, IndexError):
+                  error = None
+              if error not in ("URLError", "TimeoutError", "ConnectionError") or attempt == 2:
+                  raise SystemExit(result.returncode)
+              print("Transient read-only preflight failure; retrying verification.", flush=True)
+              time.sleep(5 * (attempt + 1))
+          PY
       - name: Answer only newly addressed OOO questions using bounded Sol
         if: github.event_name != 'push' || contains(github.event.head_commit.message, '[ooo-dialog-consume]')
         env:
