@@ -71,3 +71,5 @@ jobs:
 #18Nov: missing-ack package readback stays uncertain; production checks retained.
 
 #18Nov: WB429 respects cooldown and resumes the saved read-only collection.
+
+#18Nov: preserve existing two-attempt read transport bound.
