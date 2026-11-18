@@ -1,0 +1,85 @@
+name: Owner fur photo experiment gray4 black gallery
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-fur-cover-experiment18-verify.yml]
+permissions: {}
+concurrency:
+  group: bot-mpstats-data
+  cancel-in-progress: false
+jobs:
+  apply:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-fur-cover-experiment18-verify] Final photo and video readback only'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5 pillow==11.3.0
+      - name: Apply approved photo slots with unchanged video
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+        shell: python
+        run: |
+          import os,json,time,base64,hashlib,io
+          from datetime import datetime,timezone
+          import requests
+          from PIL import Image,ImageChops,ImageStat
+          ROOT='china_agent:owner_fur_cover_experiment18'
+          sb=os.environ['SUPABASE_URL'].rstrip('/');sk=os.environ['SUPABASE_SECRET_KEY']
+          sh={'apikey':sk,'Authorization':'Bearer '+sk,'Content-Type':'application/json'};wh={'Authorization':os.environ['WB_TOKEN_3']}
+          def stamp():return datetime.now(timezone.utc).isoformat()
+          def cache(k):
+           r=requests.get(sb+'/rest/v1/telegram_api_cache',headers=sh,params={'cache_key':'eq.'+k,'select':'payload'},timeout=45);r.raise_for_status();rows=r.json();return rows[0]['payload'] if rows else None
+          def put(k,p,create=False):
+           r=requests.post(sb+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**sh,'Prefer':'resolution='+('ignore-duplicates' if create else 'merge-duplicates')+',return=representation'},json={'cache_key':k,'payload':p,'updated_at':stamp(),'expires_at':'2036-11-18T00:00:00Z'},timeout=45);r.raise_for_status()
+           if create:assert len(r.json())==1,'Already claimed; no replay'
+          def card():
+           r=requests.post('https://content-api.wildberries.ru/content/v2/get/cards/list',headers=wh,json={'settings':{'cursor':{'limit':100},'filter':{'textSearch':'2216111729','withPhoto':-1}}},timeout=45);r.raise_for_status();rows=[c for c in r.json()['cards'] if c['nmID']==2216111729];assert len(rows)==1 and rows[0]['vendorCode']=='6-furcoat-gray';return rows[0]
+          def price():
+           r=requests.get('https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter',headers=wh,params={'limit':100,'offset':0,'filterNmID':2216111729},timeout=45);r.raise_for_status();rows=[g for g in r.json()['data']['listGoods'] if g['nmID']==2216111729];assert len(rows)==1;return rows[0]
+          def stable(c):
+           d={k:c.get(k) for k in ('nmID','vendorCode','title','description','brand','video','characteristics','dimensions')}
+           d['characteristics']=sorted(d.get('characteristics') or [],key=lambda x:x['id'])
+           return d
+          ids={'gray':2216111729,'black':2216167898}
+          vendors={'gray':'6-furcoat-gray','black':'7-furcoat-black'}
+          def getcard(n):
+           r=requests.post('https://content-api.wildberries.ru/content/v2/get/cards/list',headers=wh,json={'settings':{'cursor':{'limit':100},'filter':{'textSearch':str(ids[n]),'withPhoto':-1}}},timeout=45);r.raise_for_status();rows=[c for c in r.json()['cards'] if c['nmID']==ids[n]];assert len(rows)==1 and rows[0]['vendorCode']==vendors[n];return rows[0]
+          def getprice(n):
+           r=requests.get('https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter',headers=wh,params={'limit':100,'offset':0,'filterNmID':ids[n]},timeout=45);r.raise_for_status();rows=[g for g in r.json()['data']['listGoods'] if g['nmID']==ids[n]];assert len(rows)==1;return rows[0]
+          def thumb(b):return Image.open(io.BytesIO(b)).convert('RGB').resize((192,256))
+          def download(url):
+           r=requests.get(url,params={'verify':str(int(time.time()))},timeout=45);r.raise_for_status();return r.content
+          e=cache(ROOT+':execution');assert e and e['status']=='ready_for_ui_finalize'
+          refs=cache(ROOT+':expected');before=e['before'];prices=e['prices_before']
+          result={'started_at':stamp(),'wb_writes':0,'telegram_calls':0};put(ROOT+':final_readback',result,True)
+          try:
+           for attempt in range(8):
+            after={n:getcard(n) for n in ids};result.update(after=after,attempt=attempt+1,readback_at=stamp())
+            for n in ids:assert stable(after[n])==stable(before[n]),'Other content/video mismatch '+n
+            put(ROOT+':final_readback',result)
+            if len(after['gray']['photos'])==11 and len(after['black']['photos'])==10:break
+            time.sleep(20)
+           else:raise RuntimeError('Final photo count pending; no writes')
+           matches=[]
+           for n in ids:
+            for p in refs[n]:
+             reference=Image.open(io.BytesIO(base64.b64decode(p['data']))).convert('RGB')
+             got=thumb(download(after[n]['photos'][p['slot']-1]['big']));diff=sum(ImageStat.Stat(ImageChops.difference(got,reference)).mean)/3;matches.append({'name':n,'slot':p['slot'],'difference':round(diff,4),'matches':diff<8})
+           result['image_verification']=matches;assert all(m['matches'] for m in matches),'Final image/order mismatch'
+           for n in ids:assert getprice(n)==prices[n],'Price mismatch '+n
+           result.update(status='verified',verified_at=stamp(),video_unchanged=True,prices_unchanged=True,other_content_unchanged=True,gray_photos=11,black_photos=10,gray_new_slot=4,black_cover='close_coat');put(ROOT+':final_readback',result)
+           e.pop('reason',None)
+           e.update(status='verified',verified_at=result['verified_at'],after=after,final_readback_key=ROOT+':final_readback',gray_photos=11,black_photos=10);put(ROOT+':execution',e)
+           experiment={'status':'active','kind':'owner_photo_experiment','started_at':result['verified_at'],'execution_key':ROOT+':execution','nm_ids':[2216111729,2216167898],'placements':{'2216111729':'new close photo4, old cover unchanged; fitting removed','2216167898':'new close main photo and full gallery refresh10; fitting and bag absent'},'baseline_key':ROOT+':baseline','metric':{'name':'advertising_CTR','formula':'sum(clicks)/sum(views)*100','aggregation':'ratio of sums, bySKU and comparable placement/campaign','organic_search_CTR':'Only if separate organic impressions and clicks available; never substitute total card visits'},'evaluation':{'excluded_change_day':'2026-11-18','first_full_day':'2026-11-19','earliest_full_day_review':'2026-11-20','baseline':'Use completed pre-change days from same source and comparable campaign/placement; no fabricated baseline','confounders':['price and promotion changes18Nov','description changes18Nov','earlier gray gallery refresh18Nov','black full gallery refresh','traffic mix and bids'],'gray_interpretation':'Photo4 is inside gallery and unlikely to affect searchCTR directly; assess card engagement/order funnel separately','causality':'observational comparison, not randomized A/B test'},'monitor_created':False,'telegram_allowed':False,'grants_action_permission':False}
+           put(ROOT+':experiment',experiment,True)
+           put('china_agent:experience:v1:owner-fur-photo-experiment18',{'record_type':'verified_action','event_id':'owner-fur-photo-experiment18','source_key':ROOT+':execution','verified_at':result['verified_at'],'action':{'kind':'photo_gallery_change','nm_ids':[2216111729,2216167898]},'evaluation':experiment['evaluation'],'grants_action_permission':False,'telegram_allowed':False},True)
+           tk='china_agent:owner_fur_price_test:2026-11-18:v1:tracking';tracking=cache(tk);assert tracking
+           tracking['latest_gallery_experiment']={'execution_key':ROOT+':execution','experiment_key':ROOT+':experiment','verified_at':result['verified_at'],'nm_ids':[2216111729,2216167898]};put(tk,tracking)
+           e['reporting_registered']=True;put(ROOT+':execution',e)
+           print(json.dumps({'status':'verified','gray_photos':11,'black_photos':10,'videos_unchanged':True,'wb_writes':0,'telegram_calls':0}))
+          except Exception as ex:
+           result.update(status='needs_readback_no_replay',reason=type(ex).__name__+': '+str(ex)[:250]);put(ROOT+':final_readback',result);raise
