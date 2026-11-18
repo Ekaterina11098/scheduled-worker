@@ -29,12 +29,12 @@ def http(io,path,method='GET',body=None):
   return r.json() if r.content else {}
 def compact_execution_records(records):
  """Keep exactly the receipt fields consumed by history() and verified funding summaries."""
- fields=('status','kind','amount_cny','before','after','verified_at','completed_at','items','groups','campaigns','readback','selection','request','cid','nm','old','target','steps')
+ fields=('id','status','kind','amount_cny','before','after','verified_at','completed_at','items','groups','campaigns','readback','selection','request','cid','nm','old','target','steps','manual_continuation','keep_existing_bids','selected_test')
  def shrink(value):
   if isinstance(value,list):return [shrink(x) for x in value]
   if not isinstance(value,dict):return value
   if isinstance(value.get('id'),int) and isinstance(value.get('nm_settings'),list):
-   return dict(id=value['id'],status=value.get('status'),currency=value.get('currency'),settings=dict(placements=(value.get('settings')or{}).get('placements',{})),nm_settings=[dict(nm_id=n['nm_id'],bids_kopecks=n.get('bids_kopecks',{}))for n in value['nm_settings']])
+   return dict(id=value['id'],status=value.get('status'),currency=value.get('currency'),settings=dict(placements=(value.get('settings')or{}).get('placements',{})),timestamps={k:v for k,v in(value.get('timestamps')or{}).items()if k in('created','started')},nm_settings=[dict(nm_id=n['nm_id'],bids_kopecks=n.get('bids_kopecks',{}))for n in value['nm_settings']])
   if any(k in value for k in ('status','before','after')):return {k:shrink(v)for k,v in value.items()if k in fields or k in ('path','body','submitted_at')}
   return {k:shrink(v)for k,v in value.items()}
  out=[]
@@ -465,7 +465,8 @@ def build(s,minima=None):
  changes=[x for x in changes if x['cid'] is not None]+[dict(x,cid=c['id']) for x in global_prices for c in cs if any(n['nm_id']==x['nm'] for n in c.get('nm_settings',[]))]
  # WB's verified launch timestamp establishes a new campaign's first complete day too.
  for c in cs:
-  at=c.get('timestamps',{}).get('started') or c.get('timestamps',{}).get('created')
+  from china_advertising_decision_contract import effective_launch_at
+  at=effective_launch_at(s,c) or c.get('timestamps',{}).get('created')
   if at and event_time(at).astimezone(MSK).date().isoformat()>=days[0]:
    for n in c.get('nm_settings',[]):changes.append(dict(cid=c['id'],nm=n['nm_id'],kind='added',at=at,text='Запуск РК'))
  changes.sort(key=lambda x:event_time(x['at']))

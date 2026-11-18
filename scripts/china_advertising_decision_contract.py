@@ -2,9 +2,32 @@
 import copy,hashlib,json
 from datetime import datetime
 from zoneinfo import ZoneInfo
-REVISION='completed-postchange-economics-v1'
+REVISION='completed-postchange-economics-v2-budget-resume'
 MSK=ZoneInfo('Europe/Moscow')
 KINDS={'price','bid','added','returned','relaunch'}
+def effective_launch_at(source,state):
+ """A proved cash-only resume keeps the old launch; real test changes remain SKU events."""
+ current=state.get('timestamps',{}).get('started')
+ if not current:return None
+ def instant(at):return datetime.fromisoformat(at.replace('Z','+00:00'))
+ def bids(c):return {n['nm_id']:n.get('bids_kopecks',{})for n in c.get('nm_settings',[])}
+ candidates=[]
+ def walk(x):
+  if isinstance(x,list):
+   for z in x:walk(z)
+  elif isinstance(x,dict):
+   if x.get('status')=='verified'and str(x.get('id','')).startswith('manual-continuation:')and not x.get('selected_test'):
+    before=x.get('before')or{};after=x.get('after')or{};a=after.get('timestamps',{}).get('started');b=before.get('timestamps',{}).get('started')
+    if (before.get('id')==after.get('id')==state['id']and before.get('status')==11 and after.get('status')==9
+        and before.get('currency')==after.get('currency')=='CNY'and bids(before)==bids(after)
+        and before.get('settings',{}).get('placements')==after.get('settings',{}).get('placements')and a and b):candidates.append((a,b))
+   for k in('items','groups','campaigns','payload'):walk(x.get(k))
+ for rec in source.get('executions',[]):walk(rec)
+ for _ in range(len(candidates)+1):
+  earlier=[b for a,b in candidates if instant(a)==instant(current)and instant(b)<instant(current)]
+  if not earlier:break
+  current=min(earlier,key=instant)
+ return current
 def changed_day(source,state,nm):
  from china_advertising_v2 import history
  events=list(history(source.get('executions',[])))+list(source.get('verified_composition_changes',[]))
@@ -13,7 +36,8 @@ def changed_day(source,state,nm):
   if action.get('kind')=='price_change'and at:
    events.extend(dict(nm=n,kind='price',at=at)for n in action.get('nm_ids',[]))
  ats=[x['at']for x in events if x.get('nm')==nm and x.get('kind')in KINDS]
- if state.get('timestamps',{}).get('started'):ats.append(state['timestamps']['started'])
+ launched=effective_launch_at(source,state)
+ if launched:ats.append(launched)
  days=[]
  for at in ats:
   dt=datetime.fromisoformat(at.replace('Z','+00:00'))

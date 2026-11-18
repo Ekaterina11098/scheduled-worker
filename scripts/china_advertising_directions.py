@@ -97,6 +97,10 @@ def campaign_table(bundle):
    if len(pairs)==1:
     old,target=next(iter(pairs))
     c['direction_recommendations']=[', '.join(r['article']for r in paused)+': снизить '+str(old/100)+' → '+str(target/100)+' CNY. Оставить РК на паузе; без пополнения.']
+  has_cost_action=any((r.get('action')or{}).get('kind')=='ad_exclude_sku' or (r.get('action')or{}).get('kind')=='ad_set_bid' and r['action'].get('target_minor',0)<r['action'].get('old_minor',0)for r in c.get('attention',[]))
+  risky=(c.get('period')or{}).get('spend',0)>0 and ((c.get('period')or{}).get('orders',0)==0 or c.get('drr')is not None and c['drr']>5)
+  if c['direction_recommendations']and risky and not has_cost_action and not c.get('financial_action')and not c.get('owner_statistics_note'):
+   c['direction_recommendations']+=risk_summary(c,out)
   if not c['direction_recommendations']:
    c['direction_recommendations']=risk_summary(c,out)
  # The action column contains only new ready changes; holds remain in the audit rows.

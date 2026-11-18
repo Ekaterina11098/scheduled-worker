@@ -54,6 +54,17 @@ def expand(bundle,source,minima):
  states={c['id']:c for b in source['batches'].values()for c in b['campaigns']['adverts']}
  stats={c['advertId']:c for b in source['batches'].values()for c in b['stats']}
  # Owner-approved: identical subject/payment/placement shares the verified category minimum.
+ shared={}
+ for cp in states.values():
+  zone='search'if cp['settings'].get('placements',{}).get('search')else'recommendations'
+  for n in cp['nm_settings']:
+   value=minima.get(str(cp['id'])+':'+str(n['nm_id']));sid=n.get('subject',{}).get('id')
+   if sid is not None and type(value)is int:shared.setdefault((cp.get('currency'),cp['settings'].get('payment_type'),zone,sid),set()).add(value)
+ for cp in states.values():
+  zone='search'if cp['settings'].get('placements',{}).get('search')else'recommendations'
+  for n in cp['nm_settings']:
+   values=shared.get((cp.get('currency'),cp['settings'].get('payment_type'),zone,n.get('subject',{}).get('id')),set())
+   if len(values)==1:minima.setdefault(str(cp['id'])+':'+str(n['nm_id']),next(iter(values)))
  for cp in states.values():
   grouped={}
   for n in cp['nm_settings']:
@@ -72,7 +83,9 @@ def expand(bundle,source,minima):
    nm=n['nm_id']
    if nm in existing:continue
    dates=[dateof(x['at'])for x in changes if x.get('nm')==nm and (x['kind']in('bid','price')or x.get('cid')==c['id']and x['kind']in('added','returned','relaunch'))]
-   if state.get('timestamps',{}).get('started'):dates.append(dateof(state['timestamps']['started']))
+   from china_advertising_decision_contract import effective_launch_at
+   launched=effective_launch_at(source,state)
+   if launched:dates.append(dateof(launched))
    changed=max(dates,default='1970-01-01')
    days=[d for d in raw.get('days',[])if d['date'][:10]in bundle['days']and d['date'][:10]<bundle['day']and d['date'][:10]>changed]
    rows=[r for d in days for a in d.get('apps',[])for r in a.get('nms',[])if r['nmId']==nm]
