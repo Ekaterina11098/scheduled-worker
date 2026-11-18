@@ -69,3 +69,5 @@ jobs:
 # Cached warehouse evidence must match the verified current campaign composition.
 
 #18Nov: missing-ack package readback stays uncertain; production checks retained.
+
+#18Nov: WB429 respects cooldown and resumes the saved read-only collection.
