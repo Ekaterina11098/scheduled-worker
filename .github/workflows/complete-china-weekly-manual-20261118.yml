@@ -26,7 +26,7 @@ jobs:
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           WEEKLY_PHASE: preflight
         run: |
-          import sys, os, json, collections, datetime, time
+            import sys, os, json, collections, datetime, time
           from decimal import Decimal, ROUND_FLOOR
           sys.path.insert(0, 'scripts')
           import fbs_document_chain as m
@@ -46,6 +46,8 @@ jobs:
                   return result
           
           t=Scoped();db=m.Cache(t);w=m.Worker(t,db,{})
+          def progress(stage):db.put(ROOT+'manual_progress:v1',{'at':m.now(),'stage':stage,'phase':MODE,'run_id':os.environ.get('GITHUB_RUN_ID')})
+          progress('reading_private_plan')
           req=db.get(ROOT+'request:v1') or {}
           plan=db.get(ROOT+'manual_plan:v1') or {}
           assert req.get('writes_authorized') is True and req.get('status') not in ('cancelled','canceled','revoked')
@@ -91,7 +93,17 @@ jobs:
               return dict(out)
           previous=db.get(ROOT+'prepare:v1')
           prep={'at':m.now(),'status':'reading','plan_sha256':plan['sha256'],'products':{},'stock_exceptions':[],'duplicates':[],'basis':{},'return_costs':{}}
+          progress('checking_api_connectivity')
+          import urllib.request,urllib.error
+          try:
+              with urllib.request.urlopen(m.MS,timeout=12) as response:network_status=response.status
+          except urllib.error.HTTPError as exc:network_status=exc.code
+          except Exception as exc:
+              db.put(ROOT+'manual_network:v1',{'at':m.now(),'error_type':type(exc).__name__,'error':str(exc)[:250],'run_id':os.environ.get('GITHUB_RUN_ID')})
+              raise m.Stop('MoySklad connectivity probe failed') from None
+          db.put(ROOT+'manual_network:v1',{'at':m.now(),'http_status':network_status,'run_id':os.environ.get('GITHUB_RUN_ID')})
           for k in ('organization','agent','store','currency'):
+              progress('reading_'+k)
               prep[k]=t.request(m.MS,norm(previous[k])[len(m.MS):])
               assert prep[k]['id']==previous[k]['id'] and not prep[k].get('archived',False)
           assert prep['store']['name']=='Гонконг WB FBO' and prep['currency']['name']=='руб'
@@ -103,11 +115,13 @@ jobs:
           products=prep['products']
           flt='organization='+norm(prep['organization'])+';agent='+norm(prep['agent'])+';store='+norm(prep['store'])+';moment>=2026-11-01 00:00:00'
           for kind in ('customerorder','demand','salesreturn'):
+              progress('checking_existing_'+kind)
               for d in rows('entity/'+kind,{'filter':flt}):
                   matches=any(rid in d.get('name','')+' '+d.get('description','') for rid in report_ids) or plan['comment'] in d.get('description','') or d.get('externalCode','').startswith(prefix)
                   if matches:prep['duplicates'].append({'type':kind,'id':d['id'],'name':d['name'],'externalCode':d.get('externalCode'),'description':d.get('description')})
           moment=datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=3))).strftime('%Y-%m-%d %H:%M:%S')
           def check_stock():
+              progress('checking_stock_at_document_time')
               bulk=rows('report/stock/all',{'filter':'store='+norm(prep['store'])+';moment='+moment+';stockMode=all;quantityMode=all'})
               byid={norm(r):r for r in bulk};assert len(byid)==len(bulk)
               current=t.request(m.MS,'report/stock/bystore/current',params={'stockType':'freeStock','include':'zeroLines'});assert isinstance(current,list)
@@ -121,6 +135,7 @@ jobs:
           stock=check_stock()
           groups=collections.defaultdict(dict)
           for a,q in returns.items():
+              progress('checking_return_basis')
               ident=previous['basis'][a]['id'];basis=doc('demand',ident)
               assert basis.get('applicable') and all(norm(basis[k])==norm(prep[k]) for k in ('organization','agent','store'))
               ps=positions('demand',ident);cap=collections.Counter(counts(ps));used=collections.Counter()
