@@ -73,3 +73,5 @@ jobs:
 #18Nov: WB429 respects cooldown and resumes the saved read-only collection.
 
 #18Nov: preserve existing two-attempt read transport bound.
+
+#18Nov: safely parse legacy pause receipts and resume prepared report.
