@@ -23,7 +23,7 @@ def main():
   for f in old['files']:
    assert not io.get('china_agent:daily_ad_execution:v2:'+f['plan_id']),'An original report is already executing'
    assert not(io.get('china_agent:daily_action_claim:v1:'+f['plan_id'])or{}).get('domains'),'Original report already confirmed'
- unclaimed();assert io.create(ROOT+':claim',dict(status='collecting',created_at=stamp()))
+ unclaimed();store(io,ROOT+':claim',dict(status='collecting',created_at=stamp()))
  original=requests.sessions.Session.request
  def guard(session,method,url,*args,**kw):
   u=urlparse(url);m=method.upper();path=u.path
@@ -63,11 +63,11 @@ def main():
   oldplans=[io.get(PLAN+f['plan_id'])for f in old['files']];oldactions={a['id']:a for p in oldplans for a in p['items']};newactions={a['id']:a for f in pages for a in f['actions']}
   changed=[k for k in oldactions if k not in newactions or digest([oldactions[k]])!=digest([newactions[k]])]
   audit=dict(restored_receipts=restored,changed_previous_actions=changed,new_actions=[v for k,v in newactions.items()if k not in oldactions],campaigns=[dict(id=c['id'],status=c['status'],drr=c.get('drr'),notes=c.get('direction_recommendations'),focus=[dict(article=r['article'],decision=r.get('decision'),action=r.get('action'),blocker=r.get('data_blocker'),window=r.get('decision_window'))for r in c.get('focus',[])])for c in bundle['campaigns']])
-  assert io.create(ROOT+':audit',audit)
+  store(io,ROOT+':audit',audit)
   # Review an unexpected changed proposal before replacing an already delivered report.
   assert not changed, 'Previous actions changed; inspect audit before publication'
-  assert newactions[action['id']]==action
-  assert io.create(ROOT+':source',source)
+  rendered_action=copy.deepcopy(newactions[action['id']]);rendered_action.pop('selection_family',None);assert rendered_action==action
+  store(io,ROOT+':source_metadata',dict(executions=source['executions'],source_key='china_agent:advertising_source:'+DAY+':v2',restored_receipts=restored))
   from china_report_preflight import freeze_contracts
   freeze_contracts(io,pages,bundle.get('proposal_preparation_contracts'))
   preview=dict(status='prepared',bundle=bundle,amount_cny=amount,reference_cny=reference,balance=balance,files=[dict(kind=f['kind'],family=f['family'],page=f['page'],total=f['total'],actions=f['actions'],b64=base64.b64encode(f['bytes']).decode(),sha256=hashlib.sha256(f['bytes']).hexdigest())for f in pages],wb_writes=0,telegram_calls=0)
@@ -99,10 +99,14 @@ def main():
    bind(io,f,receipt)
    files.append(dict(kind=f['kind'],family=f['family'],page=f['page'],total=f['total'],plan_id=p['plan_id'],plan_sha256=p['plan_sha256'],action_count=len(p['items']),png_sha256=hashlib.sha256(f['bytes']).hexdigest(),b64=base64.b64encode(f['bytes']).decode()))
    part.update(receipt=receipt,corrected_by=ROOT,corrected_at=stamp(),sha256=hashlib.sha256(f['bytes']).hexdigest())
-  io.put('china_agent:advertising_source:'+DAY+':v2',source)
   old.update(bundle=bundle,files=files,corrected_by=ROOT);io.put('china_agent:advertising_artifacts:'+DAY+':v2',old);io.put('china_agent:advertising_delivery:'+DAY+':v1',delivery)
   for f in files:assert io.get(PLAN+f['plan_id'])['report_message_ids']==[1089 if f['family']=='drr' else 1090]
   state.update(status='delivered',completed_at=stamp(),amount_cny=amount,reference_cny=reference,total_actions=sum(f['action_count']for f in files));io.put(ROOT+':journal',state)
   print(json.dumps(dict(status='delivered',message_ids=[1089,1090],funding_proposal_cny=amount,wb_writes=0,telegram_new_messages=0)))
  finally:requests.sessions.Session.request=original
-if __name__=='__main__':main()
+if __name__=='__main__':
+ try:main()
+ except Exception as ex:
+  import traceback
+  store(AdvertisingIO(),ROOT+':error',dict(status='error',error=str(ex),trace=traceback.format_exc(),at=stamp()))
+  raise

@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   revise:
-    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-report18-finalize] Complete all campaign risk review without WB writes'
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-report18-finalize2] Publish reviewed campaign corrections without WB writes'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
