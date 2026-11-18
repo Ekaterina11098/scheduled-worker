@@ -1,0 +1,106 @@
+name: Owner fur photo experiment gray4 black gallery
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-fur-cover-experiment18.yml]
+permissions: {}
+concurrency:
+  group: bot-mpstats-data
+  cancel-in-progress: false
+jobs:
+  apply:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-fur-cover-experiment18] Approved black gallery and gray fourth photo'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5 pillow==11.3.0
+      - name: Apply approved photo slots with unchanged video
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+        shell: python
+        run: |
+          import os,json,time,base64,hashlib,io
+          from datetime import datetime,timezone
+          import requests
+          from PIL import Image,ImageChops,ImageStat
+          ROOT='china_agent:owner_fur_cover_experiment18'
+          sb=os.environ['SUPABASE_URL'].rstrip('/');sk=os.environ['SUPABASE_SECRET_KEY']
+          sh={'apikey':sk,'Authorization':'Bearer '+sk,'Content-Type':'application/json'};wh={'Authorization':os.environ['WB_TOKEN_3']}
+          def stamp():return datetime.now(timezone.utc).isoformat()
+          def cache(k):
+           r=requests.get(sb+'/rest/v1/telegram_api_cache',headers=sh,params={'cache_key':'eq.'+k,'select':'payload'},timeout=45);r.raise_for_status();rows=r.json();return rows[0]['payload'] if rows else None
+          def put(k,p,create=False):
+           r=requests.post(sb+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**sh,'Prefer':'resolution='+('ignore-duplicates' if create else 'merge-duplicates')+',return=representation'},json={'cache_key':k,'payload':p,'updated_at':stamp(),'expires_at':'2036-11-18T00:00:00Z'},timeout=45);r.raise_for_status()
+           if create:assert len(r.json())==1,'Already claimed; no replay'
+          def card():
+           r=requests.post('https://content-api.wildberries.ru/content/v2/get/cards/list',headers=wh,json={'settings':{'cursor':{'limit':100},'filter':{'textSearch':'2216111729','withPhoto':-1}}},timeout=45);r.raise_for_status();rows=[c for c in r.json()['cards'] if c['nmID']==2216111729];assert len(rows)==1 and rows[0]['vendorCode']=='6-furcoat-gray';return rows[0]
+          def price():
+           r=requests.get('https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter',headers=wh,params={'limit':100,'offset':0,'filterNmID':2216111729},timeout=45);r.raise_for_status();rows=[g for g in r.json()['data']['listGoods'] if g['nmID']==2216111729];assert len(rows)==1;return rows[0]
+          def stable(c):
+           d={k:c.get(k) for k in ('nmID','vendorCode','title','description','brand','video','characteristics','dimensions')}
+           d['characteristics']=sorted(d.get('characteristics') or [],key=lambda x:x['id'])
+           return d
+          a=cache(ROOT+':approval');assert a and a['status']=='approved' and a['gray_slot']==4 and a['black_count']==10 and a['preserve_video']
+          assert datetime.now(timezone.utc)<datetime.fromisoformat(a['expires_at'])
+          assert not cache(ROOT+':execution'),'Existing claim; never replay'
+          ids={'gray':2216111729,'black':2216167898}
+          vendors={'gray':'6-furcoat-gray','black':'7-furcoat-black'}
+          def getcard(n):
+           r=requests.post('https://content-api.wildberries.ru/content/v2/get/cards/list',headers=wh,json={'settings':{'cursor':{'limit':100},'filter':{'textSearch':str(ids[n]),'withPhoto':-1}}},timeout=45);r.raise_for_status();rows=[c for c in r.json()['cards'] if c['nmID']==ids[n]];assert len(rows)==1 and rows[0]['vendorCode']==vendors[n];return rows[0]
+          def getprice(n):
+           r=requests.get('https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter',headers=wh,params={'limit':100,'offset':0,'filterNmID':ids[n]},timeout=45);r.raise_for_status();rows=[g for g in r.json()['data']['listGoods'] if g['nmID']==ids[n]];assert len(rows)==1;return rows[0]
+          def thumb(b):return Image.open(io.BytesIO(b)).convert('RGB').resize((192,256))
+          def download(url):
+           r=requests.get(url,params={'verify':str(int(time.time()))},timeout=45);r.raise_for_status();return r.content
+          before={n:getcard(n) for n in ids};prices={n:getprice(n) for n in ids}
+          assert len(before['gray']['photos'])==11 and len(before['black']['photos'])==16
+          assert all(c.get('video') for c in before.values())
+          oldgray=[download(p['big']) for p in before['gray']['photos']]
+          grayp=cache(ROOT+':source:gray');grayb=base64.b64decode(grayp['data']);assert hashlib.sha256(grayb).hexdigest()==grayp['sha256']
+          desired={'gray':oldgray[:3]+[grayb]+oldgray[3:9]+oldgray[10:11],'black':[]}
+          for i in range(1,11):
+           p=cache(ROOT+':black:'+str(i));assert p['slot']==i;b=base64.b64decode(p['data']);assert hashlib.sha256(b).hexdigest()==p['sha256'];desired['black'].append(b)
+          assert len(desired['gray'])==11 and len(desired['black'])==10
+          refs={}
+          for n,arr in desired.items():
+           refs[n]=[]
+           for i,b in enumerate(arr,1):
+            im=thumb(b);buf=io.BytesIO();im.save(buf,format='PNG');refs[n].append({'slot':i,'data':base64.b64encode(buf.getvalue()).decode(),'sha256':hashlib.sha256(b).hexdigest()})
+          put(ROOT+':expected',refs,True)
+          e={'status':'preflight_verified','created_at':stamp(),'before':before,'prices_before':prices,'steps':[],'wb_writes':0,'telegram_calls':0,'price_writes':0,'advertising_writes':0,'approval_key':ROOT+':approval','method':'media/file only; gray no count change; black surplus removal separate UI step'}
+          put(ROOT+':execution',e,True)
+          def save():put(ROOT+':execution',e)
+          try:
+           for n in ids:assert stable(getcard(n))==stable(before[n]),'Card changed before submission'
+           for n,slots in [('gray',range(10,3,-1)),('black',range(1,11))]:
+            for slot in slots:
+             assert cache(ROOT+':approval')==a
+             b=desired[n][slot-1];step={'name':n,'nm_id':ids[n],'slot':slot,'sha256':hashlib.sha256(b).hexdigest(),'status':'submitting','submitted_at':stamp()};e['steps'].append(step);e.update(status='submitting',wb_writes=e['wb_writes']+1);save()
+             mime='image/jpeg' if b[:2]==b'\xff\xd8' else 'image/webp' if b[:4]==b'RIFF' else 'image/png'
+             ext={'image/jpeg':'jpg','image/webp':'webp','image/png':'png'}[mime]
+             r=requests.post('https://content-api.wildberries.ru/content/v3/media/file',headers={**wh,'X-Nm-Id':str(ids[n]),'X-Photo-Number':str(slot)},files={'uploadfile':('owner-photo.'+ext,b,mime)},timeout=90);step['http_status']=r.status_code
+             if not r.ok:step.update(status='rejected',response=r.text[:500]);save();r.raise_for_status()
+             step['response']=r.json();assert step['response'].get('error') is False;step['status']='accepted';save();time.sleep(10)
+           e['status']='accepted_pending_readback';save();time.sleep(30)
+           for attempt in range(8):
+            after={n:getcard(n) for n in ids};e.update(after=after,readback_at=stamp(),attempt=attempt+1)
+            for n in ids:
+             assert stable(after[n])==stable(before[n]),'Other content mismatch '+n
+             assert len(after[n]['photos'])==len(before[n]['photos']),'Unexpected photo count '+n
+            matches=[]
+            for n in ids:
+             for slot,b in enumerate(desired[n],1):
+              got=thumb(download(after[n]['photos'][slot-1]['big']));diff=sum(ImageStat.Stat(ImageChops.difference(got,thumb(b))).mean)/3;matches.append({'name':n,'slot':slot,'difference':round(diff,4),'matches':diff<8})
+            e['image_verification']=matches;save()
+            if all(m['matches'] for m in matches):break
+            time.sleep(30)
+           else:raise RuntimeError('Photo readback pending; do not re-upload')
+           for n in ids:assert getprice(n)==prices[n],'Price mismatch '+n
+           e.update(status='slots_verified_pending_black_trim',slots_verified_at=stamp(),video_unchanged=True,prices_unchanged=True,other_content_unchanged=True);save()
+           print(json.dumps({'status':e['status'],'writes':e['wb_writes'],'gray_photos':11,'black_expected_after_trim':10,'video_unchanged':True}))
+          except Exception as ex:
+           e.update(status='needs_readback_no_replay',reason=type(ex).__name__+': '+str(ex)[:250]);save();raise
