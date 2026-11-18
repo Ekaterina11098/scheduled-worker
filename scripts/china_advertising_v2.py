@@ -15,16 +15,24 @@ def http(io,path,method='GET',body=None):
  allowed=(method=='GET' and path.split('?')[0] in ['/adv/v1/promotion/count','/api/advert/v2/adverts','/adv/v3/fullstats','/api/advert/v1/config']) or (method=='POST' and path in ['/api/advert/v2/budget','/api/advert/v1/bids/min'])
  if not allowed:raise ValueError('Daily generator is read-only')
  # The allowlist above contains reads only, including POST budget/minimum queries.
- # Retry transient reads once; connection stalls must not consume the delivery window.
- for attempt in range(2):
-  time.sleep(1.5 if attempt==0 else 4)
+ # Retry only allowlisted reads. Respect WB cooldown before repeating a throttled call.
+ cooldown=0
+ for attempt in range(3):
+  time.sleep(1.5 if attempt==0 else cooldown or 4)
+  cooldown=0
   try:
    r=requests.request(method,'https://advert-api.wildberries.ru'+path,headers={'Authorization':io.token},json=body,timeout=(10,60))
   except (requests.Timeout,requests.ConnectionError):
-   if attempt==1:raise
+   if attempt==2:raise
    continue
   if not r.ok:
-   if attempt==0 and r.status_code in (500,502,503,504):continue
+   if r.status_code==429 and attempt<2:
+    headers=getattr(r,'headers',{}) or {}
+    try:cooldown=max(60,float(headers.get('Retry-After') or headers.get('X-Ratelimit-Retry') or 60))
+    except (TypeError,ValueError):cooldown=60
+    if cooldown>600:raise RuntimeError('China advertising read cooldown exceeds report window')
+    continue
+   if attempt<2 and r.status_code in (500,502,503,504):continue
    raise RuntimeError('China advertising read HTTP '+str(r.status_code))
   return r.json() if r.content else {}
 def compact_execution_records(records):
