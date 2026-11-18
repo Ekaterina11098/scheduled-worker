@@ -1,0 +1,217 @@
+name: Complete authorized manually reviewed weekly report
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/complete-china-weekly-manual-20261118.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: china-weekly-accounting-20261109-15
+  cancel-in-progress: false
+jobs:
+  complete:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Verify manual workbook plan and accounting
+        shell: python
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WEEKLY_PHASE: preflight
+        run: |
+          import sys, os, json, collections, datetime, time
+          from decimal import Decimal, ROUND_FLOOR
+          sys.path.insert(0, 'scripts')
+          import fbs_document_chain as m
+          
+          ROOT='weekly_report_review:china:20261109_20261115:'
+          MODE=os.environ.get('WEEKLY_PHASE','preflight')
+          class Scoped(m.Transport):
+              allowed_demand_ids=set()
+              def request(self,base,path,method='GET',body=None,params=None):
+                  if base==m.MS and method!='GET':
+                      permitted=MODE=='execute' and ((method=='POST' and path in ('entity/customerorder','entity/demand','entity/salesreturn') and (body or {}).get('externalCode','').startswith(prefix)) or (method=='PUT' and path=='entity/salesreturn/new') or (method=='PUT' and path in {'entity/demand/'+i for i in self.allowed_demand_ids} and set(body or {})=={'description'}))
+                      if not permitted:raise m.Stop('Write outside authorized weekly documents')
+                  result=super().request(base,path,method,body,params)
+                  if base==m.MS and isinstance(result,dict):
+                      for d in (result.get('rows',[]) if 'rows' in result else [result]):
+                          if d.get('externalCode')==prefix+'demand':self.allowed_demand_ids.add(d['id'])
+                  return result
+          
+          t=Scoped();db=m.Cache(t);w=m.Worker(t,db,{})
+          req=db.get(ROOT+'request:v1') or {}
+          plan=db.get(ROOT+'manual_plan:v1') or {}
+          assert req.get('writes_authorized') is True and req.get('status') not in ('cancelled','canceled','revoked')
+          assert plan.get('authorized') is True and req.get('manual_plan_key')==ROOT+'manual_plan:v1'
+          proof=db.get(ROOT+'source_proof:v1');original=db.get(ROOT+'input:v1')
+          assert proof['pagination_exhausted'] is True and original['source_complete'] is True
+          report_ids=sorted(str(x) for x in proof['report_ids']);assert len(report_ids)==1
+          prefix='weekly-china-'+report_ids[0]+'-'
+          raw=[]
+          for chunk in proof['chunks']:raw.extend(db.get(chunk['key']))
+          assert len(raw)==proof['rows'] and len({str(r['rrdId']) for r in raw})==len(raw)
+          byrrd={str(r['rrdId']):r for r in raw}
+          selected_ids=[str(r['rrdId']) for r in plan['selected']]
+          assert len(selected_ids)==len(set(selected_ids))
+          assert set(selected_ids)<=set(original['ids']['unpaired_sales'])
+          source_counts=collections.Counter()
+          for selected in plan['selected']:
+              r=byrrd[str(selected['rrdId'])]
+              assert r['vendorCode'].strip().casefold()==selected['article'].strip().casefold()
+              assert r['quantity']==selected['quantity']==1
+              assert r['docTypeName'] in ('销售','Продажа') and r['sellerOperName'] in ('销售','Продажа','Добровольная компенсация при возврате')
+              source_counts[r['vendorCode'].strip().casefold()]+=1
+          sales=plan['sales'];returns=plan['returns']
+          assert dict(source_counts)==sales and sum(sales.values())==plan['sales_units']
+          excluded=collections.Counter(original['sales']);excluded.subtract(sales)
+          assert all(q>=0 for q in excluded.values()) and {a:q for a,q in excluded.items() if q}==plan['excluded_green']
+          assert returns==original['returns'] and len(returns)==len(plan['orange'])==1
+          assert all(int(r['quantity'])==1 and r['article'].strip().casefold() in returns for r in plan['orange'])
+          def norm(x):return m.href(x).split('?')[0]
+          def rows(path,params=None):return w.ms_rows(path,params)
+          def doc(kind,uid):return t.request(m.MS,'entity/'+kind+'/'+uid)
+          def positions(kind,uid,stock=False):
+              path='entity/'+kind+'/'+uid+'/positions'
+              if not stock:return rows(path,{'expand':'assortment'})
+              out=[];offset=0
+              while True:
+                  page=t.request(m.MS,path,params={'expand':'assortment','fields':'stock','limit':50,'offset':offset});batch=page['rows'];out+=batch;offset+=len(batch)
+                  if offset==page['meta']['size']:return out
+                  if not batch or offset>page['meta']['size']:raise m.Stop('Incomplete demand valuation page')
+          def counts(ps):
+              out=collections.Counter()
+              for p in ps:out[(p['assortment'].get('article') or '').strip().casefold()]+=p['quantity']
+              return dict(out)
+          previous=db.get(ROOT+'prepare:v1')
+          prep={'at':m.now(),'status':'reading','plan_sha256':plan['sha256'],'products':{},'stock_exceptions':[],'duplicates':[],'basis':{},'return_costs':{}}
+          for k in ('organization','agent','store','currency'):
+              prep[k]=t.request(m.MS,norm(previous[k])[len(m.MS):])
+              assert prep[k]['id']==previous[k]['id'] and not prep[k].get('archived',False)
+          assert prep['store']['name']=='Гонконг WB FBO' and prep['currency']['name']=='руб'
+          assert prep['organization']['name']==previous['organization']['name'] and prep['agent']['name']==previous['agent']['name']
+          for a in set(sales)|set(returns):
+              ps=previous['products'][a]
+              assert len(ps)==1 and ps[0]['article'].strip().casefold()==a and not ps[0].get('archived',False)
+              prep['products'][a]=ps
+          products=prep['products']
+          flt='organization='+norm(prep['organization'])+';agent='+norm(prep['agent'])+';store='+norm(prep['store'])+';moment>=2026-11-01 00:00:00'
+          for kind in ('customerorder','demand','salesreturn'):
+              for d in rows('entity/'+kind,{'filter':flt}):
+                  matches=any(rid in d.get('name','')+' '+d.get('description','') for rid in report_ids) or plan['comment'] in d.get('description','') or d.get('externalCode','').startswith(prefix)
+                  if matches:prep['duplicates'].append({'type':kind,'id':d['id'],'name':d['name'],'externalCode':d.get('externalCode'),'description':d.get('description')})
+          moment=datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=3))).strftime('%Y-%m-%d %H:%M:%S')
+          def check_stock():
+              bulk=rows('report/stock/all',{'filter':'store='+norm(prep['store'])+';moment='+moment+';stockMode=all;quantityMode=all'})
+              byid={norm(r):r for r in bulk};assert len(byid)==len(bulk)
+              current=t.request(m.MS,'report/stock/bystore/current',params={'stockType':'freeStock','include':'zeroLines'});assert isinstance(current,list)
+              free={(r['storeId'],r['assortmentId']):r['freeStock'] for r in current};sid=prep['store']['id'];exceptions=[]
+              for a,q in sales.items():
+                  s=byid.get(norm(products[a][0]),{});f=free.get((sid,products[a][0]['id']))
+                  if s.get('stock',0)<q or s.get('quantity',0)<q or s.get('price',0)<=0 or type(f) not in (int,float) or f<q:exceptions.append({'article':a,'needed':q,'stock':s.get('stock',0),'available':s.get('quantity',0),'free':f,'unit_cost_kopecks':s.get('price')})
+                  assert not s or s['article'].strip().casefold()==a
+              prep['stock_exceptions']=exceptions;prep['fresh_stock_at']=m.now()
+              return byid
+          stock=check_stock()
+          groups=collections.defaultdict(dict)
+          for a,q in returns.items():
+              ident=previous['basis'][a]['id'];basis=doc('demand',ident)
+              assert basis.get('applicable') and all(norm(basis[k])==norm(prep[k]) for k in ('organization','agent','store'))
+              ps=positions('demand',ident);cap=collections.Counter(counts(ps));used=collections.Counter()
+              for ref in basis.get('returns',[]):
+                  r=t.request(m.MS,norm(ref)[len(m.MS):])
+                  if r.get('externalCode')==prefix+'return-'+ident:continue
+                  used.update(counts(positions('salesreturn',r['id'])))
+              assert cap[a]-used[a]>=q,'Return basis capacity changed'
+              prep['basis'][a]={'id':ident,'name':basis['name'],'moment':basis['moment'],'capacity':cap[a],'returned':used[a]};groups[ident][a]=q
+              current=stock.get(norm(products[a][0]),{});unit=Decimal(str(current.get('price') or 0))
+              assert unit>0,'Missing current return cost'
+              prep['return_costs'][a]={'unit_kopecks':str(unit),'source':'current FBO stock','at':m.now()}
+          prep['prepared_on']=moment[:10];prep['moment']=moment;prep['sales_units']=sum(sales.values());prep['return_units']=sum(returns.values());prep['status']='ready' if not prep['stock_exceptions'] and not prep['duplicates'] else 'blocked';prep['completed_at']=m.now()
+          db.put(ROOT+'manual_prepare:v1',prep)
+          if MODE=='preflight':
+              print('Manual workbook reconciliation and read-only preflight completed; results retained privately.')
+              raise SystemExit()
+          assert MODE=='execute' and not prep['stock_exceptions']
+          assert all(d.get('externalCode','').startswith(prefix) for d in prep['duplicates']),'Unexpected existing report documents require reconciliation'
+          assert not prep['duplicates'],'Existing documents require explicit reconciliation before this first execution'
+          assert db.claim(ROOT+'manual_execution_claim:v1',{'at':m.now(),'run_id':os.environ.get('GITHUB_RUN_ID'),'sha256':plan['sha256']}),'Execution already claimed; reconcile previous outcome'
+          result={'status':'preflight','documents':[],'started_at':m.now(),'source_sha256':plan['sha256'],'source_library_file_id':plan['library_file_id'],'manual_sales_units':plan['sales_units']}
+          def save():db.put(ROOT+'documents:v1',result)
+          save()
+          common={k:m.meta(prep[k]) for k in ('organization','agent','store')}
+          common.update(applicable=True,moment=moment,vatEnabled=True,vatIncluded=True,rate={'currency':m.meta(prep['currency'])})
+          def scope(d):return all(norm(d.get(k,{}))==norm(common[k]) for k in ('organization','agent','store')) and norm(d.get('rate',{}).get('currency',{}))==norm(prep['currency'])
+          states=[s for s in t.request(m.MS,'entity/customerorder/metadata').get('states',[]) if s['name']=='Доставлен'];assert len(states)==1
+          def makepos(a,q):return {'quantity':q,'price':0,'discount':0,'vat':0,'assortment':m.meta(products[a][0])}
+          def ensure(kind,tag,body,wanted):
+              ext=prefix+tag;found=rows('entity/'+kind,{'filter':'externalCode='+ext});assert len(found)<=1
+              if found:d=found[0]
+              else:
+                  if result.get('pending_write'):raise m.Stop('Pending write requires reconciliation')
+                  result['pending_write']={'kind':kind,'externalCode':ext,'at':m.now()};result['status']='creating';save()
+                  try:d=t.request(m.MS,'entity/'+kind,'POST',{**body,'externalCode':ext})
+                  except Exception:
+                      result['status']='write_outcome_requires_reconciliation';save();raise
+                  result['pending_write']=None
+              ps=positions(kind,d['id'])
+              assert scope(d) and d.get('applicable') is True and d['sum']==0 and counts(ps)==wanted and all(p['price']==0 for p in ps)
+              ref={'type':kind,'id':d['id'],'name':d['name']}
+              if ref not in result['documents']:result['documents'].append(ref)
+              save();return d
+          name=', '.join(report_ids)
+          assert not rows('entity/customerorder',{'filter':'name='+name}),'Order name already exists'
+          order=ensure('customerorder','order',{**common,'name':name,'description':plan['comment'],'state':m.meta(states[0]),'positions':[makepos(a,q) for a,q in sales.items()]},sales)
+          assert not doc('customerorder',order['id']).get('demands',[])
+          check_stock();result['stock_exceptions']=prep['stock_exceptions'];result['fresh_stock_at']=prep['fresh_stock_at'];save()
+          assert not prep['stock_exceptions'],'Stock changed before shipment'
+          demand=ensure('demand','demand',{**common,'description':plan['comment'],'customerOrder':m.meta(order),'positions':[makepos(a,q) for a,q in sales.items()]},sales)
+          for attempt in range(3):
+              valuation=[];bad=[]
+              for p in positions('demand',demand['id'],True):
+                  q=Decimal(str(p['quantity']));cost=Decimal(str(p.get('stock',{}).get('cost') or 0));unit=(cost/q).to_integral_value(rounding=ROUND_FLOOR)
+                  if unit<=0:bad.append(p['assortment']['article'])
+                  valuation.append({'article':p['assortment']['article'],'quantity':str(q),'actual_stock_cost_kopecks':str(cost),'unit_price_kopecks':str(unit)})
+              if not bad:break
+              time.sleep(2)
+          result['valuation_positions']=valuation;save()
+          assert not bad,'Demand valuation requires clarification'
+          total=sum(Decimal(p['unit_price_kopecks'])*Decimal(p['quantity']) for p in valuation)/100
+          return_rub=sum((Decimal(prep['return_costs'][a]['unit_kopecks'])/100).to_integral_value(rounding=ROUND_FLOOR)*q for a,q in returns.items())
+          def money(v):return format(v,',.2f').replace(',',' ').replace('.',',')
+          comment='Опт: '+money(total)+' руб − рыжие возвраты '+money(return_rub)+' руб = '+money(total-return_rub)+' руб'
+          t.request(m.MS,'entity/demand/'+demand['id'],'PUT',{'description':comment});result['demand_comment']=comment;save()
+          for ident,items in groups.items():
+              basis=doc('demand',ident);template=t.request(m.MS,'entity/salesreturn/new','PUT',{'demand':m.meta(basis)})
+              tps=template['positions']['rows'];rps=[]
+              if 'meta' in template['positions']:assert len(tps)==template['positions']['meta']['size']
+              for a,q in items.items():
+                  matched=[p for p in tps if norm(p['assortment'])==norm(products[a][0])];assert len(matched)==1 and matched[0]['quantity']>=q
+                  p=matched[0];rps.append({**makepos(a,q),'vat':p.get('vat',0),'vatEnabled':p.get('vatEnabled',template.get('vatEnabled',False))})
+              body={**common,'vatEnabled':template.get('vatEnabled',False),'vatIncluded':template.get('vatIncluded',True),'description':'рыжие возвраты из '+plan['comment'],'demand':m.meta(basis),'positions':rps}
+              ensure('salesreturn','return-'+ident,body,items)
+          checks=[];returned=collections.Counter()
+          for e in result['documents']:
+              kind=e['type'];d=doc(kind,e['id']);ps=positions(kind,d['id']);items=counts(ps)
+              assert scope(d) and d['applicable'] is True and d['sum']==0 and all(p['price']==0 for p in ps)
+              assert len(rows('entity/'+kind,{'filter':'externalCode='+d['externalCode']}))==1
+              if kind=='customerorder':
+                  assert items==sales and norm(d.get('state',{}))==norm(states[0]) and d.get('description')==plan['comment'] and [norm(x) for x in d.get('demands',[])]==[norm(demand)]
+              elif kind=='demand':assert items==sales and d.get('description')==comment and norm(d['customerOrder'])==norm(order)
+              else:
+                  ident=norm(d['demand']).split('/')[-1];assert items==groups[ident] and d.get('description')=='рыжие возвраты из '+plan['comment'];returned.update(items)
+              checks.append({**e,'quantity':sum(items.values()),'positions':len(ps),'all_prices_zero':True,'posted':True,'comment':d['description'],'basis':norm(d.get('demand',{})) if kind=='salesreturn' else None,'state':'Доставлен' if kind=='customerorder' else None,'store':prep['store']['name']})
+          assert dict(returned)==returns and len(checks)==2+len(groups)
+          assert len(rows('entity/customerorder',{'filter':'name='+name}))==1
+          result.update(status='complete',completed_at=m.now(),checks=checks,wholesale_rub=str(total),returns_rub=str(return_rub),net_rub=str(total-return_rub),sales_units=sum(sales.values()),return_units=sum(returned.values()),all_prices_zero=True,all_posted=True,duplicate_check=True)
+          save();db.put(ROOT+'execution:v1',{'status':'complete','documents_created':True,'completed_at':result['completed_at'],'documents':result['documents'],'source_sha256':plan['sha256'],'sales_units':sum(sales.values()),'return_units':sum(returns.values())})
+          request=db.get(ROOT+'request:v1');request.update(status='complete',completed_at=result['completed_at']);db.put(ROOT+'request:v1',request)
+          final=db.get(ROOT+'final_excel:v1') or {};final.update(status='complete',accounting_status='complete',documents_created=True,sales_units=sum(sales.values()),orange_returns=sum(returns.values()),library_file_id=plan['library_file_id'],filename=plan['filename'],manual_revision=True,source_sha256=plan['sha256']);db.put(ROOT+'final_excel:v1',final)
+          print('Authorized weekly accounting completed and live verification passed; results retained privately.')
+          
