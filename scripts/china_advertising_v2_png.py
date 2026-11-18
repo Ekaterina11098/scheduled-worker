@@ -207,8 +207,21 @@ def validate_mandatory_format(bundle):
    if metrics is not None and any(k not in metrics for k in['spend','amount','orders','clicks']):
     raise ValueError('Mandatory campaign metrics incomplete')
 
+def owner_launch_day_view(bundle):
+ """Owner19Nov: keep the new fur test out of this morning's two PNGs only.
+ Raw source, historical statistics and canonical execution remain unchanged.
+ """
+ if bundle.get('day')!='2026-11-19':return bundle
+ hidden={42022679}
+ rows=bundle.get('campaigns',[])
+ kept=[c for c in rows if c.get('id')not in hidden]
+ if len(kept)==len(rows):return bundle
+ if not kept:raise ValueError('Owner launch-day view would empty report')
+ return dict(bundle,campaigns=kept,owner_launch_day_hidden_campaign_ids=sorted(hidden))
+
 def render(bundle):
  validate_mandatory_format(bundle)
+ bundle=owner_launch_day_view(bundle)
  if bundle.get('recommendation_directions'):
   from china_advertising_directions import campaign_table
   files=_render_legacy(campaign_table(bundle))
