@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   revise:
-    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-execution18-recover] Verify package and resume only confirmed450'
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-execution18-fund] Resume unsubmitted450 using owner adapter'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -39,7 +39,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - run: pip install requests==2.32.5 pillow==11.3.0 python-dotenv simplejson==4.2.0
-      - run: python -m py_compile scripts/owner_execution18_recover.py scripts/china_owner_test18_contract.py
+      - run: python -m py_compile scripts/owner_execution18_fund.py scripts/china_owner_test18_contract.py
       - run: PYTHONPATH=scripts:source python -m unittest discover -s scripts -p test_package18_proof.py
       - env:
           PYTHONPATH: scripts:source
@@ -49,4 +49,4 @@ jobs:
           MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
           OPENAI_API_KEY: ''
           CHINA_TELEGRAM_BOT_TOKEN: ${{ secrets.CHINA_TELEGRAM_BOT_TOKEN }}
-        run: python scripts/owner_execution18_recover.py
+        run: python scripts/owner_execution18_fund.py
