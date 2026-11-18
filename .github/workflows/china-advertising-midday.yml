@@ -67,3 +67,5 @@ jobs:
 #17Nov: omit discarded intraday minimum dependency; completed-day checked actions remain mandatory.
 
 # Cached warehouse evidence must match the verified current campaign composition.
+
+#18Nov: missing-ack package readback stays uncertain; production checks retained.
