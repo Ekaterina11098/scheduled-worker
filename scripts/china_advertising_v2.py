@@ -17,22 +17,22 @@ def http(io,path,method='GET',body=None):
  # The allowlist above contains reads only, including POST budget/minimum queries.
  # Retry only allowlisted reads. Respect WB cooldown before repeating a throttled call.
  cooldown=0
- for attempt in range(3):
+ for attempt in range(2):
   time.sleep(1.5 if attempt==0 else cooldown or 4)
   cooldown=0
   try:
    r=requests.request(method,'https://advert-api.wildberries.ru'+path,headers={'Authorization':io.token},json=body,timeout=(10,60))
   except (requests.Timeout,requests.ConnectionError):
-   if attempt==2:raise
+   if attempt==1:raise
    continue
   if not r.ok:
-   if r.status_code==429 and attempt<2:
+   if r.status_code==429 and attempt<1:
     headers=getattr(r,'headers',{}) or {}
     try:cooldown=max(60,float(headers.get('Retry-After') or headers.get('X-Ratelimit-Retry') or 60))
     except (TypeError,ValueError):cooldown=60
     if cooldown>600:raise RuntimeError('China advertising read cooldown exceeds report window')
     continue
-   if attempt<2 and r.status_code in (500,502,503,504):continue
+   if attempt<1 and r.status_code in (500,502,503,504):continue
    raise RuntimeError('China advertising read HTTP '+str(r.status_code))
   return r.json() if r.content else {}
 def compact_execution_records(records):
