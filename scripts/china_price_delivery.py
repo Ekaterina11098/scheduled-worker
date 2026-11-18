@@ -69,14 +69,22 @@ def deliver(w):
         if not old_registry and not c.create(registry['key'],registry['payload']):raise RuntimeError('Price buttons registry claim lost')
     parts=prepared['parts'];token=os.environ['CHINA_TELEGRAM_BOT_TOKEN']
     def tg(method,body,files=None):
-        try:
-            options=dict(data=body,files=files) if files else dict(json={k:(json.loads(v) if k in ('reply_markup','entities','link_preview_options') and isinstance(v,str) else v) for k,v in body.items()})
-            response=w.original_http(requests.Session(),'POST','https://api.telegram.org/bot'+token+'/'+method,**options,timeout=(10,60))
-            value=response.json()
-        except requests.ConnectTimeout:
-            raise RuntimeError('Telegram connection timed out before delivery') from None
-        except Exception as exc:
-            w.uncertain=True;raise RuntimeError('Telegram delivery outcome uncertain: '+type(exc).__name__) from None
+        for attempt in range(2):
+            try:
+                options=dict(data=body,files=files) if files else dict(json={k:(json.loads(v) if k in ('reply_markup','entities','link_preview_options') and isinstance(v,str) else v) for k,v in body.items()})
+                response=w.original_http(requests.Session(),'POST','https://api.telegram.org/bot'+token+'/'+method,**options,timeout=(10,60))
+                value=response.json()
+                break
+            except requests.ConnectTimeout:
+                if method=='getMe' and attempt==0:
+                    __import__('time').sleep(2);continue
+                raise RuntimeError('Telegram connection timed out before delivery') from None
+            except Exception as exc:
+                if method=='getMe':
+                    if attempt==0:
+                        __import__('time').sleep(2);continue
+                    raise RuntimeError('Telegram identity read failed: '+type(exc).__name__) from None
+                w.uncertain=True;raise RuntimeError('Telegram delivery outcome uncertain: '+type(exc).__name__) from None
         if not response.ok or value.get('ok') is not True:
             if response.status_code==429:w.telegram_cooldown=max(1,int(value.get('parameters',{}).get('retry_after',60)))
             if response.status_code>=500:w.uncertain=True
