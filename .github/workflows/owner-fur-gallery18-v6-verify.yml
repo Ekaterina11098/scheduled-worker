@@ -1,0 +1,79 @@
+name: Owner gray6 gallery final readback only
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-fur-gallery18-v6-verify.yml]
+permissions: {}
+concurrency:
+  group: bot-mpstats-data
+  cancel-in-progress: false
+jobs:
+  apply:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-fur-gallery18-v6-verify] Read back final gallery and preserved video'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5 pillow==11.3.0
+      - name: Apply approved photo slots with unchanged video
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+        shell: python
+        run: |
+          import os,json,time,base64,hashlib,io
+          from datetime import datetime,timezone
+          import requests
+          from PIL import Image,ImageChops,ImageStat
+          ROOT='china_agent:owner_fur_gallery18_v6'
+          sb=os.environ['SUPABASE_URL'].rstrip('/');sk=os.environ['SUPABASE_SECRET_KEY']
+          sh={'apikey':sk,'Authorization':'Bearer '+sk,'Content-Type':'application/json'};wh={'Authorization':os.environ['WB_TOKEN_3']}
+          def stamp():return datetime.now(timezone.utc).isoformat()
+          def cache(k):
+           r=requests.get(sb+'/rest/v1/telegram_api_cache',headers=sh,params={'cache_key':'eq.'+k,'select':'payload'},timeout=45);r.raise_for_status();rows=r.json();return rows[0]['payload'] if rows else None
+          def put(k,p,create=False):
+           r=requests.post(sb+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**sh,'Prefer':'resolution='+('ignore-duplicates' if create else 'merge-duplicates')+',return=representation'},json={'cache_key':k,'payload':p,'updated_at':stamp(),'expires_at':'2036-11-18T00:00:00Z'},timeout=45);r.raise_for_status()
+           if create:assert len(r.json())==1,'Already claimed; no replay'
+          def card():
+           r=requests.post('https://content-api.wildberries.ru/content/v2/get/cards/list',headers=wh,json={'settings':{'cursor':{'limit':100},'filter':{'textSearch':'2216111729','withPhoto':-1}}},timeout=45);r.raise_for_status();rows=[c for c in r.json()['cards'] if c['nmID']==2216111729];assert len(rows)==1 and rows[0]['vendorCode']=='6-furcoat-gray';return rows[0]
+          def price():
+           r=requests.get('https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter',headers=wh,params={'limit':100,'offset':0,'filterNmID':2216111729},timeout=45);r.raise_for_status();rows=[g for g in r.json()['data']['listGoods'] if g['nmID']==2216111729];assert len(rows)==1;return rows[0]
+          def stable(c):
+           d={k:c.get(k) for k in ('nmID','vendorCode','title','description','brand','video','characteristics','dimensions')}
+           d['characteristics']=sorted(d.get('characteristics') or [],key=lambda x:x['id'])
+           return d
+          e=cache(ROOT+':execution');assert e and e['status']=='photo_slots_verified_pending_surplus_removal'
+          before=e['before'];prices=e['prices_before'];refs=cache(ROOT+':thumbnails');assert len(refs)==11
+          result={'started_at':stamp(),'wb_writes':0,'telegram_calls':0}
+          put(ROOT+':final_readback',result,True)
+          try:
+           for attempt in range(8):
+            after=card();result.update(after=after,attempt=attempt+1,readback_at=stamp())
+            assert after.get('video')==before['video'],'Video mismatch'
+            assert stable(after)==stable(before),'Other fields mismatch'
+            put(ROOT+':final_readback',result)
+            if len(after['photos'])==11:break
+            time.sleep(20)
+           else:raise RuntimeError('Final count not yet eleven; no writes or replay')
+           matches=[]
+           for p in refs:
+            reference=Image.open(io.BytesIO(base64.b64decode(p['data']))).convert('RGB')
+            r=requests.get(after['photos'][p['slot']-1]['big'],params={'verify':str(int(time.time()))},timeout=45);r.raise_for_status()
+            got=Image.open(io.BytesIO(r.content)).convert('RGB').resize((192,256))
+            difference=sum(ImageStat.Stat(ImageChops.difference(got,reference)).mean)/3
+            matches.append({'slot':p['slot'],'mean_pixel_difference':round(difference,4),'matches':difference<8})
+           result['photo_verification']=matches;assert all(m['matches'] for m in matches),'Gallery order/image mismatch'
+           assert price()==prices,'Price mismatch'
+           result.update(status='verified',verified_at=stamp(),video_unchanged=True,prices_unchanged=True,other_content_unchanged=True,photo_count=11,main_source_slide=2)
+           put(ROOT+':final_readback',result)
+           e.update(status='verified',verified_at=result['verified_at'],after=after,photo_count=11,main_source_slide=2,final_readback_key=ROOT+':final_readback');put(ROOT+':execution',e)
+           event={'record_type':'verified_action','event_id':'owner-fur-gallery18-v6-gray6','source_key':ROOT+':execution','verified_at':result['verified_at'],'action':{'kind':'photo_gallery_change','nm_ids':[2216111729],'photo_count':11,'main':'denim','video_unchanged':True},'evaluation':{'excluded_change_day':'2026-11-18','first_full_day':'2026-11-19','early_review':'2026-11-20','normal_review':'2026-11-22','confounders':['price','promotion','description','photo_gallery'],'causality':'Combined test, not isolated photo effect'},'grants_action_permission':False,'telegram_allowed':False}
+           put('china_agent:experience:v1:owner-fur-gallery18-v6-gray6',event,True)
+           tk='china_agent:owner_fur_price_test:2026-11-18:v1:tracking';tracking=cache(tk);assert tracking
+           tracking['gallery_intervention']={'execution_key':ROOT+':execution','verified_at':result['verified_at'],'nm_id':2216111729,'photo_count':11,'main':'denim','video_unchanged':True,'combined_test':True};put(tk,tracking)
+           e['reporting_registered']=True;put(ROOT+':execution',e)
+           print(json.dumps({'status':'verified','photo_count':11,'video_unchanged':True,'main':'denim','wb_writes':0,'telegram_calls':0}))
+          except Exception as ex:
+           result.update(status='needs_readback_no_replay',reason=type(ex).__name__+': '+str(ex)[:250]);put(ROOT+':final_readback',result);raise
