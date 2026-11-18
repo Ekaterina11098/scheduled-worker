@@ -1,0 +1,57 @@
+name: Owner current China shop conversion read
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-china-conversion18.yml]
+permissions: {}
+jobs:
+  read:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-conversion18] Read current shop funnel without models or delivery'
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5
+      - env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+        shell: python
+        run: |
+          import os,json,requests,base64,time
+          from datetime import datetime,timezone
+          key='china_agent:owner_shop_conversion18:v1'
+          sb=os.environ['SUPABASE_URL'].rstrip('/');sk=os.environ['SUPABASE_SECRET_KEY']
+          h={'apikey':sk,'Content-Type':'application/json'}
+          if not sk.startswith('sb_secret_'):h['Authorization']='Bearer '+sk
+          def stamp():return datetime.now(timezone.utc).isoformat()
+          def get(k):
+           r=requests.get(sb+'/rest/v1/telegram_api_cache',headers=h,params={'cache_key':'eq.'+k,'select':'payload'},timeout=40);r.raise_for_status();a=r.json();return a[0]['payload'] if a else None
+          def put(k,p,create=False):
+           r=requests.post(sb+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**h,'Prefer':'resolution='+('ignore-duplicates' if create else 'merge-duplicates')+',return=representation'},json={'cache_key':k,'payload':p,'updated_at':stamp(),'expires_at':'2030-11-18T00:00:00Z'},timeout=40);r.raise_for_status()
+           if create:assert len(r.json())==1,'Already claimed'
+          assert get(key) is None
+          src=get('china_agent:advertising_full_growth:2026-11-18:v1:inputs:midday')
+          ids=sorted(set(x['nmID'] for x in src['catalogue']['rows']))
+          assert 250<len(ids)<1000
+          token=os.environ['WB_TOKEN_3'];claims=json.loads(base64.urlsafe_b64decode(token.split('.')[1]+'==='))
+          assert claims.get('exp',0)>time.time() and claims.get('sid')
+          r=requests.get(sb+'/rest/v1/analytics_snapshots',headers=h,params={'source':'eq.seller_identity','cabinet':'eq.token_3','status':'eq.complete','select':'payload','limit':100},timeout=40);r.raise_for_status()
+          assert {x['payload'].get('sid') for x in r.json()}=={claims['sid']}
+          put(key,{'status':'collecting','started_at':stamp(),'requested_products':len(ids),'wb_writes':0,'model_calls':0,'telegram_calls':0},True)
+          body={'selectedPeriod':{'start':'2026-11-18','end':'2026-11-18'},'pastPeriod':{'start':'2026-11-17','end':'2026-11-17'},'nmIds':ids,'skipDeletedNm':False,'limit':1000,'offset':0}
+          r=requests.post('https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products',headers={'Authorization':token},json=body,timeout=(10,90))
+          if r.status_code!=200:
+           put(key,{'status':'blocked','http_status':r.status_code,'retry_after':r.headers.get('Retry-After'),'wb_writes':0,'model_calls':0,'telegram_calls':0});raise RuntimeError('Funnel read blocked')
+          raw=r.json();data=raw['data'];rows=data['products'];assert data.get('currency')=='CNY' and len(rows)<1000
+          assert len({x['product']['nmId'] for x in rows})==len(rows) and {x['product']['nmId'] for x in rows}<=set(ids)
+          out={'status':'complete','observed_at':stamp(),'requested_ids':ids,'returned_ids':[x['product']['nmId'] for x in rows],'rows':rows,'currency':'CNY','scope':'general_shop_funnel','today_partial':True,'past_is_full_day':True,'reporting_lag_hours':2,'wb_writes':0,'model_calls':0,'telegram_calls':0}
+          totals={}
+          for label in ['selected','past']:
+           t={f:sum(x['statistic'][label].get(f,0) for x in rows) for f in ['openCount','cartCount','orderCount','orderSum','buyoutCount','cancelCount']}
+           t['visit_to_order_pct']=t['orderCount']/t['openCount']*100 if t['openCount'] else None
+           t['visit_to_cart_pct']=t['cartCount']/t['openCount']*100 if t['openCount'] else None
+           t['cart_to_order_pct']=t['orderCount']/t['cartCount']*100 if t['cartCount'] else None
+           totals[label]=t
+          out['totals']=totals;put(key,out);print(json.dumps({'status':'complete','returned':len(rows),'totals':totals}))
