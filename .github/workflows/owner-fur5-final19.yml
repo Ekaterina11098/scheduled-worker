@@ -1,0 +1,66 @@
+name: Owner beige5 final readback
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-fur5-final19.yml]
+permissions: {}
+concurrency:
+  group: bot-mpstats-data
+  cancel-in-progress: false
+jobs:
+  apply:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-fur5-final19] Readback only after photo trim'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5 pillow==11.3.0
+      - name: Apply approved beige5 only
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+        shell: python
+        run: |
+          import os,json,time,base64,hashlib,io,copy
+          from datetime import datetime,timezone
+          import requests
+          from PIL import Image,ImageChops,ImageStat
+          ROOT='china_agent:owner_fur5_gallery19';NM=2215883910
+          sb=os.environ['SUPABASE_URL'].rstrip('/');sk=os.environ['SUPABASE_SECRET_KEY']
+          sh={'apikey':sk,'Authorization':'Bearer '+sk,'Content-Type':'application/json'};wh={'Authorization':os.environ['WB_TOKEN_3']}
+          def stamp():return datetime.now(timezone.utc).isoformat()
+          def cache(k):
+           r=requests.get(sb+'/rest/v1/telegram_api_cache',headers=sh,params={'cache_key':'eq.'+k,'select':'payload'},timeout=45);r.raise_for_status();v=r.json();return v[0]['payload']if v else None
+          def put(k,p,create=False):
+           r=requests.post(sb+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**sh,'Prefer':'resolution='+('ignore-duplicates'if create else'merge-duplicates')+',return=representation'},json={'cache_key':k,'payload':p,'updated_at':stamp(),'expires_at':'2036-11-19T00:00:00Z'},timeout=45);r.raise_for_status()
+           if create:assert len(r.json())==1,'Already claimed; no replay'
+          def card():
+           r=requests.post('https://content-api.wildberries.ru/content/v2/get/cards/list',headers=wh,json={'settings':{'cursor':{'limit':100},'filter':{'textSearch':str(NM),'withPhoto':-1}}},timeout=45);r.raise_for_status();v=[c for c in r.json()['cards']if c['nmID']==NM];assert len(v)==1 and v[0]['vendorCode']=='5-furcoat-beige';return v[0]
+          def price():
+           r=requests.get('https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter',headers=wh,params={'limit':100,'offset':0,'filterNmID':NM},timeout=45);r.raise_for_status();return r.json()['data']['listGoods']
+          def stable(c):
+           d={k:c.get(k)for k in('nmID','vendorCode','title','brand','sizes','video','characteristics','dimensions','kizMarked')};d['characteristics']=sorted(d['characteristics'],key=lambda x:x['id']);return d
+          def thumb(b):return Image.open(io.BytesIO(b)).convert('RGB').resize((192,256))
+          e=cache(ROOT+':execution');assert e and e['status']=='slots_description_verified_pending_trim'
+          a=cache(ROOT+':approval');assert a['nm_id']==NM
+          result={'status':'checking','started_at':stamp(),'wb_writes':0,'telegram_calls':0};put(ROOT+':final_readback',result,True)
+          try:
+           after=card();assert len(after['photos'])==11,'Photo trim not complete';assert stable(after)==stable(e['before']),'Video or other fields changed';assert after['description']==a['description']
+           checks=[]
+           for slot in range(1,12):
+            p=cache(ROOT+':source:'+str(slot));b=base64.b64decode(p['data']);assert hashlib.sha256(b).hexdigest()==a['hashes'][slot-1]
+            r=requests.get(after['photos'][slot-1]['big'],params={'verify':str(int(time.time()))},timeout=45);r.raise_for_status();diff=sum(ImageStat.Stat(ImageChops.difference(thumb(r.content),thumb(b))).mean)/3;checks.append({'slot':slot,'difference':round(diff,4),'matches':diff<8})
+           assert all(x['matches']for x in checks),'Photo order/content mismatch'
+           assert price()==e['prices_before'],'Price changed'
+           result.update(status='verified',verified_at=stamp(),after=after,photo_verification=checks,description_exact=True,video_unchanged=True,prices_unchanged=True,other_fields_unchanged=True);put(ROOT+':final_readback',result)
+           e.update(status='verified',verified_at=result['verified_at'],after=after,final_readback_key=ROOT+':final_readback',photo_count=11,description_exact=True,video_unchanged=True,prices_unchanged=True);put(ROOT+':execution',e)
+           event={'record_type':'verified_action','event_id':'owner-fur5-gallery-description19','source_key':ROOT+':execution','verified_at':result['verified_at'],'action':{'kind':'photo_gallery_and_description_change','nm_ids':[NM],'photo_count':11,'main':'close-up denim','bag_final_nm':2129309887,'video_unchanged':True},'evaluation':{'excluded_change_day':'2026-11-19','first_full_day':'2026-11-20','early_review':'2026-11-21','confounders':['price','promotion','description','photo_gallery'],'causality':'Combined test, not isolated photo effect'},'grants_action_permission':False,'telegram_allowed':False};put('china_agent:experience:v1:owner-fur5-gallery-description19',event,True)
+           tracking=cache('china_agent:owner_fur_price_test:2026-11-18:v1:tracking')
+           if tracking:
+            tracking['beige5_gallery_description_change']=event;put('china_agent:owner_fur_price_test:2026-11-18:v1:tracking',tracking)
+           print(json.dumps({'status':'verified','photos':11,'video_unchanged':True,'description_exact':True}))
+          except Exception as ex:
+           result.update(status='verification_failed_no_writes',reason=type(ex).__name__+': '+str(ex)[:250]);put(ROOT+':final_readback',result);raise
+          
