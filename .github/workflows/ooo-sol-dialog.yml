@@ -45,7 +45,7 @@ jobs:
 
   execute-reports:
     needs: dialogue
-    if: ${{ false }} # Owner disabled report execution and completion checks
+    if: ${{ success() }} # Owner reenabled exact approved report execution 2026-11-18
     runs-on: ubuntu-latest
     timeout-minutes: 8
     concurrency:
@@ -69,7 +69,7 @@ jobs:
         run: python scripts/ooo_report_executor.py
   confirm-reports:
     needs: execute-reports
-    if: ${{ false }} # Owner disabled report execution and completion checks
+    if: ${{ success() }} # Owner reenabled exact approved report execution 2026-11-18
     runs-on: ubuntu-latest
     timeout-minutes: 4
     steps:
