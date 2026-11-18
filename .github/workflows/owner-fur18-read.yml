@@ -1,0 +1,51 @@
+name: Owner fur18 exact price and CPM reads
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-fur18-read.yml]
+permissions: {contents: read}
+concurrency:
+  group: bot-mpstats-data
+  cancel-in-progress: false
+jobs:
+  revise:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-fur18-read] Collect exact fur price CPM and competitors read only'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: a7efd98c6ef7e54f415471abcb694c748c2b4f6d
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          path: source
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /analytics/
+            /china_agent/
+            /business_agents/
+            /advertising_agent/
+            /*.py
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5 pillow==11.3.0 python-dotenv simplejson==4.2.0
+      - run: python -m py_compile scripts/owner_fur18_read.py scripts/china_owner_test18_contract.py
+      - env:
+          PYTHONPATH: scripts:source
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          OPENAI_API_KEY: ''
+          CHINA_TELEGRAM_BOT_TOKEN: ${{ secrets.CHINA_TELEGRAM_BOT_TOKEN }}
+        run: python scripts/owner_fur18_read.py
