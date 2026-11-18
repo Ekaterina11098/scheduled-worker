@@ -1,0 +1,44 @@
+name: Owner approved fur test extension19
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-fur-test-extension19.yml]
+permissions: {contents: read}
+concurrency:
+  group: china-confirmed-wb-advertising-writes
+  cancel-in-progress: false
+jobs:
+  apply:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-fur-test-extension19] Apply approved addition only'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5
+      - name: Apply owner approved scope from private journal
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          OPENAI_API_KEY: ''
+          PYTHONPATH: scripts
+        shell: python
+        run: |
+          import os,requests,hashlib
+          u=os.environ['SUPABASE_URL'].rstrip('/')+'/rest/v1/telegram_api_cache'
+          k=os.environ['SUPABASE_SECRET_KEY']
+          r=requests.get(u,headers={'apikey':k,'Authorization':'Bearer '+k},params={'cache_key':'eq.china_agent:owner_fur5_add19:source:v2','select':'payload'},timeout=45)
+          r.raise_for_status()
+          code=r.json()[0]['payload']['code']
+          assert hashlib.sha256(code.encode()).hexdigest()=='a0ace78c07f37e6a083332724b6f107d5986eb4d0273e8e57a7dc07aa15ae641'
+          exec(compile(code,'owner-approved-private-scope','exec'),{'__name__':'__main__'})
