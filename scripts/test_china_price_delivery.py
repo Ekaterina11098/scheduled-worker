@@ -1,4 +1,5 @@
 import hashlib,sys,types,unittest,json
+import requests as real_requests
 from datetime import date,datetime,timezone
 from unittest.mock import patch
 from china_price_delivery import deliver,rows
@@ -18,14 +19,19 @@ class Delivery(unittest.TestCase):
         def http(session,method,url,**kw):
             action=url.rsplit('/',1)[-1];calls.append(action)
             if not hasattr(w,'transport_bodies'):w.transport_bodies=[]
-            w.transport_bodies.append((action,kw.get('data',{})))
+            body=kw.get('json',kw.get('data',{}))
+            w.transport_bodies.append((action,body))
+            if action=='sendMessage':
+                self.assertIn('json',kw)
+                self.assertNotIn('data',kw)
+                self.assertIsInstance(body.get('reply_markup'),dict)
             if action=='getMe':v={'id':8780468043}
             else:
                 if fail:raise TimeoutError()
                 v={'chat':{'id':w.chat},'message_id':900}
             return types.SimpleNamespace(ok=True,status_code=200,json=lambda:{'ok':True,'result':v})
         w.original_http=http
-        modules={'requests':types.SimpleNamespace(Session=lambda:None),
+        modules={'requests':types.SimpleNamespace(Session=lambda:None,ConnectTimeout=real_requests.ConnectTimeout),
                  'china_cloud_cost_control':types.SimpleNamespace(Cache=Cache,stamp=lambda:'2026-11-09T16:00:00Z'),
                  'china_table_png':types.SimpleNamespace(render=lambda *a,**kw:(setattr(w,'rendered_rows',a[1])or[b'PNG']),blocks=lambda answer:[('table',(['Артикул'],[['Товар']]))]),
                  'china_price_current_check':types.SimpleNamespace(check=lambda w,a:a),
@@ -53,13 +59,13 @@ class Delivery(unittest.TestCase):
         import json
         w=self.worker(1);db,_=self.run_delivery(w)
         body=next(b for method,b in w.transport_bodies if method=='sendMessage')
-        modes=[r[0]['callback_data'].rsplit(':',1)[1] for r in json.loads(body['reply_markup'])['inline_keyboard']]
+        modes=[r[0]['callback_data'].rsplit(':',1)[1] for r in body['reply_markup']['inline_keyboard']]
         self.assertEqual(modes,['all','up','home'])
         self.assertTrue(any(k.startswith('china_agent:price_buttons:v1:')for k in db))
     def test_empty_report_has_no_execution_keyboard(self):
         w=self.worker(0);db,_=self.run_delivery(w)
         body=next(b for method,b in w.transport_bodies if method=='sendMessage')
-        self.assertEqual(json.loads(body['reply_markup']),{'inline_keyboard':[[{'text':'‹ Главное меню','callback_data':'cmn1:home'}]]})
+        self.assertEqual(body['reply_markup'],{'inline_keyboard':[[{'text':'‹ Главное меню','callback_data':'cmn1:home'}]]})
         self.assertFalse(any(k.startswith('china_agent:price_buttons:v1:')for k in db))
     def test_control_png_uses_separate_root_and_menu_only(self):
         w=self.worker(0);w.mode='control';w.job['answer']='Checked control table'
