@@ -262,7 +262,24 @@ def process(io,key,polls=45,pause=time.sleep):
         io.put(execution,e)
     return e
 
+def notification_allowed(io,key):
+    approval=io.get(key)
+    if not isinstance(approval,dict):
+        return False
+    if approval.get('telegram_notifications') is False:
+        return False
+    owner_key=approval.get('owner_approval_key')
+    if owner_key:
+        owner=io.get(owner_key)
+        if not isinstance(owner,dict):
+            return False
+        if owner.get('telegram_notifications') is False:
+            return False
+    return True
+
 def notify(io,key,e):
+    # Owner silence applies to historical approvals drained by another confirmation too.
+    if not notification_allowed(io,key):return
     nk='china_agent:price_execution_notice:v1:'+sha(key+':'+e['status'])
     if not io.create(nk,dict(status='sending',execution_status=e['status'],created_at=now().isoformat())):return
     lines=[]
