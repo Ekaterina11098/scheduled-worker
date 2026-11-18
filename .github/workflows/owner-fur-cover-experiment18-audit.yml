@@ -1,0 +1,67 @@
+name: Owner fur photo experiment gray4 black gallery
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-fur-cover-experiment18-audit.yml]
+permissions: {}
+concurrency:
+  group: bot-mpstats-data
+  cancel-in-progress: false
+jobs:
+  apply:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-fur-cover-experiment18-audit] Inspect actual photo mappings without writes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5 pillow==11.3.0
+      - name: Apply approved photo slots with unchanged video
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+        shell: python
+        run: |
+          import os,json,time,base64,hashlib,io
+          from datetime import datetime,timezone
+          import requests
+          from PIL import Image,ImageChops,ImageStat
+          ROOT='china_agent:owner_fur_cover_experiment18'
+          sb=os.environ['SUPABASE_URL'].rstrip('/');sk=os.environ['SUPABASE_SECRET_KEY']
+          sh={'apikey':sk,'Authorization':'Bearer '+sk,'Content-Type':'application/json'};wh={'Authorization':os.environ['WB_TOKEN_3']}
+          def stamp():return datetime.now(timezone.utc).isoformat()
+          def cache(k):
+           r=requests.get(sb+'/rest/v1/telegram_api_cache',headers=sh,params={'cache_key':'eq.'+k,'select':'payload'},timeout=45);r.raise_for_status();rows=r.json();return rows[0]['payload'] if rows else None
+          def put(k,p,create=False):
+           r=requests.post(sb+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**sh,'Prefer':'resolution='+('ignore-duplicates' if create else 'merge-duplicates')+',return=representation'},json={'cache_key':k,'payload':p,'updated_at':stamp(),'expires_at':'2036-11-18T00:00:00Z'},timeout=45);r.raise_for_status()
+           if create:assert len(r.json())==1,'Already claimed; no replay'
+          def card():
+           r=requests.post('https://content-api.wildberries.ru/content/v2/get/cards/list',headers=wh,json={'settings':{'cursor':{'limit':100},'filter':{'textSearch':'2216111729','withPhoto':-1}}},timeout=45);r.raise_for_status();rows=[c for c in r.json()['cards'] if c['nmID']==2216111729];assert len(rows)==1 and rows[0]['vendorCode']=='6-furcoat-gray';return rows[0]
+          def price():
+           r=requests.get('https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter',headers=wh,params={'limit':100,'offset':0,'filterNmID':2216111729},timeout=45);r.raise_for_status();rows=[g for g in r.json()['data']['listGoods'] if g['nmID']==2216111729];assert len(rows)==1;return rows[0]
+          def stable(c):
+           d={k:c.get(k) for k in ('nmID','vendorCode','title','description','brand','video','characteristics','dimensions')}
+           d['characteristics']=sorted(d.get('characteristics') or [],key=lambda x:x['id'])
+           return d
+          ids={'gray':2216111729,'black':2216167898}
+          vendors={'gray':'6-furcoat-gray','black':'7-furcoat-black'}
+          def getcard(n):
+           r=requests.post('https://content-api.wildberries.ru/content/v2/get/cards/list',headers=wh,json={'settings':{'cursor':{'limit':100},'filter':{'textSearch':str(ids[n]),'withPhoto':-1}}},timeout=45);r.raise_for_status();rows=[c for c in r.json()['cards'] if c['nmID']==ids[n]];assert len(rows)==1 and rows[0]['vendorCode']==vendors[n];return rows[0]
+          def getprice(n):
+           r=requests.get('https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter',headers=wh,params={'limit':100,'offset':0,'filterNmID':ids[n]},timeout=45);r.raise_for_status();rows=[g for g in r.json()['data']['listGoods'] if g['nmID']==ids[n]];assert len(rows)==1;return rows[0]
+          def thumb(b):return Image.open(io.BytesIO(b)).convert('RGB').resize((192,256))
+          def download(url):
+           r=requests.get(url,params={'verify':str(int(time.time()))},timeout=45);r.raise_for_status();return r.content
+          e=cache(ROOT+':execution');refs=cache(ROOT+':expected');before=e['before']
+          refs={n:[Image.open(io.BytesIO(base64.b64decode(p['data']))).convert('RGB') for p in arr] for n,arr in refs.items()}
+          result={'status':'reading','wb_writes':0,'created_at':stamp()};put(ROOT+':actual_audit',result,True)
+          after={n:getcard(n) for n in ids}
+          for n in ids:assert stable(after[n])==stable(before[n]),'Nonphoto/video changed'
+          mappings={}
+          for n in ids:
+           mappings[n]=[]
+           for slot,p in enumerate(after[n]['photos'],1):
+            im=thumb(download(p['big']));diffs=[sum(ImageStat.Stat(ImageChops.difference(im,r)).mean)/3 for r in refs[n]];best=min(range(len(diffs)),key=lambda i:diffs[i]);mappings[n].append({'actual_slot':slot,'expected_slot':best+1,'difference':round(diffs[best],4),'matches':diffs[best]<8})
+          result.update(status='audited',after=after,mappings=mappings,observed_at=stamp(),videos_unchanged=True);put(ROOT+':actual_audit',result)
+          print(json.dumps({'counts':{n:len(c['photos']) for n,c in after.items()},'mappings':mappings}))
