@@ -11,7 +11,7 @@ from china_advertising_v2_png import render
 from china_morning_readiness import current_prices
 from china_moysklad_read import read_stock
 from china_owner_test18_contract import KEY,check_record
-DAY='2026-11-18';ROOT='china_agent:owner_report18_fix:v2';KEEP={2128836688,2129199357,2129309884,2129309885}
+DAY='2026-11-18';ROOT='china_agent:owner_report18_fix:v3';KEEP={2128836688,2129199357,2129309884,2129309885}
 def stamp():return datetime.now(timezone.utc).isoformat()
 def store(io,k,v):io.put(k,v)if io.get(k)is not None else io.create(k,v)
 def main():
@@ -38,36 +38,13 @@ def main():
   return original(session,method,url,*args,**kw)
  requests.sessions.Session.request=guard
  try:
-  previous=io.get('china_agent:owner_report18_fix:v1:preview');fresh=io.get('china_agent:owner_report18_fix:v1:fresh')
-  assert previous['status']=='prepared' and not io.get('china_agent:owner_report18_fix:v1:journal')
+  previous=io.get('china_agent:owner_report18_fix:v2:preview');fresh=io.get('china_agent:owner_report18_fix:v1:fresh')
+  assert previous['status']=='prepared'and not io.get('china_agent:owner_report18_fix:v2:journal')and not io.get('china_agent:owner_report18_fix:v2:visual_qa')
   assert (datetime.now(timezone.utc)-datetime.fromisoformat(fresh['observed_at'])).total_seconds()<7200
   bundle=copy.deepcopy(previous['bundle']);amount=previous['amount_cny'];reference=previous['reference_cny'];balance=previous['balance']
-  action=bundle['owner_final_budget_review']['campaigns']['41779660']['action']
-  source=copy.deepcopy(io.get('china_agent:advertising_source:'+DAY+':v2'))
-  from china_advertising_v2 import compact_execution_records
-  restored=[]
-  for rec in source['executions']:
-   key=rec.get('cache_key','')
-   if key.startswith('china_agent:daily_ad_execution:v2:daily-2026-11-17-owner-approved-r2-budgets-1'):
-    raw=io.get(key);assert raw is not None
-    rec=compact_execution_records([dict(cache_key=key,payload=raw)])[0];restored.append(key)
-   source['executions'][source['executions'].index(next(x for x in source['executions']if x.get('cache_key')==key))]=rec
-  assert restored
-  minima={str(c['id'])+':'+str(r['nm']):r['minimum_bid_minor']for c in bundle['campaigns']for r in c.get('focus',[])if type(r.get('minimum_bid_minor'))is int}
-  from china_advertising_decision_contract import finalize,effective_launch_at
-  states={c['id']:c for b in source['batches'].values()for c in b['campaigns']['adverts']}
-  assert effective_launch_at(source,states[41332083]).startswith('2026-11-09')
-  bundle=finalize(io,bundle,source,minima)
-  # A funding-only resume is not a new test; actual additions, prices and bids still reset SKU windows.
   pages=render(bundle);assert [p['family']for p in pages]==['drr','budgets']
-  oldplans=[io.get(PLAN+f['plan_id'])for f in old['files']];oldactions={a['id']:a for p in oldplans for a in p['items']};newactions={a['id']:a for f in pages for a in f['actions']}
-  changed=[k for k in oldactions if k not in newactions or digest([oldactions[k]])!=digest([newactions[k]])]
-  audit=dict(restored_receipts=restored,changed_previous_actions=changed,new_actions=[v for k,v in newactions.items()if k not in oldactions],campaigns=[dict(id=c['id'],status=c['status'],drr=c.get('drr'),notes=c.get('direction_recommendations'),focus=[dict(article=r['article'],decision=r.get('decision'),action=r.get('action'),blocker=r.get('data_blocker'),window=r.get('decision_window'))for r in c.get('focus',[])])for c in bundle['campaigns']])
-  store(io,ROOT+':audit',audit)
-  # Review an unexpected changed proposal before replacing an already delivered report.
-  assert not changed, 'Previous actions changed; inspect audit before publication'
-  rendered_action=copy.deepcopy(newactions[action['id']]);rendered_action.pop('selection_family',None);assert rendered_action==action
-  store(io,ROOT+':source_metadata',dict(executions=source['executions'],source_key='china_agent:advertising_source:'+DAY+':v2',restored_receipts=restored))
+  assert all(digest(f['actions'])==digest(p['actions'])for f,p in zip(pages,previous['files']))
+  oldplans=[io.get(PLAN+f['plan_id'])for f in old['files']]
   from china_report_preflight import freeze_contracts
   freeze_contracts(io,pages,bundle.get('proposal_preparation_contracts'))
   preview=dict(status='prepared',bundle=bundle,amount_cny=amount,reference_cny=reference,balance=balance,files=[dict(kind=f['kind'],family=f['family'],page=f['page'],total=f['total'],actions=f['actions'],b64=base64.b64encode(f['bytes']).decode(),sha256=hashlib.sha256(f['bytes']).hexdigest())for f in pages],wb_writes=0,telegram_calls=0)
@@ -83,7 +60,7 @@ def main():
    claim(io,p['plan_id'],[p['family']],'replace:'+ROOT);p.update(invalidated_at=stamp(),invalidation_reason='Owner-requested budget and completed risk explanation correction18Nov');io.put(PLAN+p['plan_id'],p)
   files=[]
   for index,f in enumerate(pages):
-   p=plan(io,DAY,f,index,slot='owner-review18-r2');f.update(plan_id=p['plan_id'],plan_sha256=p['plan_sha256']);markup=buttons(io,p,f['family'])
+   p=plan(io,DAY,f,index,slot='owner-review18-r3');f.update(plan_id=p['plan_id'],plan_sha256=p['plan_sha256']);markup=buttons(io,p,f['family'])
    part=next(v for v in delivery['parts']if v['kind'].split(':')[0]==f['family']);mid=part['message_id'];assert mid in(1089,1090)
    cap='Китай · '+('реклама'if f['family']=='drr'else'бюджеты')+' · '+DAY+'. Рекомендации уточнены. Новых действий: '+str(len(p['items']))+'. Выберите нужное → «Посмотреть выбранное» → «Подтвердить».'
    record=dict(family=f['family'],message_id=mid,status='editing',plan_id=p['plan_id'],plan_sha256=p['plan_sha256']);state['parts'].append(record);io.put(ROOT+':journal',state)

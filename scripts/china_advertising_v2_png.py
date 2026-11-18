@@ -154,8 +154,9 @@ def _render_legacy(bundle):
   for j,line in enumerate(title):d.text((44,y+16+j*36),line,font=font(29,True),fill=NAVY)
   left=y+26+len(title)*36
   d.text((44,left),'Остаток: '+money(c.get('balance'))+' ¥',font=font(29,True),fill=INK)
-  d.text((44,left+48),c.get('budget_reference_label','Запас на 3 дня: ')+money(need)+' ¥',font=font(27),fill=INK)
-  d.text((44,left+88),'Нехватка: '+money(gap)+' ¥',font=font(27),fill=INK)
+  reference_lines=wrap(d,c.get('budget_reference_label','Запас на 3 дня: ')+money(need)+' ¥',730,27)
+  for j,line in enumerate(reference_lines):d.text((44,left+48+j*32),line,font=font(27),fill=INK)
+  d.text((44,left+56+32*len(reference_lines)),'Нехватка: '+money(gap)+' ¥',font=font(27),fill=INK)
   d.text((860,y+16),'Расходы и ДРР',font=font(29,True),fill=NAVY)
   bp=c.get('budget_period')
   budget_days=bundle.get('budget_days') or ([] if bundle.get('intraday') else bundle.get('days',[]))
@@ -219,4 +220,3 @@ def render(bundle):
   parts=[f for f in files if f['family']==family]
   for index,f in enumerate(parts,1):f.update(kind=family+':'+str(index).zfill(3),page=index,total=len(parts))
  return files
-
