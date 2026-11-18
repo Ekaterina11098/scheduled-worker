@@ -6,10 +6,10 @@ from china_moysklad_read import Reader
 ROOT='china_agent:owner_blackfriday_gap:2026-11-18:v1'
 ITEMS=[dict(nm_id=1473243818,article='529-NoelBag-lpink',current=210,target=207),dict(nm_id=1473243453,article='548-GloriaBag-brown',current=425,target=424)]
 def main():
- c=Cache();assert c.create(ROOT+':claim',dict(status='collecting',at=stamp()))
+ c=Cache();assert c.create(ROOT+':claim:transport-fix1',dict(status='collecting',at=stamp()))
  orig=requests.sessions.Session.request
- def guard(s,m,url,*a,**k):
-  u=urlparse(url);m=m.upper()
+ def guard(s,method,url,*a,**k):
+  u=urlparse(url);m=method.upper()
   ok=(u.hostname==urlparse(os.environ['SUPABASE_URL']).hostname and u.path.startswith('/rest/v1/') and m in ('GET','POST','PATCH'))or(u.hostname=='api.moysklad.ru'and m=='GET'and u.path.startswith('/api/remap/1.2/'))
   assert ok,'Only private-cache and exact MSK read allowed'
   return orig(s,m,url,*a,**k)

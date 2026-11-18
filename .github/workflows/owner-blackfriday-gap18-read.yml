@@ -49,3 +49,5 @@ jobs:
           OPENAI_API_KEY: ''
           CHINA_TELEGRAM_BOT_TOKEN: ${{ secrets.CHINA_TELEGRAM_BOT_TOKEN }}
         run: python scripts/owner_blackfriday_gap18_read.py
+
+# Read-only keyword transport fix; no prior marketplace calls executed.
