@@ -1,0 +1,83 @@
+name: Owner fur bold descriptions
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-fur-bold-description18.yml]
+permissions: {}
+concurrency:
+  group: bot-mpstats-data
+  cancel-in-progress: false
+jobs:
+  apply:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-fur-bold-description18] Apply approved paragraphs only'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5
+      - name: Update exact descriptions and verify unchanged media
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+        shell: python
+        run: |
+          import os,json,time,copy
+          from datetime import datetime,timezone
+          import requests
+          ROOT='china_agent:owner_fur_bold_description18'
+          sb=os.environ['SUPABASE_URL'].rstrip('/');sk=os.environ['SUPABASE_SECRET_KEY']
+          sh={'apikey':sk,'Authorization':'Bearer '+sk,'Content-Type':'application/json'}
+          wh={'Authorization':os.environ['WB_TOKEN_3']}
+          def stamp():return datetime.now(timezone.utc).isoformat()
+          def cache(k):
+           r=requests.get(sb+'/rest/v1/telegram_api_cache',headers=sh,params={'cache_key':'eq.'+k,'select':'payload'},timeout=45);r.raise_for_status();v=r.json();return v[0]['payload'] if v else None
+          def put(k,p,create=False):
+           r=requests.post(sb+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**sh,'Prefer':'resolution='+('ignore-duplicates' if create else 'merge-duplicates')+',return=representation'},json={'cache_key':k,'payload':p,'updated_at':stamp(),'expires_at':'2036-11-18T00:00:00Z'},timeout=45);r.raise_for_status()
+           if create:assert len(r.json())==1,'Already claimed; do not replay'
+          def card(n):
+           r=requests.post('https://content-api.wildberries.ru/content/v2/get/cards/list',headers=wh,json={'settings':{'cursor':{'limit':100},'filter':{'textSearch':n,'withPhoto':-1}}},timeout=45);r.raise_for_status();rows=[c for c in r.json()['cards'] if str(c['nmID'])==n];assert len(rows)==1;return rows[0]
+          def price(n):
+           r=requests.get('https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter',headers=wh,params={'limit':100,'offset':0,'filterNmID':n},timeout=45);r.raise_for_status();return r.json()['data']['listGoods']
+          def stable(c):
+           d={k:c.get(k) for k in ('nmID','vendorCode','title','brand','sizes','video','photos','characteristics','dimensions','kizMarked')}
+           d['characteristics']=sorted(d['characteristics'],key=lambda x:x['id']);return d
+          a=cache(ROOT+':approval');assert a['status']=='approved' and a['owner_id']==5122667182 and datetime.now(timezone.utc)<datetime.fromisoformat(a['expires_at'])
+          ids=['2216111729','2216167898'];assert set(a['intro'])==set(ids)
+          e={'status':'preflight','created_at':stamp(),'wb_writes':0,'telegram_calls':0,'price_writes':0,'advertising_writes':0}
+          put(ROOT+':execution',e,True)
+          try:
+           old=cache('china_agent:owner_fur_description18:execution');assert old['status']=='verified'
+           before={n:card(n) for n in ids};prices={n:price(n) for n in ids};req=[];targets={}
+           for n in ids:
+            c=before[n];assert c['description']==old['after'][n]['description'],'Description changed since owner review'
+            text=c['description'].replace('\\n','\n');parts=text.split('\n\n');assert len(parts)==5
+            targets[n]='\n\n'.join([a['intro'][n],parts[1],parts[-1]])
+            assert len(targets[n])<2000
+            d={k:copy.deepcopy(c[k]) for k in ('nmID','vendorCode','brand','title','kizMarked','sizes')}
+            d['dimensions']={k:v for k,v in c['dimensions'].items() if k!='isValid'}
+            d['characteristics']=[{'id':x['id'],'value':x['value']} for x in c['characteristics']]
+            d['description']=targets[n];req.append(d)
+           e.update(before=before,prices_before=prices,request=req,targets=targets,submitted_at=stamp(),status='submitted_uncertain_no_replay',wb_writes=1);put(ROOT+':execution',e)
+           assert cache(ROOT+':approval')==a
+           r=requests.post('https://content-api.wildberries.ru/content/v2/cards/update',headers=wh,json=req,timeout=60)
+           e['response_status']=r.status_code;r.raise_for_status();e['response']=r.json();assert not e['response'].get('error')
+           put(ROOT+':execution',e)
+           for attempt in range(12):
+            after={n:card(n) for n in ids};e.update(after=after,readback_attempt=attempt+1,observed_at=stamp());put(ROOT+':execution',e)
+            assert all(stable(after[n])==stable(before[n]) for n in ids),'Other card fields mismatch'
+            if all(after[n]['description']==targets[n] for n in ids):break
+            time.sleep(20)
+           else:raise RuntimeError('Description readback pending; never replay')
+           assert all(price(n)==prices[n] for n in ids),'Prices changed'
+           e.update(status='verified',verified_at=stamp(),description_exact=True,other_card_fields_unchanged=True,prices_unchanged=True);put(ROOT+':execution',e)
+           tracking=cache('china_agent:owner_fur_price_test:2026-11-18:v1:tracking')
+           if tracking:
+            tracking['latest_description_change']={'execution_key':ROOT+':execution','verified_at':e['verified_at'],'nm_ids':[int(n)for n in ids],'first_complete_msk_day':'2026-11-19'}
+            put('china_agent:owner_fur_price_test:2026-11-18:v1:tracking',tracking)
+           put('china_agent:experience:v1:fur-bold-description18',{'record_type':'verified_action','source_key':ROOT+':execution','verified_at':e['verified_at'],'action':{'kind':'description_change','nm_ids':[int(n)for n in ids]},'grants_action_permission':False,'telegram_allowed':False},True)
+           print(json.dumps({'status':'verified','items':ids,'photos_video_prices_unchanged':True}))
+          except Exception as ex:
+           e.update(status='needs_readback_no_replay',reason=type(ex).__name__+': '+str(ex)[:250]);put(ROOT+':execution',e);raise
+          
