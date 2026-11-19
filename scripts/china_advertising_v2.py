@@ -167,7 +167,14 @@ def collect(io,day,current=False):
    missing=[c['id'] for b in s['batches'].values() for c in b['campaigns'].get('adverts',[]) if c['status']==9 and c['id'] not in returned]
    for cid in missing:
     campaign=next(c for b in s['batches'].values() for c in b['campaigns']['adverts'] if c['id']==cid)
-    first=max(s['period_from'],campaign.get('timestamps',{}).get('created',s['period_from'])[:10])
+    created=campaign.get('timestamps',{}).get('created')
+    created_day=event_time(created).astimezone(MSK).date().isoformat() if created else s['period_from']
+    first=max(s['period_from'],created_day)
+    if first>s['period_to']:
+     # No campaign existed in this completed-day window. Preserve the live
+     # campaign and its budget; absent statistics are not fabricated zeroes.
+     s.setdefault('campaign_statistics_scope',{})[str(cid)]=dict(status='not_in_period',created_day_msk=created_day,period_to=s['period_to'])
+     continue
     time.sleep(20)
     rows=http(io,'/adv/v3/fullstats?ids='+str(cid)+'&beginDate='+first+'&endDate='+s['period_to'])
     rawkey=key+':missing_campaign:'+str(cid)+':'+stamp()
