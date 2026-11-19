@@ -160,7 +160,7 @@ class Client:
         if not value.startswith('/object/sign/'+BUCKET+'/'):raise Stop('unexpected_signed_path')
         return self.base+'/storage/v1'+value
     def reserve_archive(self,ident,path,size):
-        rows=self.cache({'cache_key':'like.'+ROOT+'artifact:*','select':'cache_key,payload','limit':1000})
+        rows=self.cache({'cache_key':'like.'+ROOT+'artifact:*','payload->>status':'neq.deleted','select':'cache_key,payload','limit':1000})
         if len(rows)>=1000:raise Stop('artifact_inventory_limit')
         used=0
         for row in rows:
