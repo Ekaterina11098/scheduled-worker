@@ -130,7 +130,8 @@ def finalize(io,bundle,source,minima):
      # A presentation-only rewrite must not block every campaign's report.
      if old.get('decision')!=row['decision']:
       def instruction(text):return text.strip().split('. ',1)[0].rstrip('.') if isinstance(text,str) else None
-      if not row.get('action') or not instruction(old.get('decision')) or instruction(old.get('decision'))!=instruction(row.get('decision')):
+      waiting=not row.get('action') and not old.get('action') and r.get('pending_first_day') is True and not window.get('days')
+      if not waiting and (not row.get('action') or not instruction(old.get('decision')) or instruction(old.get('decision'))!=instruction(row.get('decision'))):
        raise ValueError('Same verified facts produced conflicting recommendation text: '+key)
       r['decision']=row['decision']=old.get('decision')
       r['reason']=row['reason']=old.get('reason')
