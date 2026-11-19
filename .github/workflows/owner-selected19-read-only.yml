@@ -1,0 +1,62 @@
+name: Owner selected19 read only economics
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-selected19-read-only.yml]
+permissions: {contents: read}
+concurrency:
+  group: bot-mpstats-data
+  cancel-in-progress: false
+jobs:
+  preview:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[selected19-read] Collect exact member risk and 160 valuation'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/
+            /.github/
+            /*request*.json
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: a7efd98c6ef7e54f415471abcb694c748c2b4f6d
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          path: source
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /analytics/
+            /business_agents/
+            /advertising_agent/
+            /china_agent/
+            /tests/
+            /*.py
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5 pillow==11.3.0 python-dotenv simplejson==4.2.0 openai==3.42.1
+      - name: Prepare private owner preview with no Telegram or WB writes
+        env:
+          PYTHONPATH: scripts:source
+          OPENAI_API_KEY: "" # Owner: no paid model API
+          MPSTATS_API_TOKEN: ${{ secrets.MPSTATS_API_TOKEN }}
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          CHINA_TELEGRAM_BOT_TOKEN: ${{ secrets.CHINA_TELEGRAM_BOT_TOKEN }}
+        shell: python
+        run: |
+          import os,requests,hashlib
+          r=requests.get(os.environ['SUPABASE_URL'].rstrip('/')+'/rest/v1/telegram_api_cache',headers={'apikey':os.environ['SUPABASE_SECRET_KEY'],'Authorization':'Bearer '+os.environ['SUPABASE_SECRET_KEY']},params={'cache_key':'eq.china_agent:owner_selected19:v1:source','select':'payload'},timeout=45)
+          r.raise_for_status();code=r.json()[0]['payload']['code']
+          assert hashlib.sha256(code.encode()).hexdigest()=='d127864c7e4fcd5d29c37b183669cf63029765615e397d837ad95b5ace12e71e'
+          exec(compile(code,'owner-preview-no-marketplace-writes','exec'),{'__name__':'__main__'})
+          
