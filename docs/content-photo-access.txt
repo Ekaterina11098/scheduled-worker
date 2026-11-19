@@ -1,5 +1,9 @@
 Permanent source photo channel — WB China, 2026-11-19
 
+STATUS: NOT READY FOR EMPLOYEE USE. Server request/dispatch/export tested successfully, but actual ChatGPT container.download failed for both ZIP and explicitly supplied individual WEBP, FILE_NOT_CREATED. On 2026-11-19 the new policy was disabled and only new cron job 33 deactivated. Do not retry this channel or claim autonomous file delivery until a connected file import channel is verified. Existing business schedules were not changed. Google/Yandex API pause remains in effect.
+
+The following is prepared implementation documentation, not a claim of working end-to-end access.
+
 In ChatGPT with connected Supabase execute_sql, project abxgjoqlddhtcmjcjwxw:
 select public.content_photo_request(p_articles=>array['672-NoelBag-hotpink'],p_max_photos=>24);
 OR select public.content_photo_request(p_family=>'NoelBag',p_max_photos=>24);
@@ -19,4 +23,4 @@ Operator recovery: inspect content_photo_bridge:v1:clock_health, health and requ
 Rollback: set enabled=false in the existing content_photo_bridge:v1:policy payload and deactivate only cron job content-photo-bridge-recovery (job 33). Existing production jobs remain unchanged.
 
 Deployment: dedicated content-photo-clock Edge function; content-photo-bridge.yml on scheduled-worker/main; isolated concurrency content-photo-bridge-readonly-v1. Invoker SQL functions are executable only by postgres, not PUBLIC/anon/authenticated. Existing cache RLS and private bucket retained.
-Validation status: local 13 Python and 8 Edge unit tests passed before deployment. Live end-to-end download test still in progress; do not mark employee handoff complete until the actual ChatGPT chat downloads and opens the exported image.
+Validation: 13 Python safeguards tests passed in the live GitHub worker, 8 Edge unit tests passed locally. Server run 44495465402 exported a real 900x1200 WEBP (78056 bytes) without WB writes. The photo chat itself created request dfb272c4-6ee3-4791-b1c1-0b38f46e22c0 and recorded failed real download in private chat_verification. No photo opened from the new delivery channel. The experimental direct Edge image route was retired with JWT required and unconditional 404; its temporary delivery hash was removed.
