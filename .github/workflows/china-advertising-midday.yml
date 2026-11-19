@@ -77,3 +77,5 @@ jobs:
 #18Nov: safely parse legacy pause receipts and resume prepared report.
 
 #19Nov: retain canonical wording for same facts and exact actions; real action conflicts remain blocked.
+
+#19Nov: presentation reuse requires the same instruction, with full semantic-conflict tests.
