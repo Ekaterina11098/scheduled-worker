@@ -13,6 +13,7 @@ import urllib.parse
 import urllib.request
 import uuid
 import zipfile
+import requests
 from PIL import Image
 
 PROJECT = 'abxgjoqlddhtcmjcjwxw'
@@ -100,15 +101,22 @@ class Client:
         retryable = method=='GET' or url=='https://content-api.wildberries.cn/content/v2/get/cards/list'
         for attempt in range(3):
             try:
-                with self.opener.open(req,timeout=45) as response:
-                    raw=response.read(limit+1)
-                    if len(raw)>limit:raise Stop('response_size_limit')
-                    return raw
+                with requests.request(method,url,data=data,headers=headers,timeout=(20,90),allow_redirects=False,stream=True) as response:
+                    if 300<=response.status_code<400:raise Stop('redirect_prohibited')
+                    if response.status_code in (429,500,502,503,504) and retryable and attempt<2:
+                        time.sleep(2*(attempt+1));continue
+                    if response.status_code>=400:raise Stop('http_'+str(response.status_code))
+                    chunks=[];size=0
+                    for chunk in response.iter_content(65536):
+                        size+=len(chunk)
+                        if size>limit:raise Stop('response_size_limit')
+                        chunks.append(chunk)
+                    return b''.join(chunks)
             except urllib.error.HTTPError as error:
                 if error.code in (429,500,502,503,504) and retryable and attempt<2:
                     time.sleep(2*(attempt+1));continue
                 raise Stop('http_'+str(error.code)) from None
-            except (TimeoutError,urllib.error.URLError,http.client.IncompleteRead,ConnectionError):
+            except (TimeoutError,urllib.error.URLError,http.client.IncompleteRead,ConnectionError,requests.exceptions.RequestException):
                 if retryable and attempt<2:time.sleep(2*(attempt+1));continue
                 raise Stop('transport_error') from None
     def cache(self,query,method='GET',body=None,prefer='return=representation'):
