@@ -1,0 +1,47 @@
+name: Owner fur567 single read funnel19
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-fur567-funnel19-read.yml]
+permissions: {}
+concurrency:
+  group: bot-mpstats-data
+  cancel-in-progress: false
+jobs:
+  read:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-fur567-funnel19] Read three fur funnels only'
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: One analytics read no marketplace mutations
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+        shell: python
+        run: |
+          import os,json
+          from datetime import datetime,timezone
+          from urllib.request import Request,urlopen
+          from urllib.error import HTTPError
+          key='china_agent:owner_fur567_funnel19:fresh:v1'
+          sb=os.environ['SUPABASE_URL'].rstrip('/')
+          sh={'apikey':os.environ['SUPABASE_SECRET_KEY'],'Authorization':'Bearer '+os.environ['SUPABASE_SECRET_KEY'],'Content-Type':'application/json'}
+          def call(url,headers,body):
+           r=urlopen(Request(url,data=json.dumps(body).encode(),headers=headers,method='POST'),timeout=50)
+           with r:return r.status,json.load(r)
+          data={'wb_writes':0,'telegram_calls':0,'model_calls':0,'status':'collecting','observed_at':datetime.now(timezone.utc).isoformat()}
+          request=dict(selectedPeriod={'start':'2026-11-19','end':'2026-11-19'},pastPeriod={'start':'2026-11-18','end':'2026-11-18'},nmIds=[2215883910,2216111729,2216167898],brandNames=[],subjectIds=[],tagIds=[],skipDeletedNm=False,orderBy={'field':'openCard','mode':'desc'},limit=100,offset=0)
+          data['request']=request
+          try:
+           code,response=call('https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products',{'Authorization':os.environ['WB_TOKEN_3'],'Content-Type':'application/json'},request)
+           data.update(status='complete',http_status=code,response=response)
+          except HTTPError as ex:data.update(status='failed',http_status=ex.code,error=ex.read().decode()[:400])
+          data['completed_at']=datetime.now(timezone.utc).isoformat()
+          row={'cache_key':key,'payload':data,'updated_at':data['completed_at'],'expires_at':'2036-11-19T00:00:00Z'}
+          call(sb+'/rest/v1/telegram_api_cache?on_conflict=cache_key',{**sh,'Prefer':'resolution=ignore-duplicates,return=representation'},row)
+          print(json.dumps(data,ensure_ascii=True))
+          assert data['status']=='complete'
+          
