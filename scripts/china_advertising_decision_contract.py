@@ -17,7 +17,7 @@ def effective_launch_at(source,state):
    for z in x:walk(z)
   elif isinstance(x,dict):
    if x.get('status')=='verified'and str(x.get('id','')).startswith('manual-continuation:')and not x.get('selected_test'):
-    before=x.get('before')or{};after=x.get('after')or{};a=after.get('timestamps',{}).get('started');b=before.get('timestamps',{}).get('started')
+    before=x.get('before')if isinstance(x.get('before'),dict)else{};after=x.get('after')if isinstance(x.get('after'),dict)else{};a=after.get('timestamps',{}).get('started');b=before.get('timestamps',{}).get('started')
     if (before.get('id')==after.get('id')==state['id']and before.get('status')==11 and after.get('status')==9
         and before.get('currency')==after.get('currency')=='CNY'and bids(before)==bids(after)
         and before.get('settings',{}).get('placements')==after.get('settings',{}).get('placements')and a and b):candidates.append((a,b))
@@ -31,7 +31,7 @@ def effective_launch_at(source,state):
   if isinstance(x,list):
    for z in x:launch(z)
   elif isinstance(x,dict):
-   before=x.get('before')or{};after=x.get('after')or{}
+   before=x.get('before')if isinstance(x.get('before'),dict)else{};after=x.get('after')if isinstance(x.get('after'),dict)else{}
    if (x.get('status')=='verified'and not x.get('selected_test')
        and before.get('id')==after.get('id')==state['id']
        and before.get('status')==4 and before.get('timestamps',{}).get('started')is None
