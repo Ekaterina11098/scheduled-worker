@@ -1,4 +1,4 @@
-name: SKU 159 WB post-update readback
+name: SKU 159 errors read
 on:
   push:
     branches: [main]
@@ -6,42 +6,30 @@ on:
 permissions:
   contents: read
 jobs:
-  verify:
+  read:
     if: >-
-      github.event.head_commit.message == 'diagnostic: WB 159 post update status 20261119'
+      github.event.head_commit.message == 'diagnostic: 159 WB error details 20261119'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 4
     env:
       WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
     steps:
-      - name: Check status and errors (read only)
+      - name: Read WB card processing errors
         shell: python
         run: |
           import os,json,gzip,urllib.request,urllib.error
-          token=os.environ["WB_TOKEN_3"]
-          base="https://content-api.wildberries.cn"
-          def get(endpoint,body):
-           req=urllib.request.Request(base+endpoint,headers={"Authorization":token,"Content-Type":"application/json","Accept-Encoding":"gzip"},method="POST",data=json.dumps(body).encode())
-           with urllib.request.urlopen(req,timeout=30) as resp:
-            raw=resp.read()
-            if resp.headers.get("Content-Encoding")=="gzip":raw=gzip.decompress(raw)
-            return json.loads(raw)
-          for article in ["159-CelineaBag-coffee","159-CelineaBag-darkchocolate"]:
-           try:
-            d=get("/content/v2/get/cards/list",{"settings":{"filter":{"withPhoto":-1,"textSearch":article},"cursor":{"limit":100}}})
-            cc=[c for c in d.get("cards",[]) if c.get("vendorCode")==article]
-            print("CURRENT",article,"count",len(cc))
-            for c in cc:
-             print("CARD",c.get("nmID"),"skus",[s.get("skus") for s in c.get("sizes",[])],"colors",[v.get("value") for v in c.get("characteristics",[]) if v.get("id")==14177449])
-           except Exception as e:print("CARD_READ_ERROR",type(e).__name__,getattr(e,"code",""))
-          try:
-           d=get("/content/v2/cards/error/list",{"cursor":{"limit":100},"order":{"ascending":False}})
-           print("ERROR_LIST_KEYS",sorted(d))
-           batches=d.get("data",[])
-           print("ERROR_BATCHES",len(batches) if isinstance(batches,list) else type(batches).__name__)
-           for b in batches if isinstance(batches,list) else []:
-            as_text=json.dumps(b,ensure_ascii=False)
-            if "159-CelineaBag" in as_text or "2129309883" in as_text:
-             print("TARGET_ERROR",as_text[:1500])
-          except Exception as e:print("ERROR_LIST_FAILURE",type(e).__name__,getattr(e,"code",""))
+          req=urllib.request.Request("https://content-api.wildberries.cn/content/v2/cards/error/list",headers={"Authorization":os.environ["WB_TOKEN_3"],"Content-Type":"application/json","Accept-Encoding":"gzip"},data=json.dumps({"cursor":{"limit":100},"order":{"ascending":False}}).encode(),method="POST")
+          with urllib.request.urlopen(req,timeout=25) as x:
+           raw=x.read()
+           if x.headers.get("Content-Encoding")=="gzip":raw=gzip.decompress(raw)
+           d=json.loads(raw)
+          v=d.get("data")
+          print("DATA_TYPE",type(v).__name__,"DATA_KEYS",sorted(v) if isinstance(v,dict) else "")
+          if isinstance(v,dict):
+           for k,items in v.items():
+            print("KEY",k,"TYPE",type(items).__name__,"COUNT",len(items) if hasattr(items,"__len__") else "")
+            txt=json.dumps(items,ensure_ascii=False)
+            if "159-CelineaBag" in txt or "2129309883" in txt:
+             print("TARGET_CONTEXT",k,txt[:2200])
+          print("RESP_ERROR",d.get("error"),str(d.get("errorText"))[:120])
           
