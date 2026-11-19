@@ -1,0 +1,21 @@
+Private fixed-layout gallery pipeline — 2026-11-19
+
+For a new explicit color-gallery task:
+select public.content_gallery_request(p_family=>'MODEL_FAMILY');
+Or use p_articles=>array['EXACT_ARTICLE'] instead of p_family.
+Save request_id and poll public.content_gallery_result('REQUEST_UUID'::uuid).
+The existing private photo worker automatically handles the queue; no manual Actions dispatch.
+
+This operation performs a fresh read-only China catalog query, selects isolated product photographs, retains original foreground RGB, caches alpha cutouts by source and implementation SHA-256, and assembles a deterministic 1086x1448 gallery. It does not reconstruct hidden product details or call a generative model.
+
+Layout: neutral #f4f4f5; Russian title; three columns; up to fourteen items per page; fourteen means four complete rows and a centered pair. A following six uses the first two rows of the same grid and body scale. Only the corresponding China nmID appears below each product. Other family sizes use their actual fresh card count, never invented variants.
+
+ready is technical completion, not visual approval. Fetch drive.url using the authorized Drive connector raw download. Verify archive bytes/hash. Open every final PNG alongside review/originals and the shared reference; verify product, cutout, IDs, counts and layout. final/ contains the rendered PNGs; FINAL_GALLERY.zip contains exactly those PNGs. MANIFEST.json records source hashes, selected photo indexes, placement and page hashes. If raw reference import fails, use the connector's include_base64=true result and decode the raw ZIP, not a text representation.
+
+needs_source_review is a safe stop: inspect the private review package and issues. Ask the employee for an unoccluded product-only photograph if no valid source exists. Never invent hardware, construction or a hidden angle. Failed/timed_out requires a precise safe error; do not request credentials or repeat indefinitely.
+
+Show all final PNGs in the chat plus FINAL_GALLERY.zip. Begin the final response with “Готово” only after actually opening and validating the complete result. State the family, variants and page counts. Do not publish to WB or change catalog, inventory, pricing, business schedules or unrelated paused integrations.
+
+Limits: 60 cards/request, 100 MiB, 20 combined source/gallery requests/day, bounded private cutout cache. The dedicated Drive folder stays private. Supabase functions are invoker-only and not executable by anonymous/authenticated Data API roles. Employee sessions require their authorized Supabase and Drive connectors and a file/image workspace.
+
+This is a technical protocol, not an instruction to resume any completed task.

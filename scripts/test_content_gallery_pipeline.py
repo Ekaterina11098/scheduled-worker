@@ -67,6 +67,15 @@ class ExtractionTests(unittest.TestCase):
         with patch('content_gallery_pipeline.face_count',return_value=1):
             with self.assertRaisesRegex(GalleryError,'contains_face'):extract_product(product())
 
+    def test_attached_upper_handle_is_preserved_without_reconstruction(self):
+        im=Image.open(io.BytesIO(product())).convert('RGB');d=ImageDraw.Draw(im)
+        d.line((220,270,220,350),fill=(25,20,15),width=14)
+        d.line((480,270,480,350),fill=(25,20,15),width=14)
+        asset,qa=extract_product(png(im))
+        self.assertLess(qa['mask_bbox'][1],200)
+        self.assertGreater(qa['body_bbox'][1],280)
+        self.assertEqual(qa['generated_product_pixels'],0)
+
     def test_busy_background_is_rejected(self):
         im=Image.new('RGB',(700,900),(80,90,100))
         with self.assertRaisesRegex(GalleryError,'nonisolated'):extract_product(png(im))

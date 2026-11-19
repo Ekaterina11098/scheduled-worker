@@ -19,7 +19,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-VERSION = 'gallery-v1.0.0'
+VERSION = 'gallery-v1.0.1'
 BG = (244, 244, 245)
 SIZE = (1086, 1448)
 ROWS = (180, 440, 700, 960, 1220)
@@ -119,6 +119,19 @@ def extract_product(raw):
     symmetry=float(np.logical_and(local,flipped).sum()/max(1,np.logical_or(local,flipped).sum()))
     if symmetry < .66 or (y1-y0)/(x1-x0)>1.65:
         raise GalleryError('gallery_ambiguous_front_view')
+    body_bbox=[x0,y0,x1,y1]
+    # Preserve real attached upper handles, rather than cutting them off with
+    # the loose-strap filter. Restrict recovery to the body's horizontal span;
+    # unrelated objects and long straps beside the body are not included.
+    _, original_labels, _, _=cv2.connectedComponentsWithStats(foreground,8)
+    attached=np.unique(original_labels[mask>0])
+    upper=np.isin(original_labels,attached[attached>0])
+    upper[:max(0,y0-(y1-y0)),:]=False
+    upper[y0:,:]=False
+    upper[:,:x0]=False;upper[:,x1:]=False
+    mask[upper]=255
+    ys,xs=np.where(mask>0)
+    x0,x1,y0,y1=int(xs.min()),int(xs.max()+1),int(ys.min()),int(ys.max()+1)
     alpha = Image.fromarray(mask)
     rgba=image.convert('RGBA')
     rgba.putalpha(alpha)
@@ -126,7 +139,7 @@ def extract_product(raw):
     # Exact source preservation before resizing is independently verifiable.
     active=mask>0
     preserved_hash=sha(rgb[active].tobytes())
-    qa={'source_sha256':sha(raw),'mask_bbox':[x0,y0,x1,y1],
+    qa={'source_sha256':sha(raw),'mask_bbox':[x0,y0,x1,y1],'body_bbox':body_bbox,
         'mask_fill':round(fill,4),'symmetry':round(symmetry,4),
         'perimeter_neutral':round(float(neutral.mean()),4),'dominance':round(dominance,4),
         'face_detections':0,'method':'original_rgb_with_conservative_body_alpha',
