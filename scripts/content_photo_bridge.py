@@ -33,6 +33,8 @@ def stamp():
     return dt.datetime.now(dt.timezone.utc).isoformat()
 
 def valid_request(value):
+    if value.get('operation','source') not in ('source','gallery'):
+        raise Stop('operation_not_supported')
     if value.get('cabinet') != 'china':
         raise Stop('cabinet_not_supported')
     articles, family = value.get('articles') or [], value.get('family')
@@ -129,7 +131,7 @@ class Client:
         return rows[0]['payload'] if rows else None
     def put(self,key,payload):
         if not key.startswith(ROOT):raise Stop('cache_scope')
-        expiry='2030-01-01T00:00:00Z' if key.startswith(ROOT+'artifact:') else (dt.datetime.now(dt.timezone.utc)+dt.timedelta(days=8)).isoformat()
+        expiry='2030-01-01T00:00:00Z' if key.startswith((ROOT+'artifact:',ROOT+'gallery_asset:')) else (dt.datetime.now(dt.timezone.utc)+dt.timedelta(days=8)).isoformat()
         body={'cache_key':key,'payload':payload,'updated_at':stamp(),'expires_at':expiry}
         self.cache({'on_conflict':'cache_key'},'POST',body,'resolution=merge-duplicates,return=representation')
         if self.get(key)!=payload:raise Stop('cache_readback_mismatch')
@@ -189,6 +191,9 @@ class Client:
 
 def export(client,request,ident,cards):
     selected,limit=select_cards(cards,request)
+    if request.get('operation')=='gallery':
+        from content_gallery_pipeline import build_gallery
+        return {**build_gallery(client,request,ident,selected,photo_url),'request':request,'ready_at':stamp(),'observed_at':stamp()}
     files=[];total_bytes=0;archive=io.BytesIO();card_info=[]
     with zipfile.ZipFile(archive,'w',compression=zipfile.ZIP_STORED) as z:
         for card in selected:
@@ -265,7 +270,11 @@ def run():
             client.put(key,result);processed+=1
         except Exception as error:
             from content_photo_drive import DriveError
-            code=str(error) if isinstance(error,(Stop,DriveError)) else type(error).__name__
+            from content_gallery_pipeline import GalleryError,NeedsSourceReview
+            if isinstance(error,NeedsSourceReview):
+                client.put(key,{**request,'status':'needs_source_review','finished_at':stamp(),'issues':error.issues,**getattr(error,'review_result',{}),'wb_writes':0,'run_id':os.environ.get('GITHUB_RUN_ID')})
+                continue
+            code=str(error) if isinstance(error,(Stop,DriveError,GalleryError)) else type(error).__name__
             code=re.sub('[^a-zA-Z0-9_]','',code)[:100]
             client.put(key,{**request,'status':'failed','finished_at':stamp(),'safe_error':code,'run_id':os.environ.get('GITHUB_RUN_ID'),'wb_writes':0})
     client.put(ROOT+'health',{'at':stamp(),'processed':processed,'run_id':os.environ.get('GITHUB_RUN_ID'),'wb_writes':0})
