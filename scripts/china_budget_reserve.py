@@ -24,8 +24,11 @@ def attach_completed_evidence(bundle,source,changes):
  observed=instant(source['observed_at']);today=observed.astimezone(MSK).date()
  end=min(date.fromisoformat(source['period_to']),today-timedelta(days=1))
  days=[str(end-timedelta(days=i)) for i in (2,1,0)]
- out['budget_days']=days;out['budget_observed_at']=source['observed_at']
- out['budget_balance_observed_at_iso']=source.get('budget_balance_observed_at_iso',source['observed_at'])
+ balance_at=source.get('budget_balance_observed_at_iso',source['observed_at'])
+ # Collection start precedes later balance readback; freshness uses the later audit.
+ audit_at=max(observed,instant(balance_at))
+ out['budget_days']=days;out['budget_observed_at']=audit_at.isoformat()
+ out['budget_balance_observed_at_iso']=balance_at
  campaigns={c['id']:c for b in source['batches'].values() for c in b['campaigns']['adverts']}
  # Every inventory campaign gets an audit result, even a draft omitted by the ad table.
  missing=set(source.get('ids',campaigns))-set(campaigns)
@@ -41,7 +44,9 @@ def attach_completed_evidence(bundle,source,changes):
   c['budget_inventory_state']=copy.deepcopy(state)
   from china_campaign_pause_reason import classify
   c['budget_pause_reason']=classify(state,c.get('balance'),source.get('executions',[]),(source.get('budget_previous_states')or{}).get(str(c['id'])),(source.get('budget_previous_causes')or{}).get(str(c['id'])),(source.get('budget_pause_transitions')or{}).get(str(c['id'])))
-  c['budget_started_at']=state.get('timestamps',{}).get('started')
+  from china_advertising_decision_contract import effective_launch_at
+  effective_started=effective_launch_at(source,state)
+  c['budget_started_at']=effective_started
   complete=bool(raw is not None and source.get('period_from','9999')<=days[0] and source['period_to']>=days[-1])
   daily={d['date'][:10]:d for d in (raw or {}).get('days',[])}
   c['budget_period']=None;c['budget_days']=days;c['budget_members']=[]
@@ -60,7 +65,7 @@ def attach_completed_evidence(bundle,source,changes):
    # Price and bid changes in any campaign of the same SKU matter; membership changes only here.
    events=[x for x in events if x.get('kind') in ('price','bid') or x.get('cid')==c['id']]
    ats=[x['at'] for x in events]
-   if state.get('timestamps',{}).get('started'):ats.append(state['timestamps']['started'])
+   if effective_started:ats.append(effective_started)
    latest=max((instant(t) for t in ats),default=None)
    evidence=copy.deepcopy(econ.get('rows',{}).get(str(nm)) or {})
    evidence.setdefault('observed_at',econ.get('observed_at'))
