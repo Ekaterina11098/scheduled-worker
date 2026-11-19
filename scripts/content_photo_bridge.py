@@ -15,6 +15,7 @@ import uuid
 import zipfile
 import requests
 from PIL import Image
+from content_photo_drive import Delivery as DriveDelivery
 
 PROJECT = 'abxgjoqlddhtcmjcjwxw'
 ROOT = 'content_photo_bridge:v1:'
@@ -159,6 +160,12 @@ class Client:
         value=json.loads(raw)['signedURL']
         if not value.startswith('/object/sign/'+BUCKET+'/'):raise Stop('unexpected_signed_path')
         return self.base+'/storage/v1'+value
+    def drive_upload(self,ident,raw):
+        credentials=json.loads(self.call(self.base+'/rest/v1/rpc/content_photo_drive_credentials','POST',{}))
+        def transport(method,url,**kwargs):
+            try:return requests.request(method,url,**kwargs)
+            except requests.exceptions.RequestException:raise ConnectionError('drive_transport') from None
+        return DriveDelivery(credentials,transport).upload(ident,raw)
     def reserve_archive(self,ident,path,size,images=None):
         rows=self.cache({'cache_key':'like.'+ROOT+'artifact:*','payload->>status':'neq.deleted','select':'cache_key,payload','limit':1000})
         if len(rows)>=1000:raise Stop('artifact_inventory_limit')
@@ -204,6 +211,14 @@ def export(client,request,ident,cards):
         z.writestr('README.txt','Real WB source images. Use MANIFEST.json to map nmID folders to vendorCode. Select front view visually; never invent a missing angle, color or texture. No WB data changed.')
     raw=archive.getvalue()
     if len(raw)>MAX_BYTES+2_000_000:raise Stop('archive_size_limit')
+    policy=client.get(ROOT+'policy') if hasattr(client,'get') else {}
+    if policy and policy.get('delivery')=='google_drive':
+        delivered=client.drive_upload(ident,raw)
+        return {'status':'ready','request_id':ident,'cabinet':'china','observed_at':manifest['observed_at'],
+                'ready_at':stamp(),'card_count':len(card_info),'photo_count':len(files),
+                'drive':delivered,'archive_bytes':len(raw),'archive_sha256':hashlib.sha256(raw).hexdigest(),
+                'cards':[{'article':c['article'],'nmID':c['nmID'],'photos':len(c['photos']),'total_photos':c['total_photos']} for c in card_info],
+                'request':request,'wb_writes':0,'paid_calls':0,'run_id':os.environ.get('GITHUB_RUN_ID')}
     path=STORAGE_ROOT+'requests/'+ident+'/sources.zip'
     image_paths=[STORAGE_ROOT+'requests/'+ident+'/'+f['file'] for f in files]
     client.reserve_archive(ident,path,len(raw)+total_bytes,image_paths)
@@ -249,7 +264,8 @@ def run():
             result=export(client,request,ident,cards)
             client.put(key,result);processed+=1
         except Exception as error:
-            code=str(error) if isinstance(error,Stop) else type(error).__name__
+            from content_photo_drive import DriveError
+            code=str(error) if isinstance(error,(Stop,DriveError)) else type(error).__name__
             code=re.sub('[^a-zA-Z0-9_]','',code)[:100]
             client.put(key,{**request,'status':'failed','finished_at':stamp(),'safe_error':code,'run_id':os.environ.get('GITHUB_RUN_ID'),'wb_writes':0})
     client.put(ROOT+'health',{'at':stamp(),'processed':processed,'run_id':os.environ.get('GITHUB_RUN_ID'),'wb_writes':0})

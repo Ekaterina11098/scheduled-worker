@@ -73,5 +73,14 @@ class Tests(unittest.TestCase):
         c.reserve_archive=reject
         with self.assertRaisesRegex(m.Stop,'budget'):m.export(c,self.req,'id',[card()])
         self.assertIsNone(c.upload)
+    def test_drive_route_returns_verified_archive_without_storage_links(self):
+        c=Fake();c.get=lambda key:{'delivery':'google_drive'}
+        captured=[]
+        c.drive_upload=lambda ident,raw:captured.append(raw) or {'file_id':'fixtureFile123','server_verified':True}
+        r=m.export(c,self.req,'00000000-0000-4000-8000-000000000000',[card()])
+        self.assertEqual(r['status'],'ready');self.assertTrue(r['drive']['server_verified'])
+        self.assertIsNone(c.upload);self.assertNotIn('archive_url',r)
+        with zipfile.ZipFile(io.BytesIO(captured[0])) as z:
+            self.assertEqual(z.read('123/01.webp'),c.photo)
 
 if __name__=='__main__':unittest.main()

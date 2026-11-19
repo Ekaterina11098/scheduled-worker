@@ -17,13 +17,15 @@ jobs:
           sparse-checkout: |
             scripts/content_photo_bridge.py
             scripts/test_content_photo_bridge.py
+            scripts/content_photo_drive.py
+            scripts/test_content_photo_drive.py
           sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: pip install Pillow==11.3.0 requests==2.32.5
       - name: Validate read-only export safeguards
-        run: python -m unittest discover -s scripts -p test_content_photo_bridge.py
+        run: python -m unittest discover -s scripts -p 'test_content_photo_*.py'
       - name: Deliver requested source photos to private storage
         env:
           WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
