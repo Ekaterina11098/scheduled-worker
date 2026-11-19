@@ -23,6 +23,28 @@ def effective_launch_at(source,state):
         and before.get('settings',{}).get('placements')==after.get('settings',{}).get('placements')and a and b):candidates.append((a,b))
    for k in('items','groups','campaigns','payload'):walk(x.get(k))
  for rec in source.get('executions',[]):walk(rec)
+ # WB started is also refreshed by a cash/status resume. An unchanged exact
+ # inventory retains its proved original draft-to-active launch; SKU changes
+ # still have independent verified timestamps in changed_day().
+ anchors=[]
+ def launch(x):
+  if isinstance(x,list):
+   for z in x:launch(z)
+  elif isinstance(x,dict):
+   before=x.get('before')or{};after=x.get('after')or{}
+   if (x.get('status')=='verified'and not x.get('selected_test')
+       and before.get('id')==after.get('id')==state['id']
+       and before.get('status')==4 and before.get('timestamps',{}).get('started')is None
+       and after.get('status')==9 and after.get('timestamps',{}).get('started')
+       and before.get('currency')==after.get('currency')==state.get('currency')=='CNY'
+       and bids(before)==bids(after)==bids(state)
+       and after.get('settings',{}).get('placements')==state.get('settings',{}).get('placements')):
+    anchors.append(after['timestamps']['started'])
+   for k in('items','groups','campaigns','payload'):launch(x.get(k))
+ for rec in source.get('executions',[]):launch(rec)
+ if anchors:
+  earliest=min(anchors,key=instant)
+  if instant(earliest)<instant(current):current=earliest
  for _ in range(len(candidates)+1):
   earlier=[b for a,b in candidates if instant(a)==instant(current)and instant(b)<instant(current)]
   if not earlier:break
