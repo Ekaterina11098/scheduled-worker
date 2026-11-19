@@ -93,6 +93,8 @@ def comparable_action(action):
  value=copy.deepcopy(action)
  if isinstance(value,dict) and isinstance(value.get('growth_evidence'),dict):
   value['growth_evidence'].pop('observed_at',None)
+  if value.get('kind')=='ad_set_bid'and value.get('direction')=='raise'and value['growth_evidence'].get('budget_policy_revision')=='owner-20261119-reserve-advisory':
+   value['growth_evidence'].pop('budget_forecast',None)
  return value
 def finalize(io,bundle,source,minima):
  """Shared entry point for morning, midday and a cached analyst preview; no API calls."""
@@ -114,6 +116,8 @@ def finalize(io,bundle,source,minima):
    # Timestamp refresh alone must not create a new economic decision identity.
    e=r.get('economics',{})
    facts=dict(cid=cp['id'],nm=r['nm'],window=window,cumulative=r.get('completed_exposure_guard'),status=cp.get('status'),blocker=r.get('data_blocker'),pending=r.get('pending_first_day'),current_bid=r.get('current_bid_minor'),minimum=r.get('minimum_bid_minor'),economics={k:e.get(k)for k in ('seller_price_cny','stock_free','published_stock','own_cogs_rub','buyout','sample_size','logistics_cny','commission_pct','expected_margin_before_ads_cny')})
+   policy=((r.get('action')or{}).get('growth_evidence')or{}).get('budget_policy_revision')
+   if policy:facts['growth_budget_policy_revision']=policy
    hh=hashlib.sha256(json.dumps(facts,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
    row=dict(campaign_id=cp['id'],nm_id=r['nm'],article=r['article'],facts_sha256=hh,decision=r.get('decision'),action=r.get('action'),decision_window=window,reason=r.get('reason'))
    key=str(cp['id'])+':'+str(r['nm'])
