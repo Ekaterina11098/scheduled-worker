@@ -20,12 +20,13 @@ with runtime_db() as lock:
    def save():
     with s.transaction():s.sql('UPDATE stock_runs SET snapshot=? WHERE id=?',(canonical(data),ROOT))
    data.update(status='reading',started_at=time.time(),stock_writes=0);save()
-   shared=SharedRequests(s);g.STOCK_REQUEST_GATE=shared;g.STOCK_SHARED_ORDERS=shared
+   shared=SharedRequests(s,budget=lambda:g.check_run_budget());g.STOCK_REQUEST_GATE=shared;g.STOCK_SHARED_ORDERS=shared
    g._CACHE_GET=lambda k:shared.get(k);g._CACHE_SET=lambda k,v,ttl:shared.put(k,v,ttl)
    g.check_run_budget=lambda:None;g.STOCK_FURCOAT_ENABLED=True;install(g)
    original=g.api
    def readonly(method,*args,**kw):
     if method.upper() in ('PUT','PATCH','DELETE'):raise Stopped('Read-only proposal cannot write business data')
+    g.check_run_budget()
     return original(method,*args,**kw)
    g.api=readonly
    os.environ['STOCK_STORAGE_PROOF_FILE']=os.path.join(os.environ['RUNNER_TEMP'],'owner-preview-proof.json')
@@ -33,7 +34,12 @@ with runtime_db() as lock:
    def hw(v):data['storage_probe']=v;save()
    def hr():
     r=json.loads(s.sql('SELECT snapshot FROM stock_runs WHERE id=?',(ROOT,)).fetchone()[0]);db.commit();return r['storage_probe']
-   verify_runtime_storage(hw,hr,{'scope':ROOT,'nonce':os.urandom(16).hex()})
+   probe={'scope':ROOT,'nonce':os.urandom(16).hex()}
+   verify_runtime_storage(hw,hr,probe);last_probe=[time.monotonic()]
+   def budget():
+    if time.monotonic()-last_probe[0]>=120:
+     verify_runtime_storage(hw,hr,probe);last_probe[0]=time.monotonic()
+   g.check_run_budget=budget
    try:
     preflight(g,shared)
     data['phase']='fresh_all_cabinet_capture';save()
