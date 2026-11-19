@@ -1,4 +1,4 @@
-name: One-off corrected WB SKU 159 update
+name: One-off MS SKU 159 rename
 on:
   push:
     branches: [main]
@@ -8,56 +8,63 @@ permissions:
 jobs:
   update:
     if: >-
-      github.event.head_commit.message == 'execute: WB 159 correct allowed color 20261119'
+      github.event.head_commit.message == 'execute: MS 159 rename darkchocolate 20261119'
     runs-on: ubuntu-latest
     timeout-minutes: 6
     env:
+      MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
       WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
     steps:
-      - name: Update specific WB card with allowed existing color values
+      - name: Update one MS product and verify without stock changes
         shell: python
         run: |
-          import os,json,gzip,urllib.request,urllib.error,time,sys
-          OLD="159-CelineaBag-coffee"
-          NEW="159-CelineaBag-darkchocolate"
-          NMID=2129309883
-          SKU="2060750499316"
-          URL="https://content-api.wildberries.cn"
-          TOKEN=os.environ["WB_TOKEN_3"]
-          def request(path,data):
-           req=urllib.request.Request(URL+path,data=json.dumps(data,ensure_ascii=False).encode("utf-8"),method="POST",headers={"Authorization":TOKEN,"Content-Type":"application/json","Accept-Encoding":"gzip"})
+          import os,json,gzip,urllib.request,urllib.error,urllib.parse,sys
+          OLD="159-CelineaBag-coffee";NEW="159-CelineaBag-darkchocolate";UUID="a1328762-d853-11f1-0a80-0bf30074b0af"
+          B1="2000000011875";B2="2060750499316";CODE="159с";NAME="Сумка кожа 159 Celinea горький шоколад"
+          MS="https://api.moysklad.ru/api/remap/1.2/"
+          T=os.environ["MOYSKLAD_API_TOKEN"]
+          def ms(url,method="GET",payload=None):
+           req=urllib.request.Request(url,method=method,data=json.dumps(payload,ensure_ascii=False).encode() if payload is not None else None,headers={"Authorization":"Bearer "+T,"Accept":"application/json;charset=utf-8","Accept-Encoding":"gzip","Content-Type":"application/json"})
            with urllib.request.urlopen(req,timeout=30) as resp:
-            raw=resp.read()
+            raw=resp.read(1000000)
             if resp.headers.get("Content-Encoding")=="gzip":raw=gzip.decompress(raw)
             return json.loads(raw)
-          def cards(s):
-           x=request("/content/v2/get/cards/list",{"settings":{"filter":{"withPhoto":-1,"textSearch":s},"cursor":{"limit":100}}})
-           return [c for c in x.get("cards",[]) if c.get("vendorCode")==s]
-          old=cards(OLD)
-          new=cards(NEW)
-          if len(new)==1 and new[0].get("nmID")==NMID:
-           print("ALREADY_UPDATED");sys.exit(0)
-          if len(old)!=1 or old[0].get("nmID")!=NMID or len(new):print("PRECHECK_MISMATCH");sys.exit(2)
-          card=old[0]
-          if len(card.get("sizes",[]))!=1 or card["sizes"][0].get("skus")!=[SKU]:print("BARCODE_MISMATCH");sys.exit(2)
-          allowed={"brand","characteristics","description","dimensions","documents","kizMarked","nmID","sizes","subjectID","title","vendorCode"}
-          omit={"createdAt","imtID","needKiz","nmUUID","photos","subjectName","tags","updatedAt"}
-          if set(card)-allowed-omit:print("UNKNOWN_SOURCE_KEYS");sys.exit(2)
-          body={k:card[k] for k in allowed if k in card}
-          body["vendorCode"]=NEW
-          body["dimensions"]={k:v for k,v in card["dimensions"].items() if k in ("length","height","width","weightBrutto")}
-          color=[x for x in body["characteristics"] if x.get("id")==14177449]
-          if len(color)!=1 or "кофейный" not in color[0].get("value",[]) or "темно-коричневый" not in color[0].get("value",[]):print("UNEXPECTED_COLOR");sys.exit(2)
-          color[0]["value"]=[x for x in color[0]["value"] if x!="кофейный"]
-          print("PRECHECK_OK","nmID",NMID,"barcode",SKU,"allowed_colors",color[0]["value"])
-          resp=request("/content/v2/cards/update",[body])
-          print("UPDATE_ACCEPTED",resp.get("error") is False,"errorText",str(resp.get("errorText"))[:180])
-          if resp.get("error") is not False:sys.exit(3)
-          for i in range(12):
-           time.sleep(10)
-           found=cards(NEW)
-           if len(found)==1 and found[0].get("nmID")==NMID and found[0].get("sizes",[])[0].get("skus")==[SKU]:
-            colors=[x.get("value") for x in found[0].get("characteristics",[]) if x.get("id")==14177449]
-            print("READBACK_CONFIRMED",NEW,NMID,SKU,colors);sys.exit(0)
-          print("READBACK_PENDING");sys.exit(4)
+          def full(id):return ms(MS+"entity/product/"+id)
+          def find(article):
+           u=MS+"entity/product?"+urllib.parse.urlencode({"filter":"article="+article,"limit":30})
+           return [r for r in ms(u).get("rows",[]) if r.get("article")==article]
+          def barcodes(x):return {(k,v) for z in x.get("barcodes",[]) for k,v in z.items()}
+          def wb_valid():
+           import urllib.request
+           body=json.dumps({"settings":{"filter":{"withPhoto":-1,"textSearch":NEW},"cursor":{"limit":100}}}).encode()
+           req=urllib.request.Request("https://content-api.wildberries.cn/content/v2/get/cards/list",data=body,method="POST",headers={"Authorization":os.environ["WB_TOKEN_3"],"Content-Type":"application/json","Accept-Encoding":"gzip"})
+           with urllib.request.urlopen(req,timeout=30) as resp:
+            raw=resp.read(2000000)
+            if resp.headers.get("Content-Encoding")=="gzip":raw=gzip.decompress(raw)
+            cc=json.loads(raw).get("cards",[])
+           matches=[c for c in cc if c.get("nmID")==2129309883 and c.get("vendorCode")==NEW]
+           return len(matches)==1 and any(B2 in s.get("skus",[]) for s in matches[0].get("sizes",[]))
+          if not wb_valid():print("PRECHECK_FAIL: WB not confirmed");sys.exit(2)
+          if find(NEW):print("PRECHECK_FAIL: new MS article occupied");sys.exit(2)
+          old=find(OLD)
+          if len(old)!=1 or old[0].get("id")!=UUID:print("PRECHECK_FAIL: source MS mismatch");sys.exit(2)
+          p=full(UUID)
+          if p.get("article")!=OLD or p.get("code")!=CODE or ("ean13",B1) not in barcodes(p) or ("code128",B2) not in barcodes(p):print("PRECHECK_FAIL: product or barcodes drifted");sys.exit(2)
+          colors=[a for a in p.get("attributes",[]) if a.get("name")=="Цвет"]
+          if len(colors)!=1 or colors[0].get("value") not in ["coffee","кофейный"]:print("PRECHECK_FAIL: unexpected original color");sys.exit(2)
+          attr=colors[0]
+          if not attr.get("meta",{}).get("href"):print("PRECHECK_FAIL: attribute metadata missing");sys.exit(2)
+          payload={"article":NEW,"name":NAME,"attributes":[{"meta":attr["meta"],"value":"горький шоколад"}]}
+          print("PRECHECK_OK: exact MS product; preserves code, EAN13 and WB barcode")
+          try:
+           updated=ms(MS+"entity/product/"+UUID,method="PUT",payload=payload)
+           print("MS_UPDATE_RESPONSE","id_correct",updated.get("id")==UUID,"article",updated.get("article"))
+          except urllib.error.HTTPError as e:
+           print("MS_UPDATE_HTTP",e.code,"body suppressed");sys.exit(3)
+          after=full(UUID)
+          colors_after=[a.get("value") for a in after.get("attributes",[]) if a.get("name")=="Цвет"]
+          if after.get("article")==NEW and after.get("name")==NAME and colors_after==["горький шоколад"] and after.get("code")==CODE and barcodes(after)==barcodes(p):
+           print("READBACK_CONFIRMED","article",NEW,"name",NAME,"color",colors_after[0],"code",CODE,"barcodes_unchanged",True)
+           sys.exit(0)
+          print("READBACK_MISMATCH","article",after.get("article"),"color",colors_after,"code",after.get("code"),"barcodes_unchanged",barcodes(after)==barcodes(p));sys.exit(4)
           
