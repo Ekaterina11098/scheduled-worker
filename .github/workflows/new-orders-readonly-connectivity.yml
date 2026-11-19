@@ -1,71 +1,57 @@
-name: New orders - MoySklad read-only connectivity
-
+name: One-off SKU 159 read-only preflight
 on:
   push:
     branches: [main]
-    paths:
-      - .github/workflows/new-orders-readonly-connectivity.yml
-
+    paths: ['.github/workflows/new-orders-readonly-connectivity.yml']
 permissions:
   contents: read
-
-concurrency:
-  group: new-orders-readonly-connectivity
-  cancel-in-progress: false
-
 jobs:
-  verify:
-    if: >-
-      github.run_attempt == 1 &&
-      github.event.head_commit.message == 'diagnostic: one-time MoySklad gzip read check 2026-11-16'
-    name: Verify MoySklad read only
+  inspect:
+    if: github.event.head_commit.message == 'diagnostic: inspect 159 rename 20261119'
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 8
     env:
+      WB_TOKEN_1: ${{ secrets.WB_TOKEN_1 }}
+      WB_TOKEN_2: ${{ secrets.WB_TOKEN_2 }}
+      WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
       MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
     steps:
-      - name: Read one MoySklad product
-        shell: bash
+      - name: Read exact articles only
+        shell: python
         run: |
-          python3 - <<'PY'
-          import gzip
-          import json
-          import os
-          import sys
-          import urllib.error
-          import urllib.request
-
-          token = os.environ.get("MOYSKLAD_API_TOKEN", "")
-          if not token:
-              print("MOYSKLAD: NOT_CHECKED (secret missing)")
-              sys.exit(1)
-          request = urllib.request.Request(
-              "https://api.moysklad.ru/api/remap/1.2/entity/product?limit=1",
-              method="GET",
-              headers={
-                  "Authorization": "Bearer " + token,
-                  "Accept": "application/json;charset=utf-8",
-                  "Accept-Encoding": "gzip",
-              },
-          )
-          try:
-              with urllib.request.urlopen(request, timeout=25) as response:
-                  if response.status != 200:
-                      print(f"MOYSKLAD: HTTP {response.status}")
-                      sys.exit(1)
-                  raw = response.read(1048576)
-                  if response.headers.get("Content-Encoding", "").lower() == "gzip":
-                      raw = gzip.decompress(raw)
-                  payload = json.loads(raw)
-                  rows = payload.get("rows") if isinstance(payload, dict) else None
-                  if not isinstance(rows, list):
-                      print("MOYSKLAD: HTTP 200, unexpected JSON structure")
-                      sys.exit(1)
-                  print(f"MOYSKLAD: HTTP 200, records={len(rows)}, read_only=verified")
-          except urllib.error.HTTPError as error:
-              print(f"MOYSKLAD: HTTP {error.code} (body suppressed)")
-              sys.exit(1)
-          except Exception as error:
-              print(f"MOYSKLAD: {type(error).__name__} (details suppressed)")
-              sys.exit(1)
-          PY
+          import os,json,gzip,urllib.parse,urllib.request,urllib.error
+          OLD="159-CelineaBag-coffee"; NEW="159-CelineaBag-darkchocolate"; OTHER="364-CelineaBag-coffee"
+          def get(url,token,body=None,ms=False):
+              headers={"Authorization":("Bearer "+token) if ms else token,"Accept":"application/json;charset=utf-8","Accept-Encoding":"gzip"}
+              if body is not None:headers["Content-Type"]="application/json"
+              req=urllib.request.Request(url,data=json.dumps(body).encode() if body is not None else None,headers=headers,method="POST" if body is not None else "GET")
+              with urllib.request.urlopen(req,timeout=35) as resp:
+                  raw=resp.read(1200000)
+                  if resp.headers.get("Content-Encoding","").lower()=="gzip":raw=gzip.decompress(raw)
+                  return json.loads(raw)
+          def wb(key,host):
+              token=os.environ.get(key,"")
+              if not token:print(key+": SECRET_MISSING");return
+              url="https://content-api.wildberries."+host+"/content/v2/get/cards/list"
+              for article in [OLD,NEW,OTHER]:
+                  try:
+                      data=get(url,token,{"settings":{"cursor":{"limit":100},"filter":{"withPhoto":-1,"textSearch":article}}})
+                      matches=[c for c in data.get("cards",[]) if c.get("vendorCode")==article]
+                      print(key,article,"exact_count",len(matches))
+                      for c in matches[:2]:
+                          print("CARD",key,"nmID",c.get("nmID"),"vendorCode",c.get("vendorCode"),"sizes",[(s.get("chrtID"),s.get("skus")) for s in c.get("sizes",[])],"title",c.get("title"),"subjectID",c.get("subjectID"))
+                  except Exception as e:print(key,article,"ERROR",type(e).__name__,getattr(e,"code",""))
+          for key,host in [("WB_TOKEN_1","ru"),("WB_TOKEN_2","ru"),("WB_TOKEN_3","cn")]:wb(key,host)
+          token=os.environ.get("MOYSKLAD_API_TOKEN","")
+          if not token:print("MS SECRET_MISSING")
+          else:
+              for article in [OLD,NEW,OTHER]:
+                  try:
+                      url="https://api.moysklad.ru/api/remap/1.2/entity/product?"+urllib.parse.urlencode({"filter":"article="+article,"limit":"10"})
+                      d=get(url,token,ms=True)
+                      rows=[x for x in d.get("rows",[]) if x.get("article")==article]
+                      print("MS",article,"count",len(rows))
+                      for x in rows[:2]:
+                          print("PRODUCT","id",x.get("id"),"article",x.get("article"),"name",x.get("name"),"code",x.get("code"),"barcodes",x.get("barcodes"),"attributes",[(a.get("name"),a.get("value")) for a in x.get("attributes",[]) if a.get("name") in ("Цвет","ВендорКод","Категория товара")])
+                  except Exception as e:print("MS",article,"ERROR",type(e).__name__,getattr(e,"code",""))
+          
