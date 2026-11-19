@@ -163,3 +163,5 @@ jobs:
 # Scoped recovery: validate each new campaign from its actual launch date.
 
 # Verify completed-day duplicate guard before the next scheduled preparation.
+
+# Guard future-created campaign backfill before completed-day report delivery.
