@@ -220,8 +220,8 @@ def owner_launch_day_view(bundle):
  return dict(bundle,campaigns=kept,owner_launch_day_hidden_campaign_ids=sorted(hidden))
 
 def render(bundle):
- validate_mandatory_format(bundle)
  bundle=owner_launch_day_view(bundle)
+ validate_mandatory_format(bundle)
  if bundle.get('recommendation_directions'):
   from china_advertising_directions import campaign_table
   files=_render_legacy(campaign_table(bundle))
