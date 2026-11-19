@@ -1,0 +1,86 @@
+name: Owner morning19 conflict audit only
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-morning19-conflict-audit.yml]
+permissions: {contents: read}
+concurrency:
+  group: bot-mpstats-data
+  cancel-in-progress: false
+jobs:
+  audit:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[morning19-conflict] Audit without delivery or WB writes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/
+            /.github/
+            /*request*.json
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: a7efd98c6ef7e54f415471abcb694c748c2b4f6d
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          path: source
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /analytics/
+            /business_agents/
+            /advertising_agent/
+            /china_agent/
+            /tests/
+            /*.py
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5 pillow==11.3.0 python-dotenv simplejson==4.2.0 openai==3.42.1
+      - name: Audit conflicting decisions without delivery
+        env:
+          PYTHONPATH: scripts:source
+          OPENAI_API_KEY: "" # Owner: no paid model API
+          MPSTATS_API_TOKEN: ${{ secrets.MPSTATS_API_TOKEN }}
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          CHINA_TELEGRAM_BOT_TOKEN: ${{ secrets.CHINA_TELEGRAM_BOT_TOKEN }}
+        shell: python
+        run: |
+          import os,json,copy
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          from china_advertising_state import AdvertisingIO
+          import china_advertising_decision_contract as contract
+          import china_advertising_v2 as ad
+          io=AdvertisingIO();day=datetime.now(ZoneInfo('Europe/Moscow')).date().isoformat()
+          original=contract.finalize
+          def audit(real,bundle,source,minima):
+           captured={}
+           class Shadow:
+            def get(self,k):return None
+            def create(self,k,v):captured[k]=copy.deepcopy(v);return True
+            def put(self,k,v):captured[k]=copy.deepcopy(v)
+           result=original(Shadow(),bundle,source,minima)
+           conflicts=[]
+           for k,new in captured.items():
+            prior=real.get(k)or{}
+            for rowkey,row in new.items():
+             old=prior.get(rowkey)
+             if old and old.get('facts_sha256')==row['facts_sha256'] and(old.get('action')!=row['action']or old.get('decision')!=row['decision']):
+              cp=next(c for c in result['campaigns']if c['id']==row['campaign_id'])
+              focus=next(r for r in cp['focus']if r['nm']==row['nm_id'])
+              conflicts.append(dict(key=rowkey,old=old,new=row,current_focus=focus,source_economics=source.get('economics',{}).get('rows',{}).get(str(row['nm_id']))))
+           io.put('china_agent:morning_conflict_audit:'+day+':v1',dict(status='audited',conflicts=conflicts,wb_writes=0,telegram_calls=0,observed_at=datetime.now(ZoneInfo('UTC')).isoformat()))
+           print(json.dumps(dict(status='audited',conflicts=len(conflicts))))
+           raise SystemExit(0)
+          contract.finalize=audit
+          ad.prepare(io,day)
+          
