@@ -88,7 +88,9 @@ def attach(bundle,source,changes):
  data=source.get('full_growth_inputs')or{};own=data.get('own')or{}
  for c in out['campaigns']:
   if c['id']in states:
-   c['campaign_budget_economics']=assess_campaign(states[c['id']],stats.get(c['id']),source.get('economics',{}),own,changes,out['budget_days'],source['observed_at'],funding_reference_days=(source.get('owner_launch_day_funding_refs')or{}).get(str(c['id'])))
+   from china_advertising_decision_contract import effective_launch_at
+   model_state=copy.deepcopy(states[c['id']]);model_state.setdefault('timestamps',{})['started']=effective_launch_at(source,states[c['id']])
+   c['campaign_budget_economics']=assess_campaign(model_state,stats.get(c['id']),source.get('economics',{}),own,changes,out['budget_days'],out.get('budget_observed_at',source['observed_at']),funding_reference_days=(source.get('owner_launch_day_funding_refs')or{}).get(str(c['id'])))
    e=c['campaign_budget_economics'];e['expected_bids']={str(n['nm_id']):n['bids_kopecks']for n in states[c['id']]['nm_settings']}
    models=source.get('economics',{}).get('rows',{});labels={int(r['nmID']):r['vendorCode']for r in source['catalogue']['rows']}
    price_rows={int(r['nm_id']):r for r in data.get('prices',{}).get('rows',[])};stock_rows={r['article'].casefold():r for r in data.get('stock',{}).get('rows',[])}
