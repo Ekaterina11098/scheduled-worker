@@ -1,4 +1,4 @@
-name: SKU 159 errors read
+name: One-off corrected WB SKU 159 update
 on:
   push:
     branches: [main]
@@ -6,30 +6,58 @@ on:
 permissions:
   contents: read
 jobs:
-  read:
+  update:
     if: >-
-      github.event.head_commit.message == 'diagnostic: 159 WB error details 20261119'
+      github.event.head_commit.message == 'execute: WB 159 correct allowed color 20261119'
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 6
     env:
       WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
     steps:
-      - name: Read WB card processing errors
+      - name: Update specific WB card with allowed existing color values
         shell: python
         run: |
-          import os,json,gzip,urllib.request,urllib.error
-          req=urllib.request.Request("https://content-api.wildberries.cn/content/v2/cards/error/list",headers={"Authorization":os.environ["WB_TOKEN_3"],"Content-Type":"application/json","Accept-Encoding":"gzip"},data=json.dumps({"cursor":{"limit":100},"order":{"ascending":False}}).encode(),method="POST")
-          with urllib.request.urlopen(req,timeout=25) as x:
-           raw=x.read()
-           if x.headers.get("Content-Encoding")=="gzip":raw=gzip.decompress(raw)
-           d=json.loads(raw)
-          v=d.get("data")
-          print("DATA_TYPE",type(v).__name__,"DATA_KEYS",sorted(v) if isinstance(v,dict) else "")
-          if isinstance(v,dict):
-           for k,items in v.items():
-            print("KEY",k,"TYPE",type(items).__name__,"COUNT",len(items) if hasattr(items,"__len__") else "")
-            txt=json.dumps(items,ensure_ascii=False)
-            if "159-CelineaBag" in txt or "2129309883" in txt:
-             print("TARGET_CONTEXT",k,txt[:2200])
-          print("RESP_ERROR",d.get("error"),str(d.get("errorText"))[:120])
+          import os,json,gzip,urllib.request,urllib.error,time,sys
+          OLD="159-CelineaBag-coffee"
+          NEW="159-CelineaBag-darkchocolate"
+          NMID=2129309883
+          SKU="2060750499316"
+          URL="https://content-api.wildberries.cn"
+          TOKEN=os.environ["WB_TOKEN_3"]
+          def request(path,data):
+           req=urllib.request.Request(URL+path,data=json.dumps(data,ensure_ascii=False).encode("utf-8"),method="POST",headers={"Authorization":TOKEN,"Content-Type":"application/json","Accept-Encoding":"gzip"})
+           with urllib.request.urlopen(req,timeout=30) as resp:
+            raw=resp.read()
+            if resp.headers.get("Content-Encoding")=="gzip":raw=gzip.decompress(raw)
+            return json.loads(raw)
+          def cards(s):
+           x=request("/content/v2/get/cards/list",{"settings":{"filter":{"withPhoto":-1,"textSearch":s},"cursor":{"limit":100}}})
+           return [c for c in x.get("cards",[]) if c.get("vendorCode")==s]
+          old=cards(OLD)
+          new=cards(NEW)
+          if len(new)==1 and new[0].get("nmID")==NMID:
+           print("ALREADY_UPDATED");sys.exit(0)
+          if len(old)!=1 or old[0].get("nmID")!=NMID or len(new):print("PRECHECK_MISMATCH");sys.exit(2)
+          card=old[0]
+          if len(card.get("sizes",[]))!=1 or card["sizes"][0].get("skus")!=[SKU]:print("BARCODE_MISMATCH");sys.exit(2)
+          allowed={"brand","characteristics","description","dimensions","documents","kizMarked","nmID","sizes","subjectID","title","vendorCode"}
+          omit={"createdAt","imtID","needKiz","nmUUID","photos","subjectName","tags","updatedAt"}
+          if set(card)-allowed-omit:print("UNKNOWN_SOURCE_KEYS");sys.exit(2)
+          body={k:card[k] for k in allowed if k in card}
+          body["vendorCode"]=NEW
+          body["dimensions"]={k:v for k,v in card["dimensions"].items() if k in ("length","height","width","weightBrutto")}
+          color=[x for x in body["characteristics"] if x.get("id")==14177449]
+          if len(color)!=1 or "кофейный" not in color[0].get("value",[]) or "темно-коричневый" not in color[0].get("value",[]):print("UNEXPECTED_COLOR");sys.exit(2)
+          color[0]["value"]=[x for x in color[0]["value"] if x!="кофейный"]
+          print("PRECHECK_OK","nmID",NMID,"barcode",SKU,"allowed_colors",color[0]["value"])
+          resp=request("/content/v2/cards/update",[body])
+          print("UPDATE_ACCEPTED",resp.get("error") is False,"errorText",str(resp.get("errorText"))[:180])
+          if resp.get("error") is not False:sys.exit(3)
+          for i in range(12):
+           time.sleep(10)
+           found=cards(NEW)
+           if len(found)==1 and found[0].get("nmID")==NMID and found[0].get("sizes",[])[0].get("skus")==[SKU]:
+            colors=[x.get("value") for x in found[0].get("characteristics",[]) if x.get("id")==14177449]
+            print("READBACK_CONFIRMED",NEW,NMID,SKU,colors);sys.exit(0)
+          print("READBACK_PENDING");sys.exit(4)
           
