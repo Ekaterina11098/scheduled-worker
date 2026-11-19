@@ -241,8 +241,15 @@ def proposed_actions(s):
   nm=a['nm_id'];cid=a['campaign_id'];e=a['growth_evidence']
   if nm in seen:continue
   increase=e['metrics']['clicks']/len(e['decision_days'])*3*(a['target_minor']-a['old_minor'])/100
-  if balances.get(cid,-1)<campaign_spend.get(cid,1e99)+extra.get(cid,0)+increase:
-   unready.append(dict(nm_id=nm,campaign_id=cid,reason='Insufficient three-day reserve for proposed increase'));continue
+  required=campaign_spend.get(cid,0)+extra.get(cid,0)+increase
+  balance=balances.get(cid)
+  known=finite_number(balance)and balance>=0
+  # Owner19Nov: three-day cash coverage is advisory, never a growth-selection veto.
+  # Keep actual economics, stock, minima and change-day checks above unchanged.
+  a['growth_evidence'].update(budget_policy_revision='owner-20261119-reserve-advisory',
+   budget_forecast=dict(balance_cny=balance if known else None,required_cny=required,
+    shortfall_cny=max(0,required-balance)if known else None,
+    forecast_only=True,grants_funding_permission=False))
   extra[cid]=extra.get(cid,0)+increase;seen.add(nm);result.append(a)
  return result,unready
 def addition_actions(s,raises):
