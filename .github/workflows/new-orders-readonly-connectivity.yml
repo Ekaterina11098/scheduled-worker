@@ -1,4 +1,4 @@
-name: One-off SKU 159 read-only preflight
+name: One-off SKU 159 schema read
 on:
   push:
     branches: [main]
@@ -8,51 +8,29 @@ permissions:
 jobs:
   inspect:
     if: >-
-      github.event.head_commit.message == 'diagnostic: inspect 159 rename 20261119'
+      github.event.head_commit.message == 'diagnostic: 159 WB schema 20261119'
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 5
     env:
-      WB_TOKEN_1: ${{ secrets.WB_TOKEN_1 }}
-      WB_TOKEN_2: ${{ secrets.WB_TOKEN_2 }}
       WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
-      MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
     steps:
-      - name: Read exact articles only
+      - name: Read target card schema
         shell: python
         run: |
-          import os,json,gzip,urllib.parse,urllib.request,urllib.error
-          OLD="159-CelineaBag-coffee"; NEW="159-CelineaBag-darkchocolate"; OTHER="364-CelineaBag-coffee"
-          def get(url,token,body=None,ms=False):
-              headers={"Authorization":("Bearer "+token) if ms else token,"Accept":"application/json;charset=utf-8","Accept-Encoding":"gzip"}
-              if body is not None:headers["Content-Type"]="application/json"
-              req=urllib.request.Request(url,data=json.dumps(body).encode() if body is not None else None,headers=headers,method="POST" if body is not None else "GET")
-              with urllib.request.urlopen(req,timeout=35) as resp:
-                  raw=resp.read(1200000)
-                  if resp.headers.get("Content-Encoding","").lower()=="gzip":raw=gzip.decompress(raw)
-                  return json.loads(raw)
-          def wb(key,host):
-              token=os.environ.get(key,"")
-              if not token:print(key+": SECRET_MISSING");return
-              url="https://content-api.wildberries."+host+"/content/v2/get/cards/list"
-              for article in [OLD,NEW,OTHER]:
-                  try:
-                      data=get(url,token,{"settings":{"cursor":{"limit":100},"filter":{"withPhoto":-1,"textSearch":article}}})
-                      matches=[c for c in data.get("cards",[]) if c.get("vendorCode")==article]
-                      print(key,article,"exact_count",len(matches))
-                      for c in matches[:2]:
-                          print("CARD",key,"nmID",c.get("nmID"),"vendorCode",c.get("vendorCode"),"sizes",[(s.get("chrtID"),s.get("skus")) for s in c.get("sizes",[])],"title",c.get("title"),"subjectID",c.get("subjectID"))
-                  except Exception as e:print(key,article,"ERROR",type(e).__name__,getattr(e,"code",""))
-          for key,host in [("WB_TOKEN_1","ru"),("WB_TOKEN_2","ru"),("WB_TOKEN_3","cn")]:wb(key,host)
-          token=os.environ.get("MOYSKLAD_API_TOKEN","")
-          if not token:print("MS SECRET_MISSING")
-          else:
-              for article in [OLD,NEW,OTHER]:
-                  try:
-                      url="https://api.moysklad.ru/api/remap/1.2/entity/product?"+urllib.parse.urlencode({"filter":"article="+article,"limit":"10"})
-                      d=get(url,token,ms=True)
-                      rows=[x for x in d.get("rows",[]) if x.get("article")==article]
-                      print("MS",article,"count",len(rows))
-                      for x in rows[:2]:
-                          print("PRODUCT","id",x.get("id"),"article",x.get("article"),"name",x.get("name"),"code",x.get("code"),"barcodes",x.get("barcodes"),"attributes",[(a.get("name"),a.get("value")) for a in x.get("attributes",[]) if a.get("name") in ("Цвет","ВендорКод","Категория товара")])
-                  except Exception as e:print("MS",article,"ERROR",type(e).__name__,getattr(e,"code",""))
+          import os,json,urllib.request,gzip
+          token=os.environ["WB_TOKEN_3"]
+          req=urllib.request.Request("https://content-api.wildberries.cn/content/v2/get/cards/list",data=json.dumps({"settings":{"filter":{"withPhoto":-1,"textSearch":"159-CelineaBag-coffee"},"cursor":{"limit":100}}}).encode(),method="POST",headers={"Authorization":token,"Content-Type":"application/json","Accept-Encoding":"gzip"})
+          with urllib.request.urlopen(req,timeout=30) as r:
+           raw=r.read()
+           if r.headers.get("Content-Encoding")=="gzip":raw=gzip.decompress(raw)
+           data=json.loads(raw)
+          cards=[c for c in data.get("cards",[]) if c.get("nmID")==2129309883 and c.get("vendorCode")=="159-CelineaBag-coffee"]
+          print("EXACT_MATCHES",len(cards))
+          if len(cards)!=1:raise SystemExit(1)
+          c=cards[0]
+          print("TOP_KEYS",sorted(c))
+          print("SIZE_KEYS",[sorted(s) for s in c.get("sizes",[])])
+          print("DIM_KEYS",sorted(c.get("dimensions",{})))
+          print("CHARACTERISTICS",[(x.get("id"),x.get("name"),x.get("value")) for x in c.get("characteristics",[])])
+          print("BRAND",repr(c.get("brand")),"SUBJECTID",c.get("subjectID"),"DOCUMENTS",bool(c.get("documents")),"TAGS",bool(c.get("tags")))
           
