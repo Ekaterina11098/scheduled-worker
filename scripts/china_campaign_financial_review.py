@@ -40,7 +40,8 @@ def apply(io,bundle,source,minima):
   # Whole-campaign recommendations use the same completed post-change window as SKU review.
   events=[x['at']for x in changes if (x.get('cid')==st['id']and x.get('kind')in('bid','added','excluded','returned','relaunch'))or(x.get('nm')in members and x.get('kind')=='price')]
   events += [x['at']for x in source.get('verified_composition_changes',[])if x.get('cid')==st['id']]
-  started=st.get('timestamps',{}).get('started')
+  from china_advertising_decision_contract import effective_launch_at
+  started=effective_launch_at(source,st)
   if started:events.append(started)
   changed=max((datetime.fromisoformat(at.replace('Z','+00:00')).astimezone(ZoneInfo('Europe/Moscow')).date().isoformat()for at in events),default='1970-01-01')
   closed=[d for d in raw.get('days',[])if d['date'][:10]in days and changed<d['date'][:10]<day]
