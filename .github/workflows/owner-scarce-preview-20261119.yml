@@ -1,7 +1,5 @@
 name: Owner scarce stock read-only proposal
 on:
-  push:
-    paths: ['.github/workflows/owner-scarce-preview-20261119.yml']
   workflow_dispatch:
 permissions:
   contents: read
