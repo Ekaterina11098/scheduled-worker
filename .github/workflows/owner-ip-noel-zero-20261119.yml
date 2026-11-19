@@ -1,8 +1,6 @@
 name: Owner IP Noel zero 19Nov2026
 on:
   workflow_dispatch:
-  push:
-    paths: ['.github/workflows/owner-ip-noel-zero-20261119.yml']
 permissions:
   contents: read
 concurrency:
