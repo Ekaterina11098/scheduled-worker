@@ -79,3 +79,5 @@ jobs:
 #19Nov: retain canonical wording for same facts and exact actions; real action conflicts remain blocked.
 
 #19Nov: presentation reuse requires the same instruction, with full semantic-conflict tests.
+
+#19Nov: pending first-full-day rows without actions retain the canonical waiting decision.
