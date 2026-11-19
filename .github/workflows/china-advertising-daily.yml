@@ -167,3 +167,5 @@ jobs:
 # Guard future-created campaign backfill before completed-day report delivery.
 
 # Repeated evidence timestamps preserve the same business recommendation identity.
+
+# Persist complete report evidence using bounded report-only state transport.
