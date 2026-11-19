@@ -1,7 +1,5 @@
 name: Owner approved scarce table apply
 on:
-  push:
-    paths: ['.github/workflows/owner-scarce-apply-20261119.yml']
   workflow_dispatch:
 permissions:
   contents: read
