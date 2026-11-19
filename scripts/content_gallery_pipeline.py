@@ -19,7 +19,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-VERSION = 'gallery-v1.0.1'
+VERSION = 'gallery-v1.0.2'
 BG = (244, 244, 245)
 SIZE = (1086, 1448)
 ROWS = (180, 440, 700, 960, 1220)
@@ -61,7 +61,7 @@ def face_count(rgb):
     return count
 
 
-def extract_product(raw):
+def _extract_isolated(raw):
     """Accept only isolated product photography; never synthesize hidden areas."""
     image = Image.open(io.BytesIO(raw)).convert('RGB')
     if min(image.size) < 400 or max(image.size) > 3000 or image.width*image.height>6_000_000:
@@ -126,7 +126,7 @@ def extract_product(raw):
     _, original_labels, _, _=cv2.connectedComponentsWithStats(foreground,8)
     attached=np.unique(original_labels[mask>0])
     upper=np.isin(original_labels,attached[attached>0])
-    upper[:max(0,y0-(y1-y0)),:]=False
+    upper[:max(0,y0-2*(y1-y0)),:]=False
     upper[y0:,:]=False
     upper[:,:x0]=False;upper[:,x1:]=False
     mask[upper]=255
@@ -145,6 +145,28 @@ def extract_product(raw):
         'face_detections':0,'method':'original_rgb_with_conservative_body_alpha',
         'original_rgb_hash':preserved_hash,'generated_product_pixels':0}
     return rgba,qa
+
+
+def extract_product(raw):
+    try:
+        return _extract_isolated(raw)
+    except GalleryError as first:
+        # A product slide can contain an actual, isolated bag below its header
+        # and material swatch. Try that untouched lower panel, never a face photo.
+        if str(first) not in ('gallery_nonisolated_background','gallery_multiple_objects_or_text','gallery_body_geometry'):
+            raise
+        im=Image.open(io.BytesIO(raw)).convert('RGB')
+        split=im.height//2
+        if min(im.width,im.height-split)<400:raise first
+        try:
+            asset,qa=_extract_isolated(png(im.crop((0,split,im.width,im.height))))
+        except GalleryError:
+            raise first
+        qa['source_sha256']=sha(raw)
+        qa['source_crop']=[0,split,im.width,im.height]
+        qa['mask_bbox']=[qa['mask_bbox'][0],qa['mask_bbox'][1]+split,qa['mask_bbox'][2],qa['mask_bbox'][3]+split]
+        qa['body_bbox']=[qa['body_bbox'][0],qa['body_bbox'][1]+split,qa['body_bbox'][2],qa['body_bbox'][3]+split]
+        return asset,qa
 
 
 def fonts():
@@ -220,7 +242,7 @@ def render_pages(items, family):
 
 def candidate_indices(total):
     # Prefer original product-only terminal photos over model covers/infographics.
-    return list(dict.fromkeys([i for i in (total-1,total-2,total-3,7,0) if 0<=i<total]))[:5]
+    return list(dict.fromkeys([i for i in (total-1,total-2,total-3,7,4,0) if 0<=i<total]))[:6]
 
 
 def product_asset(client,raw):
@@ -292,7 +314,17 @@ def build_gallery(client,request,ident,cards,url_validator):
         error.review_result={'drive':client.drive_upload(str(uuid.uuid5(uuid.UUID(ident),'source-review')),raw),
                              'archive_bytes':len(raw),'archive_sha256':sha(raw)}
         raise error
+    # Families with a long shoulder loop use body-only presentation throughout,
+    # so one long strap cannot shrink every body or change the second page scale.
+    hide_upper=any((i['qa']['body_bbox'][1]-i['qa']['mask_bbox'][1]) >
+                   .75*(i['qa']['body_bbox'][3]-i['qa']['body_bbox'][1]) for i in items)
+    if hide_upper:
+        for item in items:
+            offset=item['qa']['body_bbox'][1]-item['qa']['mask_bbox'][1]
+            item['image']=item['image'].crop((0,offset,item['image'].width,item['image'].height))
+            item['strap_presentation']='upper_straps_hidden_consistently'
     pages,qa=render_pages(items,family)
+    qa['strap_presentation']='upper_straps_hidden_consistently' if hide_upper else 'original_short_handles'
     manifest={'pipeline':VERSION,'request_id':ident,'family':family,'cabinet':'china',
               'cards':[{k:v for k,v in item.items() if k!='image'} for item in items],
               'pages':[{k:v for k,v in p.items() if k!='raw'} for p in pages],

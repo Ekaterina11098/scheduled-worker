@@ -67,6 +67,16 @@ class ExtractionTests(unittest.TestCase):
         with patch('content_gallery_pipeline.face_count',return_value=1):
             with self.assertRaisesRegex(GalleryError,'contains_face'):extract_product(product())
 
+    def test_original_product_panel_below_infographic_is_recovered(self):
+        im=Image.new('RGB',(700,1800),'white');d=ImageDraw.Draw(im)
+        d.rectangle((40,100,660,650),fill=(160,130,100))
+        im.paste(Image.open(io.BytesIO(product())),(0,900))
+        raw=png(im);asset,qa=extract_product(raw)
+        self.assertEqual(qa['source_crop'],[0,900,700,1800])
+        self.assertEqual(qa['source_sha256'],sha(raw))
+        x0,y0,x1,y1=qa['mask_bbox'];a=np.array(asset);active=a[:,:,3]>0
+        self.assertTrue(np.array_equal(a[:,:,:3][active],np.array(im)[y0:y1,x0:x1][active]))
+
     def test_attached_upper_handle_is_preserved_without_reconstruction(self):
         im=Image.open(io.BytesIO(product())).convert('RGB');d=ImageDraw.Draw(im)
         d.line((220,270,220,350),fill=(25,20,15),width=14)
@@ -94,8 +104,8 @@ class ExtractionTests(unittest.TestCase):
 
     def test_candidates_are_bounded_and_product_views_precede_covers(self):
         self.assertEqual(candidate_indices(1),[0])
-        self.assertEqual(candidate_indices(10),[9,8,7,0])
-        self.assertLessEqual(len(candidate_indices(24)),5)
+        self.assertEqual(candidate_indices(10),[9,8,7,4,0])
+        self.assertLessEqual(len(candidate_indices(24)),6)
 
 
 class PackageTests(unittest.TestCase):
