@@ -1,23 +1,36 @@
 """Retry only idempotent report-state traffic; never Telegram or marketplace writes."""
-import time
+import time,json,re
 import requests
 from china_price_apply import IO
 
 class AdvertisingIO(IO):
+    def _large_report(self,key,p):
+        allowed=re.fullmatch(r'china_agent:advertising_(?:source|midday_source|artifacts|midday_artifacts):\d{4}-\d{2}-\d{2}:[A-Za-z0-9_-]+',key)
+        return bool(allowed) and len(json.dumps(p,ensure_ascii=False,separators=(',',':')).encode('utf-8'))>1000000
+
+    def _report_write(self,key,p,create):
+        result=self.db('rpc/china_advertising_report_state_v1','POST',dict(p_key=key,p_payload=p,p_create=create))
+        if type(result)is not bool:raise RuntimeError('Report state RPC response invalid')
+        return result
+
     def _completion(self,key,p):
         if isinstance(p,dict) and p.get('completion_notice'):
             from china_execution_notice import deliver_registered
             deliver_registered(self,key,p)
 
     def create(self,key,p):
-        created=super().create(key,p)
+        created=self._report_write(key,p,True) if self._large_report(key,p) else super().create(key,p)
+        if created and self._large_report(key,p) and self.get(key)!=p:raise RuntimeError('State readback mismatch')
         if created:self._completion(key,p)
         return created
 
     def put(self,key,p):
         from urllib.parse import quote
         from datetime import datetime,timezone
-        self.db('telegram_api_cache?cache_key=eq.'+quote(key,safe=''),'PATCH',dict(payload=p,updated_at=datetime.now(timezone.utc).isoformat()),'return=minimal')
+        if self._large_report(key,p):
+            if not self._report_write(key,p,False):raise RuntimeError('Report state row missing')
+        else:
+            self.db('telegram_api_cache?cache_key=eq.'+quote(key,safe=''),'PATCH',dict(payload=p,updated_at=datetime.now(timezone.utc).isoformat()),'return=minimal')
         if self.get(key)!=p:raise RuntimeError('State readback mismatch')
         self._completion(key,p)
 
