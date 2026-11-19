@@ -84,3 +84,5 @@ jobs:
           contract.finalize=audit
           ad.prepare(io,day)
           
+
+# Exact private audit row is initialized; no business actions or delivery.
