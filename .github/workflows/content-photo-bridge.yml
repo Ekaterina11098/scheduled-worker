@@ -1,0 +1,32 @@
+name: Private content photo delivery
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: content-photo-bridge-readonly-v1
+  cancel-in-progress: false
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/content_photo_bridge.py
+            scripts/test_content_photo_bridge.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install Pillow==11.3.0
+      - name: Validate read-only export safeguards
+        run: python -m unittest discover -s scripts -p test_content_photo_bridge.py
+      - name: Deliver requested source photos to private storage
+        env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: python scripts/content_photo_bridge.py
