@@ -171,3 +171,5 @@ jobs:
 # Persist complete report evidence using bounded report-only state transport.
 
 # Dedicated report RPC uses the same compact UTF8 and bounded timeout as report state.
+
+# Validate the exact owner-approved publication view before freezing both families.
