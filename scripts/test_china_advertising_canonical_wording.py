@@ -7,7 +7,7 @@ class IO:
  def create(self,k,v):self.values[k]=copy.deepcopy(v);return True
  def put(self,k,v):self.values[k]=copy.deepcopy(v)
 def bundle(action=None):
- r=dict(nm=1,article='one',decision='Keep canonical',reason='Verified economics',action=action,decision_window=dict(days=['2026-11-18'],metrics=dict(spend=1)))
+ r=dict(nm=1,article='one',decision='Exclude at minimum. Old verified metrics',reason='Verified economics',action=action,decision_window=dict(days=['2026-11-18'],metrics=dict(spend=1)))
  return dict(day='2026-11-19',days=['2026-11-18'],campaigns=[dict(id=10,status=9,focus=[r])])
 class CanonicalWording(unittest.TestCase):
  def run_final(self,io,b):
@@ -15,9 +15,9 @@ class CanonicalWording(unittest.TestCase):
   with patch.dict(sys.modules,modules):return finalize(io,b,{}, {})
  def test_same_exact_action_retains_canonical_wording_and_reason(self):
   io=IO();a=dict(kind='ad_set_bid',target_minor=28)
-  self.run_final(io,bundle(a));b=bundle(a);b['campaigns'][0]['focus'][0].update(decision='Presentation rewrite',reason='Other wording')
+  self.run_final(io,bundle(a));b=bundle(a);b['campaigns'][0]['focus'][0].update(decision='Exclude at minimum. Refreshed presentation',reason='Other wording')
   out=self.run_final(io,b);r=out['campaigns'][0]['attention'][0]
-  self.assertEqual('Keep canonical',r['decision']);self.assertEqual('Verified economics',r['reason'])
+  self.assertEqual('Exclude at minimum. Old verified metrics',r['decision']);self.assertEqual('Verified economics',r['reason'])
  def test_changed_bid_on_same_facts_still_blocks(self):
   io=IO();self.run_final(io,bundle(dict(kind='ad_set_bid',target_minor=28)))
   with self.assertRaisesRegex(ValueError,'conflicting recommendation: 10:1'):self.run_final(io,bundle(dict(kind='ad_set_bid',target_minor=30)))
