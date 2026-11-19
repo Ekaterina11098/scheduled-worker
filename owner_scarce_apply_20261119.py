@@ -54,7 +54,7 @@ with runtime_db() as lock:
     if set(values)!=set(articles):raise Stopped('Native reserve coverage incomplete')
     return values,observed
    try:
-    if not saved(s).get('execution_complete'):preflight(g,shared)
+    if not saved(s).get('execution_complete'):preflight(g,shared,orders=False)
     result=execute(g,s,native_read);seal('owner-table-applied',result)
     print(json.dumps({'execution_complete':result['execution_complete'],'changed_operations':result.get('changed_operations'),'final_units':result.get('final_units')}))
    except Exception as exc:
