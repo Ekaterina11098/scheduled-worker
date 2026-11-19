@@ -165,3 +165,5 @@ jobs:
 # Verify completed-day duplicate guard before the next scheduled preparation.
 
 # Guard future-created campaign backfill before completed-day report delivery.
+
+# Repeated evidence timestamps preserve the same business recommendation identity.
