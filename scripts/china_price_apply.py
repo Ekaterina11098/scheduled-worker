@@ -69,7 +69,7 @@ class IO:
         self.bot=os.environ['CHINA_TELEGRAM_BOT_TOKEN']
     def db(self,path,method='GET',body=None,prefer=None):
         options=dict(json=body,timeout=30)
-        if path.startswith('telegram_api_cache?')and getattr(self,'state_cache_compact_utf8',False):
+        if path.startswith(('telegram_api_cache?','rpc/china_advertising_report_state_v1'))and getattr(self,'state_cache_compact_utf8',False):
             options=dict(timeout=(10,getattr(self,'state_cache_read_timeout',30)))
             if body is not None:options['data']=json.dumps(body,ensure_ascii=False,separators=(',',':')).encode('utf-8')
         r=requests.request(method,self.url+'/rest/v1/'+path,headers={**self.headers,**({'Prefer':prefer} if prefer else {})},**options)
