@@ -24,6 +24,13 @@ class CanonicalWording(unittest.TestCase):
  def test_added_action_on_same_facts_still_blocks(self):
   io=IO();self.run_final(io,bundle())
   with self.assertRaises(ValueError):self.run_final(io,bundle(dict(kind='ad_exclude_sku')))
+ def test_pending_first_full_day_without_action_keeps_canonical_wait(self):
+  io=IO();b=bundle();r=b['campaigns'][0]['focus'][0];r.update(pending_first_day=True,decision_window=dict(days=[],metrics=dict(spend=0)),decision='Check completed-day spend')
+  self.run_final(io,b);r['decision']='Wait for next full day'
+  out=self.run_final(io,b);self.assertEqual('Check completed-day spend',out['campaigns'][0]['focus'][0]['decision']);self.assertEqual([],out['campaigns'][0]['attention'])
+ def test_unexplained_no_action_verdict_change_still_blocks(self):
+  io=IO();self.run_final(io,bundle());b=bundle();b['campaigns'][0]['focus'][0]['decision']='Opposite judgment'
+  with self.assertRaises(ValueError):self.run_final(io,b)
  def test_new_facts_can_change_recommendation(self):
   io=IO();self.run_final(io,bundle());b=bundle(dict(kind='ad_exclude_sku'));b['campaigns'][0]['focus'][0]['current_bid_minor']=28
   self.assertEqual('ad_exclude_sku',self.run_final(io,b)['campaigns'][0]['attention'][0]['action']['kind'])
