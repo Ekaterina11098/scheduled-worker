@@ -1,0 +1,94 @@
+name: Owner CTR21 extended analytics export read
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-ctr21-extended-export19.yml]
+permissions: {}
+concurrency:
+  group: bot-mpstats-data
+  cancel-in-progress: false
+jobs:
+  read:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-ctr21-export19] Check current token extended analytics only'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Export analytics without subscription or marketplace changes
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+        shell: python
+        run: |
+          import os,json,time,uuid,base64,io,zipfile,csv
+          from datetime import datetime,timezone
+          from urllib.request import Request,urlopen
+          from urllib.parse import urlencode
+          from urllib.error import HTTPError
+          ROOT='china_agent:owner_ctr21_extended19'
+          sb=os.environ['SUPABASE_URL'].rstrip('/');secret=os.environ['SUPABASE_SECRET_KEY'];token=os.environ['WB_TOKEN_3']
+          sh={'apikey':secret,'Authorization':'Bearer '+secret,'Content-Type':'application/json'}
+          host='https://seller-analytics-api.wildberries.ru'
+          def stamp():return datetime.now(timezone.utc).isoformat()
+          def http(url,headers,method='GET',body=None):
+           req=Request(url,data=json.dumps(body).encode() if body is not None else None,headers=headers,method=method)
+           try:
+            with urlopen(req,timeout=60) as r:return r.status,r.read(),dict(r.headers)
+           except HTTPError as e:return e.code,e.read(),dict(e.headers)
+          def put(key,value,create=False):
+           code,b,h=http(sb+'/rest/v1/telegram_api_cache?on_conflict=cache_key',{**sh,'Prefer':'resolution='+('ignore-duplicates' if create else 'merge-duplicates')+',return=representation'},'POST',{'cache_key':key,'payload':value,'updated_at':stamp(),'expires_at':'2036-11-19T00:00:00Z'})
+           assert code in(200,201),'Private cache HTTP '+str(code)
+           if create:assert len(json.loads(b))==1,'Existing claim; never replay report creation'
+          def wb(path,method='GET',body=None):
+           assert (method=='POST' and path=='/api/v2/nm-report/downloads') or (method=='GET' and (path.startswith('/api/v2/nm-report/downloads?') or path.startswith('/api/v2/nm-report/downloads/file/')))
+           code,b,h=http(host+path,{'Authorization':token,'Content-Type':'application/json'},method,body)
+           entry={'method':method,'path':path,'http_status':code,'at':stamp()}
+           if '/file/'not in path:
+            text=b.decode('utf-8',errors='replace').replace(token,'[REDACTED]')
+            try:entry['response']=json.loads(text)
+            except ValueError:entry['response_text']=text[:1200]
+           return code,b,h,entry
+          download=str(uuid.uuid4())
+          put(ROOT+':claim',{'status':'claimed','download_id':download,'created_at':stamp(),'workflow_run':os.environ.get('GITHUB_RUN_ID')},True)
+          v={'status':'checking','created_at':stamp(),'download_id':download,'period_from':'2026-10-29','period_to':'2026-11-18','marketplace_mutations':0,'telegram_calls':0,'model_calls':0,'subscription_changes':0,'calls':[]}
+          def save():put(ROOT+':result',v)
+          save()
+          try:
+           body={'id':download,'reportType':'DETAIL_HISTORY_REPORT','userReportName':'Owner CTR 29Oct-18Nov read only','params':{'nmIDs':[],'subjectIds':[],'brandNames':[],'tagIds':[],'startDate':'2026-10-29','endDate':'2026-11-18','timezone':'Europe/Moscow','aggregationLevel':'day','skipDeletedNm':False}}
+           v['request']=body;v['status']='report_creation_submitting';save()
+           code,b,h,e=wb('/api/v2/nm-report/downloads','POST',body);v['calls'].append(e);save()
+           if code!=200:
+            v['status']='access_rejected' if code in(401,402,403) else 'request_failed'
+           else:
+            v['status']='report_accepted';save();ready=False
+            for i in range(8):
+             time.sleep(21)
+             code,b,h,e=wb('/api/v2/nm-report/downloads?'+urlencode({'filter[downloadIds]':download}));v['calls'].append(e);save()
+             if code!=200:v['status']='status_read_failed';break
+             rows=json.loads(b).get('data',[]);ours=[r for r in rows if r.get('id')==download]
+             if not ours:continue
+             state=ours[0].get('status')
+             if state=='SUCCESS':ready=True;break
+             if state=='FAILED':v['status']='report_generation_failed';break
+            if ready:
+             time.sleep(21)
+             code,b,h,e=wb('/api/v2/nm-report/downloads/file/'+download);v['calls'].append(e)
+             if code!=200:v['status']='download_failed'
+             else:
+              assert len(b)<20000000,'Unexpected export size'
+              archive=zipfile.ZipFile(io.BytesIO(b));v['files']=[]
+              for item in archive.infolist():
+               if item.filename.endswith('.csv'):
+                content=archive.read(item);text=content.decode('utf-8-sig');dialect=csv.Sniffer().sniff(text[:20000],delimiters=';,\t');rows=list(csv.DictReader(io.StringIO(text),dialect=dialect))
+                v['files'].append({'name':item.filename,'headers':list(rows[0]) if rows else [],'row_count':len(rows),'preview':rows[:2]})
+              assert v['files'],'No CSV in report'
+              v['archive_b64']=base64.b64encode(b).decode();v['status']='downloaded';v['archive_bytes']=len(b)
+            elif v['status']=='report_accepted':v['status']='pending_generation'
+          except Exception as ex:
+           v['status']='probe_failed';v['error']=type(ex).__name__+': '+str(ex).replace(token,'[REDACTED]')[:400]
+          finally:
+           v['completed_at']=stamp();save()
+           print(json.dumps({k:x for k,x in v.items() if k not in('archive_b64','request')},ensure_ascii=True))
+          
