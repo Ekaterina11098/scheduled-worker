@@ -1,5 +1,7 @@
 name: Owner approved scarce table apply
 on:
+  push:
+    paths: ['.github/workflows/owner-scarce-apply-20261119.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -23,7 +25,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Ekaterina11098/VESCHI_AI
-          ref: d17dcdbc577815c4ed4f03ae4811f820a2d71f93
+          ref: 24431022c16605af07ee0c0cb58411c58d3ac001
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           persist-credentials: false
           path: private-source
