@@ -28,10 +28,11 @@ class FullCabinetGrowthTests(unittest.TestCase):
   s,ch=self.source()
   for e in s['full_growth_inputs']['economics']['rows'].values():e['published_stock']=None
   a,_=self.evaluate(s,ch);self.assertEqual(a,[])
- def test_three_day_reserve_required_without_auto_funding(self):
+ def test_three_day_shortfall_is_advisory_without_auto_funding(self):
   s,ch=self.source()
   for row in s['full_growth_inputs']['budgets']['adverts']:row['total']=0
-  a,u=self.evaluate(s,ch);self.assertEqual(a,[]);self.assertTrue(u)
+  a,u=self.evaluate(s,ch);self.assertTrue(a);self.assertFalse(u)
+  self.assertTrue(all(x['kind']=='ad_set_bid'and x['growth_evidence']['budget_forecast']['shortfall_cny']>0 for x in a))
  def test_exact_quote_is_required(self):
   s,ch=self.source();s['full_growth_inputs']['minimums']={}
   a,_=self.evaluate(s,ch);self.assertEqual(a,[])
