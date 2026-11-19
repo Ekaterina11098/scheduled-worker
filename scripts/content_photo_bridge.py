@@ -159,7 +159,7 @@ class Client:
         value=json.loads(raw)['signedURL']
         if not value.startswith('/object/sign/'+BUCKET+'/'):raise Stop('unexpected_signed_path')
         return self.base+'/storage/v1'+value
-    def reserve_archive(self,ident,path,size):
+    def reserve_archive(self,ident,path,size,images=None):
         rows=self.cache({'cache_key':'like.'+ROOT+'artifact:*','payload->>status':'neq.deleted','select':'cache_key,payload','limit':1000})
         if len(rows)>=1000:raise Stop('artifact_inventory_limit')
         used=0
@@ -168,13 +168,14 @@ class Client:
             if item.get('status')=='deleted':continue
             old=dt.datetime.fromisoformat(item['created_at'].replace('Z','+00:00'))
             if dt.datetime.now(dt.timezone.utc)-old>dt.timedelta(days=7):
-                old_path=item['path']
-                if not re.fullmatch(re.escape(STORAGE_ROOT)+r'requests/[a-f0-9-]{36}/sources\.zip',old_path):raise Stop('cleanup_scope')
-                self.call(self.base+'/storage/v1/object/'+BUCKET,'DELETE',{'prefixes':[old_path]},limit=10000)
+                old_paths=[item['path']]+item.get('images',[])
+                if any(not re.fullmatch(re.escape(STORAGE_ROOT)+r'requests/[a-f0-9-]{36}/(?:sources\.zip|\d+/\d+\.(?:webp|jpg|png))',p) for p in old_paths):raise Stop('cleanup_scope')
+                for offset in range(0,len(old_paths),100):
+                    self.call(self.base+'/storage/v1/object/'+BUCKET,'DELETE',{'prefixes':old_paths[offset:offset+100]},limit=10000)
                 self.put(row['cache_key'],{**item,'status':'deleted','deleted_at':stamp()})
             else:used+=item['bytes']
         if used+size>STORAGE_BUDGET:raise Stop('photo_cache_budget_reached_select_smaller_batch')
-        self.put(ROOT+'artifact:'+ident,{'path':path,'bytes':size,'status':'reserved','created_at':stamp()})
+        self.put(ROOT+'artifact:'+ident,{'path':path,'images':images or [],'bytes':size,'status':'reserved','created_at':stamp()})
     def finish_archive(self,ident):
         key=ROOT+'artifact:'+ident;item=self.get(key)
         self.put(key,{**item,'status':'stored','stored_at':stamp()})
@@ -204,8 +205,20 @@ def export(client,request,ident,cards):
     raw=archive.getvalue()
     if len(raw)>MAX_BYTES+2_000_000:raise Stop('archive_size_limit')
     path=STORAGE_ROOT+'requests/'+ident+'/sources.zip'
-    client.reserve_archive(ident,path,len(raw))
+    image_paths=[STORAGE_ROOT+'requests/'+ident+'/'+f['file'] for f in files]
+    client.reserve_archive(ident,path,len(raw)+total_bytes,image_paths)
     client.storage_upload(path,raw,'application/zip')
+    images=[]
+    with zipfile.ZipFile(io.BytesIO(raw)) as z:
+        for card in card_info:
+            for f in card['photos']:
+                image_path=STORAGE_ROOT+'requests/'+ident+'/'+f['file']
+                data=z.read(f['file'])
+                mime='image/'+('jpeg' if f['file'].endswith('.jpg') else f['file'].rsplit('.',1)[1])
+                client.storage_upload(image_path,data,mime)
+                url=client.signed_url(image_path)
+                if hashlib.sha256(client.call(url,limit=5_000_000,auth=False)).hexdigest()!=f['sha256']:raise Stop('image_download_hash_mismatch')
+                images.append({**f,'article':card['article'],'nmID':card['nmID'],'url':url})
     signed=client.signed_url(path)
     # Verify real authenticated-free download, bytes and archive structure before ready.
     check=client.call(signed,limit=MAX_BYTES+2_000_000,auth=False)
@@ -213,7 +226,7 @@ def export(client,request,ident,cards):
     with zipfile.ZipFile(io.BytesIO(check)) as z:
         if z.testzip() is not None:raise Stop('archive_corrupt')
     client.finish_archive(ident)
-    return {'status':'ready','request_id':ident,'observed_at':manifest['observed_at'],'ready_at':stamp(),'cabinet':'china','card_count':len(card_info),'photo_count':len(files),'archive_url':signed,'url_expires_at':(dt.datetime.now(dt.timezone.utc)+dt.timedelta(seconds=URL_TTL)).isoformat(),'archive_bytes':len(raw),'archive_sha256':hashlib.sha256(raw).hexdigest(),'storage_path':path,'cards':[{'article':c['article'],'nmID':c['nmID'],'photos':len(c['photos']),'total_photos':c['total_photos']} for c in card_info],'wb_writes':0,'paid_calls':0,'run_id':os.environ.get('GITHUB_RUN_ID'),'request':request}
+    return {'status':'ready','request_id':ident,'observed_at':manifest['observed_at'],'ready_at':stamp(),'cabinet':'china','card_count':len(card_info),'photo_count':len(files),'archive_url':signed,'images':images,'url_expires_at':(dt.datetime.now(dt.timezone.utc)+dt.timedelta(seconds=URL_TTL)).isoformat(),'archive_bytes':len(raw),'archive_sha256':hashlib.sha256(raw).hexdigest(),'storage_path':path,'cards':[{'article':c['article'],'nmID':c['nmID'],'photos':len(c['photos']),'total_photos':c['total_photos']} for c in card_info],'wb_writes':0,'paid_calls':0,'run_id':os.environ.get('GITHUB_RUN_ID'),'request':request}
 
 def run():
     if os.environ.get('GITHUB_REPOSITORY')!='Ekaterina11098/scheduled-worker' or os.environ.get('GITHUB_REF')!='refs/heads/main':raise Stop('runner_identity')

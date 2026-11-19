@@ -12,16 +12,17 @@ class Fake:
     def __init__(self):
         b=io.BytesIO();Image.new('RGB',(20,30),'red').save(b,'WEBP');self.photo=b.getvalue();self.upload=None;self.unsigned=False
     def call(self,url,**kwargs):
+        if url.endswith('.webp'):return self.photo
         if 'object/sign' in url:
             self.unsigned=kwargs.get('auth') is False
             return self.upload
         return self.photo
     def storage_upload(self,path,raw,mime):
         assert path.startswith(m.STORAGE_ROOT)
-        self.upload=raw
+        if mime=='application/zip':self.upload=raw
     def signed_url(self,path):
         return 'https://example.supabase.co/storage/v1/object/sign/'+path
-    def reserve_archive(self,ident,path,size):self.reserved=size
+    def reserve_archive(self,ident,path,size,images=None):self.reserved=size
     def finish_archive(self,ident):self.finished=True
 
 class Tests(unittest.TestCase):
