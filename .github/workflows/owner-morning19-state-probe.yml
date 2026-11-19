@@ -27,7 +27,7 @@ jobs:
           r=requests.get(base,params={'cache_key':'eq.'+key,'select':'payload,updated_at'},headers=h,timeout=90);r.raise_for_status();row=r.json()[0]
           body=json.dumps(row,ensure_ascii=False,separators=(',',':')).encode()
           started=time.time()
-          response=requests.patch(base,params={'cache_key':'eq.'+key},headers={**h,'Prefer':'return=minimal'},data=body,timeout=(10,90))
+          response=requests.post(os.environ['SUPABASE_URL'].rstrip('/')+'/rest/v1/rpc/china_advertising_report_state_v1',headers=h,data=json.dumps({'p_key':key,'p_payload':row['payload'],'p_create':False},ensure_ascii=False,separators=(',',':')).encode(),timeout=(10,90))
           value={'status':'diagnosed','http_status':response.status_code,'response':response.text[:1500],'request_bytes':len(body),'elapsed':time.time()-started,'wb_writes':0,'telegram_calls':0,'observed_at':datetime.now(timezone.utc).isoformat()}
-          r=requests.post(base+'?on_conflict=cache_key',headers={**h,'Prefer':'resolution=merge-duplicates'},json={'cache_key':'china_agent:morning_state_probe:2026-11-19:v1','payload':value,'updated_at':value['observed_at'],'expires_at':'2026-12-19T00:00:00Z'},timeout=45);r.raise_for_status()
+          r=requests.post(base+'?on_conflict=cache_key',headers={**h,'Prefer':'resolution=merge-duplicates'},json={'cache_key':'china_agent:morning_state_probe:2026-11-19:v2','payload':value,'updated_at':value['observed_at'],'expires_at':'2026-12-19T00:00:00Z'},timeout=45);r.raise_for_status()
           print(json.dumps({'http_status':response.status_code,'request_bytes':len(body),'elapsed':value['elapsed']}))
