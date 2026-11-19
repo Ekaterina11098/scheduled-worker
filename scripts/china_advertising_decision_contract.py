@@ -123,9 +123,17 @@ def finalize(io,bundle,source,minima):
    key=str(cp['id'])+':'+str(r['nm'])
    if io is not None:
     old=ledger.get(key)
-    if old and old.get('facts_sha256')==hh and (comparable_action(old.get('action'))!=comparable_action(row['action'])or old.get('decision')!=row['decision']):raise ValueError('Same verified facts produced conflicting recommendation')
+    if old and old.get('facts_sha256')==hh:
+     if comparable_action(old.get('action'))!=comparable_action(row['action']):
+      raise ValueError('Same verified facts produced conflicting recommendation: '+key)
+     # Same proved facts and exact action retain the canonical wording across surfaces.
+     # A presentation-only rewrite must not block every campaign's report.
+     if old.get('decision')!=row['decision']:
+      r['decision']=row['decision']=old.get('decision')
+      r['reason']=row['reason']=old.get('reason')
     ledger[key]=row
    rows.append(row)
+ for cp in out['campaigns']:cp['attention']=[r for r in cp.get('focus',[])if r.get('action')]
  if io is not None and ledger!=prior:
   if prior:io.put(ledger_key,ledger)
   else:io.create(ledger_key,ledger)
