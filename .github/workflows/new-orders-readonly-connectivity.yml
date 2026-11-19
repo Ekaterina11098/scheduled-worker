@@ -1,4 +1,4 @@
-name: One-off WB China SKU 159 rename
+name: SKU 159 WB post-update readback
 on:
   push:
     branches: [main]
@@ -6,65 +6,42 @@ on:
 permissions:
   contents: read
 jobs:
-  edit:
+  verify:
     if: >-
-      github.event.head_commit.message == 'execute: 159 WB rename darkchocolate 20261119'
+      github.event.head_commit.message == 'diagnostic: WB 159 post update status 20261119'
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 5
     env:
       WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
     steps:
-      - name: Conditional WB card rename and verification
+      - name: Check status and errors (read only)
         shell: python
         run: |
-          import os,json,gzip,urllib.request,urllib.error,time,sys
-          OLD="159-CelineaBag-coffee"
-          NEW="159-CelineaBag-darkchocolate"
-          NMID=2129309883
-          SKU="2060750499316"
-          API="https://content-api.wildberries.cn"
-          TOKEN=os.environ["WB_TOKEN_3"]
-          def api(path,body):
-           req=urllib.request.Request(API+path,method="POST",headers={"Authorization":TOKEN,"Content-Type":"application/json","Accept-Encoding":"gzip"},data=json.dumps(body,ensure_ascii=False).encode("utf-8"))
+          import os,json,gzip,urllib.request,urllib.error
+          token=os.environ["WB_TOKEN_3"]
+          base="https://content-api.wildberries.cn"
+          def get(endpoint,body):
+           req=urllib.request.Request(base+endpoint,headers={"Authorization":token,"Content-Type":"application/json","Accept-Encoding":"gzip"},method="POST",data=json.dumps(body).encode())
            with urllib.request.urlopen(req,timeout=30) as resp:
-            raw=resp.read(2000000)
-            if resp.headers.get("Content-Encoding","").lower()=="gzip":raw=gzip.decompress(raw)
+            raw=resp.read()
+            if resp.headers.get("Content-Encoding")=="gzip":raw=gzip.decompress(raw)
             return json.loads(raw)
-          def locate(article):
-           result=api("/content/v2/get/cards/list",{"settings":{"filter":{"textSearch":article,"withPhoto":-1},"cursor":{"limit":100}}})
-           return [c for c in result.get("cards",[]) if c.get("vendorCode")==article]
-          original=locate(OLD)
-          if len(original)!=1 or original[0].get("nmID")!=NMID:print("PRECHECK_FAIL: old card not unique");sys.exit(2)
-          if len(locate(NEW))!=0:print("PRECHECK_FAIL: target article already used");sys.exit(2)
-          c=original[0]
-          if len(c.get("sizes",[]))!=1 or c["sizes"][0].get("skus")!=[SKU]:print("PRECHECK_FAIL: size or barcode conflict");sys.exit(2)
-          allowed={"brand","characteristics","description","dimensions","documents","kizMarked","nmID","sizes","subjectID","title","vendorCode"}
-          expected_readonly={"createdAt","imtID","needKiz","nmUUID","photos","subjectName","tags","updatedAt"}
-          extra=set(c)-allowed-expected_readonly
-          if extra:print("PRECHECK_FAIL: unrecognized source keys",sorted(extra));sys.exit(2)
-          if not c.get("characteristics") or not c.get("dimensions") or not c.get("description") or not c.get("title"):print("PRECHECK_FAIL: incomplete source");sys.exit(2)
-          payload={k:c[k] for k in allowed if k in c}
-          payload["vendorCode"]=NEW
-          dim=payload["dimensions"]
-          payload["dimensions"]={k:dim[k] for k in ["length","width","height","weightBrutto"] if k in dim}
-          colors=[ch for ch in payload["characteristics"] if ch.get("id")==14177449]
-          if len(colors)!=1 or "кофейный" not in colors[0].get("value",[]):print("PRECHECK_FAIL: unexpected color attribute");sys.exit(2)
-          colors[0]["value"]=["темно-шоколадный" if x=="кофейный" else x for x in colors[0]["value"]]
-          print("PRECHECK_OK: exact nmID, unchanged WB barcode, color term updated")
-          try:
-           response=api("/content/v2/cards/update",[payload])
-           print("UPDATE_RESPONSE","error",response.get("error"),"errorText",str(response.get("errorText",""))[:200],"additionalErrors",str(response.get("additionalErrors",""))[:200])
-           if response.get("error") is not False:sys.exit(3)
-          except urllib.error.HTTPError as err:
-           print("UPDATE_HTTP_ERROR",err.code,"body suppressed");sys.exit(3)
-          for i in range(12):
-           time.sleep(8)
+          for article in ["159-CelineaBag-coffee","159-CelineaBag-darkchocolate"]:
            try:
-            new=locate(NEW)
-            if len(new)==1 and new[0].get("nmID")==NMID and new[0].get("sizes",[])[0].get("skus")==[SKU]:
-             color=next((ch.get("value") for ch in new[0].get("characteristics",[]) if ch.get("id")==14177449),[])
-             print("READBACK_CONFIRMED","nmID",NMID,"vendorCode",NEW,"barcode",SKU,"color",color)
-             sys.exit(0)
-           except urllib.error.HTTPError as err:print("READBACK_HTTP",err.code)
-          print("READBACK_PENDING: check WB later before updating MS");sys.exit(4)
+            d=get("/content/v2/get/cards/list",{"settings":{"filter":{"withPhoto":-1,"textSearch":article},"cursor":{"limit":100}}})
+            cc=[c for c in d.get("cards",[]) if c.get("vendorCode")==article]
+            print("CURRENT",article,"count",len(cc))
+            for c in cc:
+             print("CARD",c.get("nmID"),"skus",[s.get("skus") for s in c.get("sizes",[])],"colors",[v.get("value") for v in c.get("characteristics",[]) if v.get("id")==14177449])
+           except Exception as e:print("CARD_READ_ERROR",type(e).__name__,getattr(e,"code",""))
+          try:
+           d=get("/content/v2/cards/error/list",{"cursor":{"limit":100},"order":{"ascending":False}})
+           print("ERROR_LIST_KEYS",sorted(d))
+           batches=d.get("data",[])
+           print("ERROR_BATCHES",len(batches) if isinstance(batches,list) else type(batches).__name__)
+           for b in batches if isinstance(batches,list) else []:
+            as_text=json.dumps(b,ensure_ascii=False)
+            if "159-CelineaBag" in as_text or "2129309883" in as_text:
+             print("TARGET_ERROR",as_text[:1500])
+          except Exception as e:print("ERROR_LIST_FAILURE",type(e).__name__,getattr(e,"code",""))
           
