@@ -66,6 +66,12 @@ def normalize(bundle,source):
    row['pending_first_day']=not bool(names)
    if not names:row['action']=None
  return out
+def comparable_action(action):
+ """A repeated observation timestamp cannot change an otherwise identical proposal."""
+ value=copy.deepcopy(action)
+ if isinstance(value,dict) and isinstance(value.get('growth_evidence'),dict):
+  value['growth_evidence'].pop('observed_at',None)
+ return value
 def finalize(io,bundle,source,minima):
  """Shared entry point for morning, midday and a cached analyst preview; no API calls."""
  from china_advertising_economic_review import apply
@@ -91,7 +97,7 @@ def finalize(io,bundle,source,minima):
    key=str(cp['id'])+':'+str(r['nm'])
    if io is not None:
     old=ledger.get(key)
-    if old and old.get('facts_sha256')==hh and (old.get('action')!=row['action']or old.get('decision')!=row['decision']):raise ValueError('Same verified facts produced conflicting recommendation')
+    if old and old.get('facts_sha256')==hh and (comparable_action(old.get('action'))!=comparable_action(row['action'])or old.get('decision')!=row['decision']):raise ValueError('Same verified facts produced conflicting recommendation')
     ledger[key]=row
    rows.append(row)
  if io is not None and ledger!=prior:
