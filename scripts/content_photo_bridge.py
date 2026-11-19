@@ -2,6 +2,7 @@
 import collections
 import datetime as dt
 import hashlib
+import http.client
 import io
 import json
 import os
@@ -96,6 +97,7 @@ class Client:
         data=body if isinstance(body,bytes) else json.dumps(body).encode() if body is not None else None
         if body is not None and not isinstance(body,bytes):headers['Content-Type']='application/json'
         req=urllib.request.Request(url,data=data,headers=headers,method=method)
+        retryable = method=='GET' or url=='https://content-api.wildberries.cn/content/v2/get/cards/list'
         for attempt in range(3):
             try:
                 with self.opener.open(req,timeout=45) as response:
@@ -103,11 +105,11 @@ class Client:
                     if len(raw)>limit:raise Stop('response_size_limit')
                     return raw
             except urllib.error.HTTPError as error:
-                if error.code in (429,500,502,503,504) and method=='GET' and attempt<2:
+                if error.code in (429,500,502,503,504) and retryable and attempt<2:
                     time.sleep(2*(attempt+1));continue
                 raise Stop('http_'+str(error.code)) from None
-            except (TimeoutError,urllib.error.URLError):
-                if method=='GET' and attempt<2:time.sleep(2*(attempt+1));continue
+            except (TimeoutError,urllib.error.URLError,http.client.IncompleteRead,ConnectionError):
+                if retryable and attempt<2:time.sleep(2*(attempt+1));continue
                 raise Stop('transport_error') from None
     def cache(self,query,method='GET',body=None,prefer='return=representation'):
         raw=self.call(self.base+'/rest/v1/telegram_api_cache?'+urllib.parse.urlencode(query),method,body,{'Prefer':prefer})
