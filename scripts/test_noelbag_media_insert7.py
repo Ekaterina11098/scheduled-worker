@@ -36,7 +36,7 @@ class Tests(unittest.TestCase):
         a=[picture((i*7%256,120,90)) for i in range(30)]
         with self.assertRaises(n.Blocked):n.classify(card(num=30),"041-NoelBag-beige",1473243893,self.target,a)
     def test_no_mixed_up_ids(self):
-        rows=[{"nmID_WB_China":"1473243891","action":"skip","image":"1.png"},{"nmID_WB_China":"1473243893","image":"1.png"}]
+        rows=[{"nmID_WB_China":"1473243891","action":"skip","image":"1.png"},{"nmID_WB_China":"1473243893","vendorCode":"041-NoelBag-beige","image":"1.png"}]
         report=n.preflight(rows,{"1.png":self.target},[card()],lambda _:self.prior)
         self.assertEqual(report["ready"],1);self.assertEqual(report["excluded"],[1473243891]);self.assertEqual(report["wb_writes"],0)
     def test_preflight_blocked_missing_card(self):
