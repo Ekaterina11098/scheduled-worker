@@ -36,7 +36,7 @@ def model_rows(inputs,policy,delivery):
    payment_reserve=policy.get('payment_reserve_pct',0)
    if not finite(payment_reserve)or not 0<=payment_reserve<100:raise ValueError('Payment reserve invalid')
    before=q*(price*(1-(fee+policy['tax_pct']+payment_reserve)/100)-cost/fx)-log['delivery_cny']-policy['handling_rub']/fx
-   out[str(nm)]=dict(observed_at=inputs['products']['observed_at'],own_cogs_rub=cost,seller_revenue_rub=price*fx,seller_price_cny=price,
+   out[str(nm)]=dict(observed_at=inputs['products']['observed_at'],fx_date=inputs['fx'].get('effective_date'),fx_rub_per_cny=fx,fx_source=inputs['fx'].get('source'),own_cogs_rub=cost,seller_revenue_rub=price*fx,seller_price_cny=price,
     stock_free=free,stock_observed_at=inputs['stock']['observed_at'],price_observed_at=inputs['prices']['observed_at'],
     expected_margin_before_ads_cny=before,owner_strategy_review=True,buyout=q,sample_size=b['sample_size'],sample_reliable=b['sample_size']>=20,
     commission_pct=fee,tax_pct=policy['tax_pct'],payment_reserve_pct=payment_reserve,handling_rub=policy['handling_rub'],commission_policy_fallback=fee_fallback,buyout_fallback=b['source']=='fallback',logistics_cny=log['delivery_cny'],logistics_source=log.get('delivery_source'),logistics_historical=log.get('route')!='Moscow_FBS',planned_buyout_source=planned.get('source_ref')if planned and b['source']=='fallback'else None,
