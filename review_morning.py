@@ -77,7 +77,13 @@ def persist_source_snapshot(store,key,payload,reuse_identical=False):
     if reuse_identical:
         saved=store.read(key)
         if saved is not None:
-            stable=lambda p:{k:v for k,v in p.items() if k!='observed_at'}
+            def stable(p):
+                # WB read/view operations may update metadata without changing
+                # the question. Keep the original raw snapshot and its hash.
+                result={k:v for k,v in p.items() if k not in ('observed_at','source_sha256')}
+                if p.get('kind')=='questions':
+                    result['item']={k:v for k,v in p['item'].items() if k not in ('wasViewed','updatedDate')}
+                return result
             if stable(saved)!=stable(payload):raise RuntimeError('Observed review differs from immutable source snapshot')
             return saved
     store.insert(key,payload)
@@ -165,6 +171,7 @@ def main(kind='feedbacks',china_two_hour=False):
                             candidate=prior or {'version':(('china-questions-two-hour-' if kind=='questions' else 'china-two-hour-') if china_two_hour else 'morning-')+day+'-'+sha([cabinet,item_id])[:12],'status':'preflight'}
                             state['items'][key]=candidate
                             def prepare_one():
+                                prepared_item=item
                                 if not eligible(item,cabinet,source,repo,store.read,kind):
                                     candidate['status']='skipped';save();return
                                 if kind=='feedbacks':
@@ -183,11 +190,15 @@ def main(kind='feedbacks',china_two_hour=False):
                                 if candidate['status']=='generate':
                                     # Canonical source and variants are durable before Telegram.
                                     version=candidate['version']
-                                    persist_source_snapshot(store,'reviews:source:'+sha([cabinet,kind,item_id,version]),dict(cabinet=cabinet,kind=kind,item_id=item_id,version=version,item=item,source_sha256=sha(item),observed_at=scope['observed_at']),reuse_identical=china_two_hour)
+                                    source_snapshot=persist_source_snapshot(store,'reviews:source:'+sha([cabinet,kind,item_id,version]),dict(cabinet=cabinet,kind=kind,item_id=item_id,version=version,item=item,source_sha256=sha(item),observed_at=scope['observed_at']),reuse_identical=china_two_hour)
+                                    prepared_item=source_snapshot['item']
                                     if not store.read(bridge.draft_key(cabinet,kind,item_id,version)):
-                                        generate_and_persist(store,item,cabinet,kind,version,generation.generate_question_drafts if kind=='questions' else generation.generate_draft)
+                                        generate_and_persist(store,prepared_item,cabinet,kind,version,generation.generate_question_drafts if kind=='questions' else generation.generate_draft)
                                     candidate['status']='notify';save()
-                                result=notice.deliver(item,cabinet,kind,candidate['version'],scope['observed_at'],cfg['cutover'])
+                                if candidate['status']=='notify':
+                                    saved=store.read('reviews:source:'+sha([cabinet,kind,item_id,candidate['version']]))
+                                    if saved:prepared_item=saved['item']
+                                result=notice.deliver(prepared_item,cabinet,kind,candidate['version'],scope['observed_at'],cfg['cutover'])
                                 candidate.update(status='confirmed' if result.get('status')=='confirmed' else 'uncertain',delivery=result)
                                 state['telegram_confirmed']+=int(candidate['status']=='confirmed');save()
                             prepare_candidate(candidate,prepare_one,save,error)

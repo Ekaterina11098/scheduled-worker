@@ -1,0 +1,66 @@
+name: Validate question metadata fix and resume China question collection
+on:
+  push:
+    paths:
+      - '.github/workflows/question-metadata-recovery.yml'
+permissions:
+  contents: read
+concurrency:
+  group: question-metadata-recovery
+  cancel-in-progress: false
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Verify metadata changes and immutable question content
+        run: |
+          python -m unittest -v test_question_snapshot_metadata.py test_review_morning.py test_review_questions.py
+          python -m py_compile review_morning.py
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: d584a0cf857ccc1fcac1e23ce73d75be970476fc
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          path: private-source
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout: |
+            /*.py
+            /*.md
+            /tests/
+          sparse-checkout-cone-mode: false
+      - run: pip install 'psycopg[binary]==3.2.10' cryptography==46.0.2 requests==2.32.5 python-dotenv==1.1.1 openai==1.109.1
+      - name: Resume China questions through original duplicate protection
+        env:
+          PYTHONPATH: ${{ github.workspace }}/private-source
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ALLOWED_CHAT_ID: ${{ secrets.TELEGRAM_ALLOWED_CHAT_ID }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+        run: |
+          python - <<'PY'
+          import io,contextlib,time,json
+          from review_morning import main
+          from stock_deploy_support import seal,error
+          private_log=io.StringIO()
+          try:
+              deadline=time.monotonic()+19*60
+              while time.monotonic()<deadline:
+                  with contextlib.redirect_stdout(private_log),contextlib.redirect_stderr(private_log):
+                      result=main(kind='questions',china_two_hour=True)
+                  if result.get('status')!='busy':break
+                  time.sleep(30)
+              else:raise RuntimeError('Collection lock remained busy')
+              print(json.dumps(result))
+          except Exception as exc:
+              seal('question-metadata-recovery-error',dict(error=error(exc),private_log=private_log.getvalue()))
+              print('Recovery failed; protected diagnostics saved.')
+              raise SystemExit(1)
+          PY
