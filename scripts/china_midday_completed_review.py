@@ -68,6 +68,17 @@ def completed_campaign_stats(io,campaigns,saved_stats,period_from,period_to,pend
  for c in campaigns:
   cid=c['id']
   if cid in result:continue
+  # Only a confirmed terminal archive strictly before the window proves no in-window activity.
+  # Preserve any existing historical receipt above, including its earlier expenses.
+  deleted=c.get('timestamps',{}).get('deleted')
+  try:
+   closed=datetime.fromisoformat(deleted.replace('Z','+00:00'))
+   closed_before=c.get('status')==7 and closed.tzinfo is not None and closed.astimezone(MSK).date()<date.fromisoformat(period_from)
+  except (AttributeError,TypeError,ValueError):closed_before=False
+  if closed_before:
+   result[cid]=dict(advertId=cid,currency='CNY',days=[],sum=0,orders=0,sum_price=0,clicks=0,views=0,atbs=0,
+                    history_status='closed_before_completed_window',history_evidence=dict(deleted_at=deleted,period_from=period_from,period_to=period_to))
+   continue
   created=c.get('timestamps',{}).get('created')
   try:
    at=datetime.fromisoformat(created.replace('Z','+00:00'))
