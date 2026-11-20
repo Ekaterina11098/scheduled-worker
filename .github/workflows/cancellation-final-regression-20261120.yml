@@ -1,10 +1,12 @@
 name: Cancellation final offline regression 20Nov2026
 on:
   workflow_dispatch:
+  push:
+    paths: ['.github/workflows/cancellation-final-regression-20261120.yml']
 permissions:
   contents: read
 concurrency:
-  group: bot-stock
+  group: cancellation-offline-regression
   cancel-in-progress: false
 jobs:
   stock:
@@ -21,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Ekaterina11098/VESCHI_AI
-          ref: ef23bb9f073123522140ff1ab14bfb26a7845aa1
+          ref: df8560faf0044875ab9df6ecf052b62b10cd880a
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           persist-credentials: false
           path: private-source
