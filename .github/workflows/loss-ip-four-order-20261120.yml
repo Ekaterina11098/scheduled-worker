@@ -47,7 +47,7 @@ jobs:
            ref=sample[k];path='/'.join(m.href(ref).split('/')[-3:])
            entities[k]=t.request(m.MS,path)
           assert entities['organization']['name']=='ИП Лазарев Виктор Алексеевич'
-          assert entities['agent']['name']=='ООО "Вайлдберриз"'
+          assert entities['agent']['id']=='4cc3ffa2-fd7c-11ee-0a80-0b56002b7934' and 'вайлдберриз' in entities['agent']['name'].casefold()
           assert entities['store']['name']=='Склад WB FBO'
           state=[s for s in t.request(m.MS,'entity/customerorder/metadata')['states'] if s['name']=='Доставлен']
           assert len(state)==1
