@@ -1,0 +1,53 @@
+name: Private job status check
+on:
+  push:
+    branches: [private-catalog-check-20261120]
+    paths: [.github/workflows/private-job-status-20261120.yml]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Record private status
+        env:
+          SOURCE_READ_TOKEN: ${{ secrets.SOURCE_READ_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          python - <<'PY'
+          import json, os, time, urllib.request, urllib.error
+          repo = 'Ekaterina11098/VESCHI_AI'
+          branch = 'maya-slide-investigation-20261120'
+          headers = {'Authorization': 'Bearer ' + os.environ['SOURCE_READ_TOKEN'], 'Accept': 'application/vnd.github+json'}
+          key = os.environ['SUPABASE_SECRET_KEY']
+          sink = os.environ['SUPABASE_URL'].rstrip('/') + '/rest/v1/telegram_api_cache?on_conflict=cache_key'
+          def get(url):
+              with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=15) as response:
+                  return json.load(response)
+          def put(result):
+              payload = {'cache_key': 'private_job_status:ip_cleanup:20261120', 'payload': result,
+                         'expires_at': '2026-12-20T00:00:00Z'}
+              req = urllib.request.Request(sink, data=json.dumps(payload).encode(), method='POST',
+                    headers={'apikey': key, 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json',
+                             'Prefer': 'resolution=merge-duplicates,return=minimal'})
+              with urllib.request.urlopen(req, timeout=15):
+                  pass
+          for attempt in range(18):
+              try:
+                  runs = get(f'https://api.github.com/repos/{repo}/actions/runs?branch={branch}&per_page=30')['workflow_runs']
+                  run = next((r for r in runs if r['path'].split('@')[0].endswith('/maya-ip-cleanup.yml')), None)
+                  if run:
+                      jobs = get(f"https://api.github.com/repos/{repo}/actions/runs/{run['id']}/jobs")['jobs']
+                      put({'run': run['id'], 'status': run['status'], 'conclusion': run['conclusion'],
+                           'jobs': [{k: j[k] for k in ('id', 'status', 'conclusion', 'steps')} for j in jobs]})
+                      if run['status'] == 'completed':
+                          break
+                  else:
+                      put({'status': 'missing_run'})
+              except urllib.error.HTTPError as exc:
+                  put({'status': 'metadata_request_failed', 'http_status': exc.code})
+                  break
+              time.sleep(55)
+          PY
