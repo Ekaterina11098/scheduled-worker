@@ -1,4 +1,4 @@
-name: NoelBag insert at 7 - live read-only preflight
+name: NoelBag 30 approved image insert at 7 and post-write verification
 # v4: 4 PNG read from SHA-verified private Supabase cache; WB writes disabled
 # Verify private Supabase staged hashes and current 45 cards; WB read-only.
 on:
@@ -15,7 +15,7 @@ jobs:
   check:
     if: github.ref == 'refs/heads/noelbag-media-insert7-preflight-20261120'
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,15 +34,6 @@ jobs:
       - run: pip install Pillow==11.3.0 requests==2.32.5
       - name: Run isolated unit tests without WB credentials
         run: python -m unittest discover -s scripts -p 'test_noelbag_media_insert7.py' -v
-      - name: Verify four private Google Drive PNGs and inspect 45 WB cards (READ ONLY)
-        env:
-          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-        run: python scripts/noelbag_media_insert7.py
-
-# Video-bearing cards: check slide presence first; any new insertion remains blocked pending separate video-safe validation.
-
       - name: Owner approved write for exactly 30 video-free NoelBag cards, with fresh per-card readback
         env:
           WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
