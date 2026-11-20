@@ -14,10 +14,10 @@ RESULT_KEY = "noelbag_media_insert7:v1:live_preflight"
 EXCLUDED = 1473243891
 MAX_MEDIA = 30
 DRIVE_IDS = {
-    "1.png": "1mt9a6Op5nJZMtXLXI8Htqc4of4DGk_yL",
-    "2(1).png": "1RdKWuESNu_EuFmg7I5k4sWEA4w03NLrL",
-    "3.png": "1v_q8oiRbUh__I0PSZn30wPFXRA6lr7Uj",
-    "4.png": "14n3Lu278Wy7pjvFtf0QHkFRbQD5VRUub",
+    "1.png": "1amM9fLYhQbT6mMLKQ1rvp4vNGdyKUV--",
+    "2(1).png": "1_0Ks3PLZ6hRfiiHlT36KfUy3mvtsrOtj",
+    "3.png": "18g6mHdnftWSM_-B_l2Y1gRiUMuKybb3j",
+    "4.png": "123BlcRrfJfFT3N0rO84z0hdYrejg5vDo",
 }
 EXPECTED_SHA = {
     "1.png": "c6ac2d1d5fd7e1037363097f70624ec6bb3260c6707af1289db856fbcd61b1ac",
