@@ -23,6 +23,7 @@ jobs:
           sparse-checkout: |
             scripts/noelbag_media_insert7.py
             scripts/noelbag_media_execute.py
+            scripts/noelbag_media_execute_30.py
             scripts/test_noelbag_media_insert7.py
             scripts/noelbag_media_manifest.csv
             scripts/content_photo_drive.py
@@ -41,3 +42,10 @@ jobs:
         run: python scripts/noelbag_media_insert7.py
 
 # Video-bearing cards: check slide presence first; any new insertion remains blocked pending separate video-safe validation.
+
+      - name: Owner approved write for exactly 30 video-free NoelBag cards, with fresh per-card readback
+        env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          NOEL_MEDIA_WRITE_APPROVED: APPROVED_NOELBAG_30_NO_VIDEO_INSERT7_20261120
+        run: python scripts/noelbag_media_execute_30.py
