@@ -485,8 +485,11 @@ def build(s,minima=None):
   if at and event_time(at).astimezone(MSK).date().isoformat()>=days[0]:
    for n in c.get('nm_settings',[]):changes.append(dict(cid=c['id'],nm=n['nm_id'],kind='added',at=at,text='Запуск РК'))
  changes.sort(key=lambda x:event_time(x['at']))
- stat={c['advertId']:c for c in raw};out=[]
+ stat={c['advertId']:c for c in raw};out=[];outside_archives=[]
+ from china_archived_report_window import outside_window_without_statistics
  for c in cs:
+  if outside_window_without_statistics(c,stat.get(c['id']),days[0]):
+   outside_archives.append(dict(campaign_id=c['id'],deleted_at=c['timestamps']['deleted'],window_start=days[0],reason='archived_before_current_report_window_without_statistics'));continue
   if never_started_draft(c):continue
   if c.get('currency')!='CNY':raise ValueError('Campaign currency mismatch')
   bid=c['settings']['payment_type'];zone='поиск' if c['settings']['placements'].get('search') else 'рекомендации';cp=stat.get(c['id']);byday={};byproduct={}
@@ -588,7 +591,7 @@ def build(s,minima=None):
   recent_funds=[f for f in funds if f[0][:10]>=days[-1]]
   funding_done='; '.join('+'+str(f[1])+' ¥ · '+datetime.fromisoformat(f[0].replace('Z','+00:00')).astimezone(MSK).strftime('%d.%m %H:%M') for f in sorted(set(recent_funds))) or 'Нет новых подтверждённых пополнений'
   out.append(dict(budget_reference_need=rate*3 if rate is not None else None,budget_review_required=bool(c['status']==9 and rate is not None and rate*3>balance['total']),minimum_topup_cny=s['config']['minTopUp']/100,funding_done=funding_done,id=c['id'],name=c['settings']['name'],zone=zone,payment=bid,status=c['status'],period=period,last=last,drr=bdrr,focus=focus,balance=balance['total'],forecast=forecast,coverage=balance['total']/rate if c['status']!=7 and rate and not incomplete_composition else None,budget_recommendation=recommendation,budget_action=action,new_composition=incomplete_composition,missing_stats=cp is None,created=created))
- bundle=dict(version=VERSION,day=str(end+timedelta(days=1)),days=days,source_observed_at=datetime.fromisoformat(s['observed_at'].replace('Z','+00:00')).astimezone(MSK).strftime('%d.%m.%Y %H:%M МСК'),campaigns=out,wb_writes=0)
+ bundle=dict(version=VERSION,day=str(end+timedelta(days=1)),days=days,source_observed_at=datetime.fromisoformat(s['observed_at'].replace('Z','+00:00')).astimezone(MSK).strftime('%d.%m.%Y %H:%M МСК'),campaigns=out,archived_outside_report_window=outside_archives,wb_writes=0)
  from china_budget_reserve import attach_completed_evidence,apply
  return apply(attach_completed_evidence(bundle,s,changes),s['config']['minTopUp']/100)
 
