@@ -8,7 +8,7 @@ permissions:
   contents: read
 concurrency:
   group: noelbag-live-readonly-preflight-v1
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   check:
     if: github.ref == 'refs/heads/noelbag-media-insert7-preflight-20261120'
@@ -18,6 +18,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          sparse-checkout: |
+            scripts/noelbag_media_insert7.py
+            scripts/noelbag_media_execute.py
+            scripts/test_noelbag_media_insert7.py
+            scripts/noelbag_media_manifest.csv
+            scripts/content_photo_drive.py
+          sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
