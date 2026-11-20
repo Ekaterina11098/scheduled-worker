@@ -1,6 +1,6 @@
 name: NoelBag insert at 7 - live read-only preflight
 # v4: 4 PNG read from SHA-verified private Supabase cache; WB writes disabled
-# Rerun after mock fixture correction; safe WB reads only.
+# Verify private Supabase staged hashes and current 45 cards; WB read-only.
 on:
   push:
     branches: [noelbag-media-insert7-preflight-20261120]
