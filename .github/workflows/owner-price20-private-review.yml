@@ -1,0 +1,73 @@
+name: Review price recommendations privately
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-price20-private-review.yml]
+permissions: {contents: read}
+concurrency:
+  group: china-price-report-data
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[price20-private] Recalculate preview only'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/
+            /.github/
+            /*request*.json
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: a7efd98c6ef7e54f415471abcb694c748c2b4f6d
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          path: source
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /analytics/
+            /business_agents/
+            /advertising_agent/
+            /china_agent/
+            /tests/
+            /*.py
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5 pillow==11.3.0 python-dotenv simplejson==4.2.0 openai==3.42.1 aiogram apscheduler
+      - name: Recalculate price recommendations without sending
+        env:
+          PYTHONPATH: scripts:source
+          OPENAI_API_KEY: ""
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          MPSTATS_API_TOKEN: ${{ secrets.MPSTATS_API_TOKEN }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          CHINA_TELEGRAM_BOT_TOKEN: ${{ secrets.CHINA_TELEGRAM_BOT_TOKEN }}
+        run: |
+          cd source
+          export PYTHONPATH=../scripts:.
+          python ../scripts/china_chat_migration.py --root .
+          python ../scripts/install_china_codex_price.py --root .
+          python ../scripts/install_china_order_coverage.py
+          python ../scripts/install_china_buyout.py
+          cp ../scripts/china_wb_order_gaps.py china_agent/wb_order_gaps.py
+          cp ../scripts/china_coverage_worker.py china_agent/coverage_worker.py
+          cp ../scripts/china_price_brief.py china_agent/price_brief.py
+          cp ../scripts/china_buyer_price_forecast.py china_agent/buyer_price_forecast.py
+          cp ../scripts/china_morning_pair.py china_agent/morning_pair.py
+          cp ../scripts/china_price_aggregate_control.py china_agent/price_aggregate_control.py
+          cp ../scripts/china_daily_expected_control.py china_agent/daily_expected_control.py
+          cp ../scripts/china_control_owner_preview.py china_agent/control_owner_preview.py
+          cp ../scripts/china_expected_order_profit.py china_agent/expected_order_profit.py
+          cp ../scripts/china_price_experiment_result.py china_agent/price_experiment_result.py
+          cp ../scripts/china_price_economic_target.py china_agent/price_economic_target.py
+          python -m china_agent.morning_pair --section candidates --verify
