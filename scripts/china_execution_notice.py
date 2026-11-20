@@ -20,7 +20,9 @@ def proven(item,state):
    expected=[n for n in expected if n['nm_id']in item['nm_ids']]
   if not item.get('keep_existing_bids'):
    for member in expected:member['bids_kopecks'][item['placement']]=item['target_minor']
-  return before.get('status')==11 and after.get('status')==9 and sorted(expected,key=lambda n:n['nm_id'])==sorted(after.get('nm_settings',[]),key=lambda n:n['nm_id']) and state.get('after_budget',-1)>=state.get('before_budget',0)+item['amount_cny']-2 and [s.get('status')for s in state.get('steps',[])]==['verified']*(4 if item.get('selected_test')else 3)
+  reviewed_steps=item.get('owner_report20_contract')=='china_agent:owner_publish_reports:2026-11-20:r1:contract:'+str(item['campaign_id']) and item.get('keep_existing_bids') is True
+  steps_ok=([s.get('id') for s in state.get('steps',[])]==['fund','resume'] and all(s.get('status')=='verified'for s in state['steps']))if reviewed_steps else [s.get('status')for s in state.get('steps',[])]==['verified']*(4 if item.get('selected_test')else 3)
+  return before.get('status')==11 and after.get('status')==9 and sorted(expected,key=lambda n:n['nm_id'])==sorted(after.get('nm_settings',[]),key=lambda n:n['nm_id']) and state.get('after_budget',-1)>=state.get('before_budget',0)+item['amount_cny']-2 and steps_ok
  if before.get('status')!=after.get('status'):return False
  if kind=='topup_campaign':
   if sorted(before.get('nm_settings',[]),key=lambda n:n['nm_id'])!=sorted(after.get('nm_settings',[]),key=lambda n:n['nm_id']) or not isinstance(state.get('after_budget'),(int,float)):return False
