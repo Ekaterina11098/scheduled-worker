@@ -1,0 +1,33 @@
+name: Scoped private media maintenance
+on:
+  push:
+    branches: [private-catalog-check-20261120]
+    paths: [.github/workflows/private-media-maintenance-20261120.yml]
+permissions:
+  contents: read
+concurrency:
+  group: private-media-maintenance-20261120
+  cancel-in-progress: false
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 67
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: 0d70e84fc5144f0705835d225a0805801532a3f4
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          persist-credentials: false
+          path: private-source
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests pillow numpy
+      - name: Apply scoped maintenance with verified private backups
+        working-directory: private-source
+        env:
+          WB_TOKEN_1: ${{ secrets.WB_TOKEN_1 }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: python -u maya_ooo_cleanup.py > /dev/null 2>&1
