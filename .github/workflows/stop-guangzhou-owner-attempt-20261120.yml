@@ -1,0 +1,26 @@
+name: Stop only superseded Guangzhou owner attempt
+on:
+  push:
+    paths: ['.github/workflows/stop-guangzhou-owner-attempt-20261120.yml']
+permissions:
+  actions: write
+  contents: read
+jobs:
+  stop:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel exact superseded owner publication only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import json,os,urllib.request
+          root='https://api.github.com/repos/Ekaterina11098/scheduled-worker/actions/runs/44753091915'
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'}
+          with urllib.request.urlopen(urllib.request.Request(root,headers=headers)) as response:r=json.load(response)
+          assert r['name']=='Owner Guangzhou 21 stock publication'
+          assert r['head_sha']=='c975dd87dbb50d4c7a3b77e107d71e13a77f7840'
+          if r['status']!='completed':
+           with urllib.request.urlopen(urllib.request.Request(root+'/cancel',headers=headers,method='POST')) as response:assert response.status==202
+          print('Exact superseded owner attempt stopped; no stock API calls')
+          PY
