@@ -1,0 +1,53 @@
+name: Apply owner fur57 bids transport
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-fur57-bid20-transport.yml]
+permissions: {contents: read}
+concurrency:
+  group: china-confirmed-advertising-execution
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[fur57-bid20-transport] Apply exact approved bids once'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/
+            /.github/
+            /*request*.json
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: a7efd98c6ef7e54f415471abcb694c748c2b4f6d
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          path: source
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /analytics/
+            /business_agents/
+            /advertising_agent/
+            /china_agent/
+            /tests/
+            /*.py
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5 pillow==11.3.0 python-dotenv simplejson==4.2.0 openai==3.42.1
+      - name: Apply approved bids and verify readback
+        env:
+          PYTHONPATH: scripts:source
+          OPENAI_API_KEY: ""
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          CHINA_TELEGRAM_BOT_TOKEN: ${{ secrets.CHINA_TELEGRAM_BOT_TOKEN }}
+        run: PYTHONPATH=scripts:source python scripts/owner_fur57_bid20_transport.py
