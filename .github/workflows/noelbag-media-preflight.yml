@@ -39,3 +39,5 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
         run: python scripts/noelbag_media_insert7.py
+
+# Video-bearing cards: check slide presence first; any new insertion remains blocked pending separate video-safe validation.
