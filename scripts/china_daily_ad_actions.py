@@ -152,7 +152,10 @@ def execute(io,a,p):
    cid=item['campaign_id']
    if item['kind']=='approve_budget_reserve':raise ValueError('Условное согласование суммы резерва отменено владельцем; нужен готовый расчёт пополнения и новая команда')
    if item['kind']=='recover_campaign':
-    from china_campaign_recovery import execute as recover
+    if item.get('owner_report20_contract'):
+     from china_owner_report20_contract import recover
+    else:
+     from china_campaign_recovery import execute as recover
     try:recover(io,item,state,save,req,campaign,budget)
     finally:e['wb_writes']+=state.get('wb_writes',0);save()
     child=key+':campaign:'+str(cid)
