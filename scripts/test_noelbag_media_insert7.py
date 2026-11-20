@@ -40,7 +40,7 @@ class Tests(unittest.TestCase):
         report=n.preflight(rows,{"1.png":self.target},[card()],lambda _:self.prior)
         self.assertEqual(report["ready"],1);self.assertEqual(report["excluded"],[1473243891]);self.assertEqual(report["wb_writes"],0)
     def test_preflight_blocked_missing_card(self):
-        row=[{"nmID_WB_China":"1473243893","image":"1.png"}]
+        row=[{"nmID_WB_China":"1473243893","vendorCode":"041-NoelBag-beige","image":"1.png"}]
         report=n.preflight(row,{"1.png":self.target},[],lambda c:[])
         self.assertEqual(report["blocked"],1)
 if __name__=="__main__":unittest.main()
