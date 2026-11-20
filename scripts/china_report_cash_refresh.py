@@ -31,3 +31,8 @@ def refresh(io,source,http,now=None):
  stamp=(now if now else datetime.now(timezone.utc)).isoformat()
  out.update(budget_balance_observed_at_iso=stamp,current_state_observed_at=stamp)
  return out
+
+def require_complete_cash_calculation(bundle):
+ if not bundle.get('mandatory_campaign_format'):return
+ blocked=[c['id']for c in bundle.get('campaigns',[])if c.get('status')==9 and c.get('budget_audit_state')=='data_blocked']
+ if blocked:raise ValueError('Current campaign reserve calculation incomplete: '+','.join(map(str,blocked)))
