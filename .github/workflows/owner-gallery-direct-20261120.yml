@@ -1,0 +1,206 @@
+name: WB one-card gallery trial
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-gallery-direct-20261120.yml]
+permissions: {}
+concurrency:
+  group: bot-mpstats-data
+  cancel-in-progress: false
+jobs:
+  apply:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-gallery-direct-20261120] Apply guarded photo moves'
+    runs-on: ubuntu-latest
+    timeout-minutes: 26
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install --quiet requests==2.32.5 pillow==11.3.0
+      - name: Update and verify one gallery
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+        shell: python
+        run: |
+          import base64
+          import io
+          import json
+          import os
+          import subprocess
+          import tempfile
+          import time
+          from pathlib import Path
+          
+          import requests
+          from PIL import Image, ImageChops, ImageStat
+          
+          nm = 1473243890
+          prefix = "noelbag:20261120:trial:"
+          sb = os.environ["SUPABASE_URL"].rstrip("/")
+          key = os.environ["SUPABASE_SECRET_KEY"]
+          sh = {"apikey": key, "Authorization": "Bearer " + key}
+          wh = {"Authorization": os.environ["WB_TOKEN_3"]}
+          host = "https://content-api.wildberries.ru"
+          cache_url = sb + "/rest/v1/telegram_api_cache"
+          bucket = "owner-media-recovery"
+          storage = sb + "/storage/v1"
+          folder = "noelbag-trial-20261120b"
+          
+          def response(method, url, **kw):
+              r = requests.request(method, url, timeout=70, **kw)
+              if not r.ok:
+                  raise RuntimeError("HTTP " + str(r.status_code))
+              return r
+          
+          def card(full=False):
+              cursor = {"limit": 100}
+              while True:
+                  filt = {"withPhoto": -1}
+                  if not full:
+                      filt["textSearch"] = str(nm)
+                  data = response("POST", host + "/content/v2/get/cards/list", headers=wh,
+                                  json={"settings": {"cursor": cursor, "filter": filt}}).json()
+                  for c in data["cards"]:
+                      if c["nmID"] == nm:
+                          if c["vendorCode"].lower() != "595-noelbag-zblack":
+                              raise RuntimeError("Wrong card")
+                          return c
+                  next_cursor = data["cursor"]
+                  if not full:
+                      return card(True)
+                  if next_cursor["total"] < 100:
+                      raise RuntimeError("Card missing")
+                  cursor = {"limit": 100, "nmID": next_cursor["nmID"], "updatedAt": next_cursor["updatedAt"]}
+          
+          def record(state, claim=False, **fields):
+              prefer = "ignore-duplicates" if claim else "merge-duplicates"
+              rows = response("POST", cache_url, headers={**sh, "Prefer": "resolution=" + prefer + ",return=representation"},
+                              params={"on_conflict": "cache_key"},
+                              json={"cache_key": prefix + "direct", "payload": {"status": state, **fields},
+                                    "expires_at": "2026-12-20T00:00:00Z"}).json()
+              if len(rows) != 1:
+                  raise RuntimeError("Already claimed")
+          
+          def signed(name, raw, mime):
+              path = bucket + "/" + folder + "/" + name
+              response("POST", storage + "/object/" + path,
+                       headers={**sh, "Content-Type": mime, "x-upsert": "false"}, data=raw)
+              suffix = response("POST", storage + "/object/sign/" + path, headers=sh,
+                                json={"expiresIn": 86400}).json()["signedURL"]
+              return sb + ("/storage/v1" if suffix.startswith("/object/") else "") + suffix
+          
+          def thumbnail(raw):
+              with Image.open(io.BytesIO(raw)) as img:
+                  assert img.width >= 700 and img.height >= 900
+                  return img.convert("RGB").resize((96, 128), Image.Resampling.LANCZOS)
+          
+          def comparable(c):
+              result = {k: v for k, v in c.items() if k not in ("photos", "video", "updatedAt")}
+              if "characteristics" in result:
+                  result["characteristics"] = sorted(result["characteristics"], key=lambda x: x["id"])
+              return result
+          
+          def video_file(url, target):
+              # Remuxing copies the existing video and audio streams.
+              subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-i", url, "-map", "0:v:0",
+                              "-map", "0:a?", "-c", "copy", "-movflags", "+faststart", str(target)],
+                             check=True, timeout=110, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+              assert 0 < target.stat().st_size <= 50_000_000
+          
+          def video_signature(source):
+              duration_output = subprocess.check_output(
+                  ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                   "-of", "default=noprint_wrappers=1:nokey=1", str(source)], timeout=60,
+                  stderr=subprocess.DEVNULL)
+              duration = float(duration_output.strip())
+              assert duration > 0
+              frames = []
+              for ratio in (0.15, 0.50, 0.85):
+                  raw = subprocess.check_output(
+                      ["ffmpeg", "-v", "error", "-ss", str(duration * ratio), "-i", str(source),
+                       "-frames:v", "1", "-vf", "scale=64:64", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                      timeout=60, stderr=subprocess.DEVNULL)
+                  frames.append(Image.frombytes("RGB", (64, 64), raw))
+              return duration, frames
+          
+          def delta(a, b):
+              return sum(ImageStat.Stat(ImageChops.difference(a, b)).mean) / 3
+          
+          
+          def fetch_photo(photo):
+              return thumbnail(response("GET",photo["big"],params={"check":time.time_ns()}).content)
+          
+          record("preparing_direct",claim=True)
+          slot=None
+          confirmed=[]
+          try:
+              items=response("POST",storage+"/object/list/"+bucket,headers=sh,
+                             json={"prefix":folder,"limit":100,"sortBy":{"column":"name","order":"asc"}}).json()
+              payloads=[]
+              for item in items:
+                  name=item["name"]
+                  if name.endswith(".mp4"):
+                      continue
+                  uri=storage+"/object/authenticated/"+bucket+"/"+folder+"/"+name
+                  raw=response("GET",uri,headers=sh).content
+                  with Image.open(io.BytesIO(raw)) as im:
+                      mime="image/"+im.format.lower()
+                  payloads.append((name,raw,mime))
+              assert len(payloads)==16
+              thumbs=[thumbnail(raw) for _,raw,_ in payloads]
+              before=card()
+              video=before.get("video")
+              assert video
+              if len(before["photos"])==16:
+                  errors=[delta(a,fetch_photo(p)) for a,p in zip(thumbs,before["photos"])]
+                  assert max(errors)<5
+                  record("already_applied",slots=[7,8,9,10],photo_count=16,video_present=True)
+                  raise SystemExit(0)
+              assert len(before["photos"])==12
+              original=thumbs[:6]+thumbs[10:]
+              assert max(delta(a,fetch_photo(p)) for a,p in zip(original,before["photos"]))<5
+              # Copy every original to its new position before overwriting its former position.
+              for slot in (13,14,15,16,11,12,7,8,9,10):
+                  record("uploading",slot=slot,confirmed=confirmed)
+                  last=card()
+                  assert last.get("video")==video and comparable(last)==comparable(before)
+                  if slot<=12:
+                      old_destination=slot+4
+                      assert delta(original[slot-1],fetch_photo(last["photos"][old_destination-1]))<5
+                  name,raw,mime=payloads[slot-1]
+                  result=response("POST",host+"/content/v3/media/file",
+                                  headers={**wh,"X-Nm-Id":str(nm),"X-Photo-Number":str(slot)},
+                                  files={"uploadfile":(name,raw,mime)}).json()
+                  assert result.get("error") is False
+                  for attempt in range(16):
+                      time.sleep(7)
+                      current=card()
+                      assert current.get("video")==video
+                      if len(current["photos"])<slot:
+                          continue
+                      photo=current["photos"][slot-1]
+                      try:
+                          matched=delta(thumbs[slot-1],fetch_photo(photo))<5
+                      except Exception:
+                          continue
+                      if matched:
+                          confirmed.append(slot)
+                          record("slot_verified",slot=slot,confirmed=confirmed)
+                          break
+                  else:
+                      record("slot_waiting",slot=slot,confirmed=confirmed)
+                      raise SystemExit("WB slot verification timed out; no further writes")
+              final=card()
+              assert len(final["photos"])==16
+              errors=[delta(a,fetch_photo(p)) for a,p in zip(thumbs,final["photos"])]
+              assert max(errors)<5
+              assert final.get("video")==video and comparable(final)==comparable(before)
+              record("verified",nm_id=nm,old_photos=12,new_photos=16,
+                     slots=[7,8,9,10],video_unchanged=True,other_card_fields_unchanged=True,
+                     max_photo_difference=round(max(errors),3))
+          except Exception as e:
+              record("direct_failed",slot=slot,confirmed=confirmed,error_type=type(e).__name__,
+                     http_error=str(e) if str(e).startswith("HTTP ") else None)
+              raise SystemExit("Stopped on verification or upload error")
