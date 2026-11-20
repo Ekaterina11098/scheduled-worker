@@ -1,0 +1,59 @@
+name: Read China unanswered review for owner-selected product
+on:
+  push:
+    paths: ['.github/workflows/china-product1473242763-read.yml']
+permissions: {contents: read}
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: d584a0cf857ccc1fcac1e23ce73d75be970476fc
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*.py
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install 'psycopg[binary]==3.2.10' requests==2.32.5 python-dotenv==1.1.1
+      - name: Read only; no WB writes or Telegram sends
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+        run: |
+          python - <<'PY'
+          import os,json,time,hmac,hashlib,io,contextlib
+          import psycopg,requests,wildberries as wb
+          native=requests.sessions.Session.request
+          def readonly(session,method,url,*args,**kwargs):
+              if 'wildberries.' in str(url) and method.upper()!='GET':raise RuntimeError('Read only')
+              return native(session,method,url,*args,**kwargs)
+          requests.sessions.Session.request=readonly
+          hidden=io.StringIO()
+          receipt=dict(status='reading',checked_at=time.time(),run_id=os.environ.get('GITHUB_RUN_ID'))
+          try:
+              with contextlib.redirect_stdout(hidden),contextlib.redirect_stderr(hidden):
+                  matches=[];skip=0;deadline=time.monotonic()+210
+                  while time.monotonic()<deadline:
+                      try:rows=wb.get_unanswered_feedbacks(take=100,skip=skip,cabinet='token_3')
+                      except wb.ReviewRateLimit as exc:
+                          time.sleep(min(exc.retry_seconds,15));continue
+                      matches.extend(r for r in rows if str((r.get('productDetails') or {}).get('nmId'))=='1473242763')
+                      skip+=len(rows)
+                      if len(rows)<100:
+                          receipt.update(status='complete',matches=matches,unanswered_count=skip,checked_at=time.time());break
+                  else:receipt.update(status='rate_limited',checked_at=time.time())
+          except Exception as exc:receipt.update(status='error',error_type=type(exc).__name__,checked_at=time.time())
+          root=os.environ['SUPABASE_SECRET_KEY'].encode()
+          pw=hmac.new(root,b'veschi:review-approval-login:20261015:v1',hashlib.sha256).hexdigest()
+          with psycopg.connect(host='aws-0-eu-central-1.pooler.supabase.com',port=5432,dbname='postgres',user='review_approval_login_20261015.abxgjoqlddhtcmjcjwxw',password=pw,sslmode='require',autocommit=True,connect_timeout=15) as conn:
+              conn.execute('insert into review_approval.events(id,payload) values(%s,%s) on conflict(id) do update set payload=excluded.payload',('owner-product-read:china:1473242763:20261120',json.dumps(receipt)))
+          print(json.dumps(dict(status=receipt['status'],matches=len(receipt.get('matches',[])))))
+          if receipt['status']!='complete':raise SystemExit(1)
+          PY
