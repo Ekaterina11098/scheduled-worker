@@ -108,7 +108,8 @@ def refresh_budget_context(io,source,day):
  s['executions']=compact_execution_records(records)
  s['experience']=read_price_experience(io)
  s['economics']=read_economics(io)
- return s
+ from china_report_cash_refresh import refresh
+ return refresh(io,s,http)
 
 def collect_alternative_zero_statistics(io,campaign,day):
  """Scoped no-model fallback. Import only explicit dated zero counters, never absent rows."""
