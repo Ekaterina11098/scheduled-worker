@@ -6,7 +6,7 @@ import csv, hashlib, io, json, os, re, time
 from pathlib import Path
 from PIL import Image, ImageChops, ImageOps, ImageStat
 import requests
-from content_photo_drive import Delivery, FOLDER
+from content_photo_drive import Delivery, FOLDER, DriveError
 
 WB_HOST = "https://content-api.wildberries.cn"
 PROJECT_URL = "https://abxgjoqlddhtcmjcjwxw.supabase.co"
@@ -171,6 +171,6 @@ def main():
 if __name__=="__main__":
     try:main()
     except Exception as e:
-        code=str(e) if isinstance(e,Blocked) else type(e).__name__
+        code=str(e) if isinstance(e,(Blocked,DriveError)) else type(e).__name__
         print("READ_ONLY_NOEL_PREFLIGHT_BLOCKED",re.sub(r"[^a-zA-Z0-9_-]","",code)[:100])
         raise SystemExit(2)
