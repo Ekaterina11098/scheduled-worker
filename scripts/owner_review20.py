@@ -29,26 +29,24 @@ assert s['status']=='complete'and s['day_quality']['usable']
 s=refresh(io,s,http)
 states={c['id']:c for b in s['batches'].values()for c in b['campaigns']['adverts']}
 wanted=sorted({n['nm_id']for cid in(41967612,41296359)for n in states[cid]['nm_settings']})
-prices=current_prices(io,wanted)
-assert {r['nm_id']for r in prices['rows']}==set(wanted)
-stock=read_stock([r['article']for r in prices['rows']])
-assert stock['coverage_complete']
-pub=published_stock(io,prices,wanted)
-assert not pub['missing_nm_ids']
 data=io.get('china_agent:advertising_full_growth:'+DAY+':v1:inputs')
-data['prices']['rows']=[r for r in data['prices']['rows']if r['nm_id']not in set(wanted)]+prices['rows']
-data['prices']['observed_at']=prices['observed_at']
-articles={r['article'].casefold()for r in stock['rows']}
-data['stock']['rows']=[r for r in data['stock']['rows']if r['article'].casefold()not in articles]+stock['rows']
-data['stock']['observed_at']=stock['observed_at']
-data['published_stock']['amounts'].update(pub['amounts'])
-data['published_stock']['observed_at']=pub['observed_at']
-for cid in(41967612,41296359):
- nm=[n['nm_id']for n in states[cid]['nm_settings']]
- data.setdefault('minimums',{})[str(cid)]=http(io,'/api/advert/v1/bids/min','POST',dict(advert_id=cid,nm_ids=nm,payment_type='cpc',placement_types=['search']))
-data['owner_exact_scope_refresh']=dict(campaign_ids=[41967612,41296359],prices=prices,stock=stock,published_stock=pub,observed_at=datetime.now(timezone.utc).isoformat())
-data.pop('economics',None)
+scope=data.get('owner_exact_scope_refresh')or{}
+assert scope.get('campaign_ids')==[41967612,41296359]
+assert (datetime.now(timezone.utc)-datetime.fromisoformat(scope['observed_at'])).total_seconds()<3600
+assert {r['nm_id']for r in scope['prices']['rows']}==set(wanted),'Composition changed since exact-scope check'
+# A scoped refresh does not refresh the unqueried remainder of the catalogue.
+original=io.get('china_agent:advertising_artifacts:'+DAY+':v2')
+prior={str(m['nm']):m['economics']for c in original['bundle']['campaigns']for m in c.get('budget_members',[])if m.get('economics')}
+reference=next(e for nm,e in prior.items()if int(nm)not in wanted and e.get('price_observed_at'))
+for name,field in [('prices','price_observed_at'),('stock','stock_observed_at'),('published_stock','published_stock_observed_at')]:
+ data[name]['observed_at']=reference[field]
+for nm,e in data['economics']['rows'].items():
+ if int(nm)in wanted:continue
+ old=prior.get(nm,reference)
+ for field in ('price_observed_at','stock_observed_at','published_stock_observed_at'):
+  if field in old:e[field]=old[field]
 io.put('china_agent:advertising_full_growth:'+DAY+':v1:inputs',data)
+s['economics']=data['economics']
 save(io,'china_agent:advertising_source:'+DAY+':v2',s)
 bundle=prepare(io,DAY)
 files=render(bundle)
