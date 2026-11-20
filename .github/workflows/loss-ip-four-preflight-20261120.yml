@@ -55,6 +55,11 @@ jobs:
            full=t.request(m.MS,'entity/customerorder/'+d['id'])
            ps=w.ms_rows('entity/customerorder/'+d['id']+'/positions',{'expand':'assortment'})
            samples.append({'document':full,'positions':ps})
+          entity_info={}
+          for k in ('organization','agent','store'):
+           ref=samples[0]['document'][k]
+           entity_info[k]=t.request(m.MS,'/'.join(m.href(ref).split('/')[-3:]))
+          db.put(ROOT+'entities:v1',{k:{'id':v['id'],'name':v['name']} for k,v in entity_info.items()})
           states=t.request(m.MS,'entity/customerorder/metadata').get('states',[])
           recent=w.ms_rows('entity/customerorder',{'search':'Утрата','order':'moment,desc'})
           result={'at':m.now(),'mapped':mapped,'exceptions':exceptions,'samples':samples,'states':states,'loss_orders':[{'id':d['id'],'name':d['name'],'moment':d['moment'],'externalCode':d.get('externalCode')} for d in recent],'units':inp['units'],'source_rows':len(inp['rows'])}
