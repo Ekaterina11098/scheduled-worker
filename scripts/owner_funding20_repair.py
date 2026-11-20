@@ -50,7 +50,7 @@ def main():
   for attempt in range(3):
    r=requests.request(method,'https://advert-api.wildberries.ru'+path,headers={'Authorization':io.token},json=body,timeout=50)
    if method=='GET'and path.startswith('/adv/v3/fullstats')and r.status_code==429 and attempt<2:
-    delay=max(60,float(r.headers.get('Retry-After')or r.headers.get('X-Ratelimit-Retry')or60));time.sleep(min(delay,180));continue
+    delay=max(60,float(r.headers.get('Retry-After')or r.headers.get('X-Ratelimit-Retry')or 60));time.sleep(min(delay,180));continue
    r.raise_for_status();return r.json()if r.content else{}
  def campaign(cid):
   rows=req('/api/advert/v2/adverts?ids='+str(cid))['adverts'];assert len(rows)==1 and rows[0]['id']==cid;return rows[0]
