@@ -106,6 +106,9 @@ def attach(bundle,source,changes):
 
 def validate_funding(io,item,before):
  """Fresh price, own COGS/availability and exact bid composition before an explicitly approved deposit."""
+ if item.get('owner_report20_contract'):
+  from china_owner_report20_contract import validate
+  return validate(io,item,before)
  if item.get('manual_budget_continuation'):
   from china_manual_budget_contract import validate_funding as validate_manual
   return validate_manual(io,item,before)
