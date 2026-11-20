@@ -1,8 +1,6 @@
 name: Owner movement supplement read 20Nov2026
 on:
   workflow_dispatch:
-  push:
-    paths: ['.github/workflows/owner-movement-supplement-read-20261120.yml']
 permissions:
   contents: read
 concurrency:
