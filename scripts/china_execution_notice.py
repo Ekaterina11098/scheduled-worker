@@ -27,6 +27,13 @@ def proven(item,state):
  if kind=='topup_campaign':
   if sorted(before.get('nm_settings',[]),key=lambda n:n['nm_id'])!=sorted(after.get('nm_settings',[]),key=lambda n:n['nm_id']) or not isinstance(state.get('after_budget'),(int,float)):return False
   if state.get('already_done'):return state['after_budget']>=item['target_balance']
+  reconciliation=state.get('funding_consumption_reconciliation')or{}
+  if reconciliation.get('kind')=='accepted_exact_deposit_readback_with_day_spend_bound' and item.get('owner_report20_contract')=='china_agent:owner_publish_reports:2026-11-20:r1:contract:'+str(item['campaign_id']):
+   return (reconciliation.get('accepted_http_response')is True and reconciliation.get('request_amount_cny')==item['amount_cny']
+           and state.get('request',{}).get('body',{}).get('sum')==item['amount_cny'] and 'response'in state
+           and reconciliation['before_budget']==state['before_budget'] and reconciliation['after_budget']==state['after_budget']
+           and state['after_budget']>state['before_budget'] and reconciliation.get('observed_day_spend_upper_bound_cny',-1)>=0
+           and state['after_budget']+reconciliation['observed_day_spend_upper_bound_cny']>=state['before_budget']+item['amount_cny'])
   return isinstance(state.get('before_budget'),(int,float)) and state['after_budget']>=state['before_budget']+item['amount_cny']-2
  expected=copy.deepcopy(before.get('nm_settings',[]))
  if kind=='ad_exclude_sku':expected=[x for x in expected if x['nm_id']!=item['nm_id']]
