@@ -1,0 +1,62 @@
+name: Loss reports read-only preflight 20261120
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/loss-ip-four-preflight-20261120.yml']
+permissions:
+  contents: read
+concurrency:
+  group: loss-ip-four-20261111
+  cancel-in-progress: false
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Read document and match source products privately
+        shell: python
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          import sys,collections
+          sys.path.insert(0,'scripts')
+          import fbs_document_chain as m
+          ROOT='loss_report:ip:20261111:fourwarehouses:'
+          class ReadOnly(m.Transport):
+           def request(self,base,path,method='GET',body=None,params=None):
+            if base==m.MS and method!='GET':raise m.Stop('Read only')
+            return super().request(base,path,method,body,params)
+          t=ReadOnly();db=m.Cache(t);w=m.Worker(t,db,{})
+          inp=db.get(ROOT+'input:v1');assert inp and inp['units']==3387
+          wanted=collections.Counter()
+          for r in inp['rows']:wanted[r[3]]+=r[4]
+          products=w.ms_rows('entity/product',{'filter':'archived=false'})
+          exact=collections.defaultdict(list);fold=collections.defaultdict(list)
+          for p in products:
+           if p.get('article'):
+            exact[p['article']].append(p);fold[p['article'].casefold()].append(p)
+          mapped=[];exceptions=[]
+          for article,q in wanted.items():
+           candidates=exact[article] or fold[article.casefold()]
+           if len(candidates)!=1:
+            exceptions.append({'article':article,'quantity':q,'candidates':[{'id':p['id'],'article':p.get('article'),'name':p['name'],'code':p.get('code')} for p in candidates]})
+           else:
+            p=candidates[0];mapped.append({'source_article':article,'article':p['article'],'quantity':q,'product':m.meta(p),'name':p['name']})
+          docs=w.ms_rows('entity/customerorder',{'search':'031126'})
+          samples=[]
+          for d in docs:
+           if 'Утрата' not in d['name']:continue
+           full=t.request(m.MS,'entity/customerorder/'+d['id'])
+           ps=w.ms_rows('entity/customerorder/'+d['id']+'/positions',{'expand':'assortment'})
+           samples.append({'document':full,'positions':ps})
+          states=t.request(m.MS,'entity/customerorder/metadata').get('states',[])
+          recent=w.ms_rows('entity/customerorder',{'search':'Утрата','order':'moment,desc'})
+          result={'at':m.now(),'mapped':mapped,'exceptions':exceptions,'samples':samples,'states':states,'loss_orders':[{'id':d['id'],'name':d['name'],'moment':d['moment'],'externalCode':d.get('externalCode')} for d in recent],'units':inp['units'],'source_rows':len(inp['rows'])}
+          db.put(ROOT+'preflight:v1',result)
+          print('Read-only preflight completed; private results saved.')
