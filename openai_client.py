@@ -146,25 +146,39 @@ def generate_question_drafts(question):
     check_data = {"userName": name, "text": question.get("text") or "", "productValuation": 0}
     client = OpenAI(api_key=api_key)
 
+    validation_errors = []
+
     def create(direction):
         response = client.chat.completions.create(
             model="gpt-4o-mini", temperature=0.9,
             messages=[{"role": "system", "content": prompt},
-                      {"role": "user", "content": context + "\n" + direction}],
+                      {"role": "user", "content": context + "\n" + direction +
+                       ("\nИсправь замечания предыдущей проверки: " + "; ".join(validation_errors) if validation_errors else "")}],
         )
-        return (response.choices[0].message.content or "").strip()
+        answer = (response.choices[0].message.content or "").strip()
+        pattern = r"^" + r"\s+".join(re.escape(x) for x in opening[:-1].split()) + r"[.!]\s*"
+        match = re.match(pattern, answer, re.IGNORECASE)
+        return opening + " " + answer[match.end():].lstrip() if match else answer
 
     try:
         for _ in range(3):
             first = create("Вариант 1: конкретный, краткий и деловой. Только текст ответа.")
-            if validate_answer(first, check_data)["approved"]:
+            validation = validate_answer(first, check_data)
+            validation_errors = validation["errors"]
+            if validation["approved"]:
                 break
         else:
             raise RuntimeError("Не удалось подготовить корректный ответ на вопрос")
+        validation_errors = []
         for _ in range(3):
             second = create("Вариант 2: более тёплый, другие формулировки и порядок мыслей. "
                             "Не копируй вариант 1. Только текст ответа.\nВариант 1:\n" + first)
-            if validate_answer(second, check_data)["approved"] and _sufficiently_different(first, second):
+            validation = validate_answer(second, check_data)
+            validation_errors = validation["errors"]
+            different = _sufficiently_different(first, second)
+            if validation["approved"] and not different:
+                validation_errors = ["Второй ответ слишком похож на первый: измени формулировки и порядок мыслей, сохрани факты."]
+            if validation["approved"] and different:
                 return {"variant1": first, "variant2": second}
         raise RuntimeError("Не удалось получить достаточно отличающийся второй ответ на вопрос")
     except RuntimeError:

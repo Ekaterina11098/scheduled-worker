@@ -22,5 +22,24 @@ class Recovery(unittest.TestCase):
   self.assertTrue(out['variant1'].startswith('Вера  Лур, добрый день.'))
   self.assertIn('запрещённое слово',prompts[1])
   self.assertNotIn('чат с продавцом',out['variant1'])
+ def test_question_retry_receives_validation_errors_and_keeps_two_variants(self):
+  from unittest.mock import mock_open
+  texts=iter([
+   'Добрый день! Оформите возврат.\nС уважением, команда VESCHI',
+   'Добрый день! Уточните, пожалуйста, вы уже получили товар?\nС уважением, команда VESCHI',
+   'Добрый день! Оформите возврат.\nС уважением, команда VESCHI',
+   'Добрый день! Чтобы подсказать порядок действий, расскажите, пожалуйста, о вашей ситуации подробнее.\nС уважением, команда VESCHI'])
+  prompts=[]
+  def create(**kw):
+   prompts.append(kw['messages'][-1]['content'])
+   return NS(choices=[NS(message=NS(content=next(texts)))])
+  fake=NS(chat=NS(completions=NS(create=create)))
+  with patch.dict(os.environ,{'OPENAI_API_KEY':'test'}),patch.object(client,'OpenAI',return_value=fake),patch('builtins.open',mock_open(read_data='rules')):
+   out=client.generate_question_drafts({'text':'Как работает возврат товара?'})
+  self.assertIn('запрещённое слово',prompts[1])
+  self.assertIn('запрещённое слово',prompts[3])
+  self.assertNotIn('возврат',out['variant1'])
+  self.assertNotIn('возврат',out['variant2'])
+  self.assertNotEqual(out['variant1'],out['variant2'])
 if __name__=='__main__':unittest.main()
 

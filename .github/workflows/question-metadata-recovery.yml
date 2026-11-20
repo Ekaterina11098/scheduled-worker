@@ -41,6 +41,10 @@ jobs:
             /tests/
           sparse-checkout-cone-mode: false
       - run: pip install 'psycopg[binary]==3.2.10' cryptography==46.0.2 requests==2.32.5 python-dotenv==1.1.1 openai==1.109.1
+      - name: Verify question generation validation retries
+        env:
+          PYTHONPATH: ${{ github.workspace }}/private-source
+        run: python -m unittest -v test_generation_recovery.py
       - name: Resume China questions through original duplicate protection
         env:
           PYTHONPATH: ${{ github.workspace }}/private-source
@@ -76,7 +80,7 @@ jobs:
                       for item in state['scopes']['token_3']['items']:
                           candidate=state['items'].get('token_3:'+str(item['id']),{})
                           trace=(candidate.get('last_error') or {}).get('trace','')
-                          if candidate.get('status')!='generate' or 'Observed review differs from immutable source snapshot' not in trace:continue
+                          if candidate.get('status')!='generate' or not any(message in trace for message in ('Observed review differs from immutable source snapshot','Не удалось подготовить корректный ответ на вопрос','Не удалось получить достаточно отличающийся второй ответ на вопрос')):continue
                           version=candidate['version']
                           key='reviews:source:'+sha(['token_3','questions',str(item['id']),version])
                           payload=dict(cabinet='token_3',kind='questions',item_id=str(item['id']),version=version,item=item,source_sha256=sha(item),observed_at=state['scopes']['token_3']['observed_at'])
