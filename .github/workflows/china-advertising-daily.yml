@@ -175,3 +175,5 @@ jobs:
 # Validate the exact owner-approved publication view before freezing both families.
 
 # Selected raises do not reappear as unfinished additions in the four-way report.
+
+# Keep dated pre-window archive exclusions in the report audit; retain raw history.
