@@ -1,0 +1,53 @@
+name: Reconcile loss order readback 20261120
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/loss-ip-four-readback-20261120.yml']
+permissions:
+  contents: read
+concurrency:
+  group: loss-ip-four-20261111
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Read existing order after uncertain response
+        shell: python
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          import sys,collections
+          sys.path.insert(0,'scripts')
+          import fbs_document_chain as m
+          ROOT='loss_report:ip:20261111:fourwarehouses:'
+          class ReadOnly(m.Transport):
+           def request(self,base,path,method='GET',body=None,params=None):
+            if base==m.MS and method!='GET':raise m.Stop('Read only reconciliation')
+            return super().request(base,path,method,body,params)
+          t=ReadOnly();db=m.Cache(t);w=m.Worker(t,db,{})
+          prep=db.get(ROOT+'preflight:v1')
+          found=w.ms_rows('entity/customerorder',{'filter':'externalCode=loss-ip-20261111-fourwarehouses-order'})
+          if len(found)!=1:
+           db.put(ROOT+'reconciliation:v1',{'status':'order_not_unique','count':len(found),'at':m.now()})
+           raise m.Stop('Order not uniquely found; no write repeated')
+          final=t.request(m.MS,'entity/customerorder/'+found[0]['id'])
+          ps=w.ms_rows('entity/customerorder/'+final['id']+'/positions')
+          wanted=collections.Counter();got=collections.Counter()
+          for p in prep['mapped']:wanted[m.href(p['product'])]+=p['quantity']
+          for p in ps:got[m.href(p['assortment'])]+=p['quantity']
+          assert got==wanted and len(ps)==216 and sum(got.values())==3387
+          assert final['applicable'] and final['sum']==0 and final['name']=='111126 Утрата ИП'
+          sample=prep['samples'][0]['document']
+          assert all(m.href(final[k])==m.href(sample[k]) for k in ('organization','agent','store','state'))
+          assert all(p['price']==0 and p.get('reserve',0)==0 for p in ps)
+          assert final['moment'].startswith('2026-11-11')
+          db.put(ROOT+'order_result:v1',{'status':'complete','pending':False,'id':final['id'],'name':final['name'],'moment':final['moment'],'positions':len(ps),'units':sum(got.values()),'applicable':True,'prices_zero':True,'reserve_zero':True,'reconciled_after_timeout':True,'at':m.now(),'url':'https://online.moysklad.ru/app/#customerorder/edit?id='+final['id']})
+          print('Existing order read back and full composition verified; no write repeated.')
