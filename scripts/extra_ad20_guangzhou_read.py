@@ -55,7 +55,8 @@ def main():
   for cp in old['campaigns']:
    for n in cp.get('nm_settings',[]):
     subject=n['subject']['id'];zone='search'
-    if subject!=280 or str(subject)+':search'in quotes:continue
+    if (str(subject)+':search' in quotes or str(subject)+':search' in v.get('category_quotes',{})
+        or not cp['settings']['placements'].get('search')or cp['settings']['payment_type']!='cpc'):continue
     # Category identity is read from the actual campaign; no invented minimum.
     q=http(io,'/api/advert/v1/bids/min','POST',dict(advert_id=cp['id'],nm_ids=[n['nm_id']],payment_type='cpc',placement_types=['search']))
     quotes[str(subject)+':search']=dict(subject_id=subject,campaign_id=cp['id'],nm_id=n['nm_id'],response=q,observed_at=datetime.now(timezone.utc).isoformat())
