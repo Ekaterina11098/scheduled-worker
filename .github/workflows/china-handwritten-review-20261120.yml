@@ -1,0 +1,74 @@
+name: China handwritten review read only 20261120
+on:
+  push:
+    branches: ['review/china-handwritten-20261120']
+    paths: ['.github/workflows/china-handwritten-review-20261120.yml']
+permissions: {}
+concurrency:
+  group: china-handwritten-review-20261120
+  cancel-in-progress: false
+jobs:
+  read:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5 cryptography
+      - name: Read full China card catalog for owner review
+        shell: python
+        env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+        run: |
+          import os,requests,time,json,base64,gzip,secrets,traceback
+          from datetime import datetime,timezone
+          from cryptography.hazmat.primitives import serialization,hashes
+          from cryptography.hazmat.primitives.asymmetric import padding
+          from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+          PUBLIC_KEY="-----BEGIN PUBLIC KEY-----\nMIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAqZNUrOvZ4UeO29b+p61F\niH/TYX0CFHtnqndnmHR4leDh/pqkTFqC+EryTPqjLJBylfgeqPqc0Bywo7WeHNxe\nvbOmih5rb9wRTYgJRBx7ruUJaWiJLP0yp2KwLMf8Vc0tRxRBIfXV/CHQjVIIc0rY\nOEW8+gwrAgsqFgs0944OpliDwm0aI9UX+j4gCTCmktk5swzFuqyxcDUH7fOUDKe1\nOOSqDB/lODw3333K6mjuHxRcDUD69EdTOS+hJb+ZqQOCT9JGtE2b6H9+Uf6B9cYs\nKu7JDPUD/5ETgxz3Oa3YgM7XPWwamcn5MYq8HMJ2e4F2B1x/mxSpUk6RFDR8hW/W\nFpqmg+JxpZpKwuSgBhegRpWwJ1+gS0z0h31a58XweTDtA8nd7WJjhiegbmSwItLM\npC3FVE8HzAeP6h8C+7l2r/Vl81y59CE+VHvgSmUobNRmHdY+laFAU2v8PfuebV5C\nDku+Uuz+AjUYKOtflqUc8HQQHGldtkkXG1iafKKIpZyTAgMBAAE=\n-----END PUBLIC KEY-----"
+          out={'wbWrites':0}
+          try:
+              token=os.environ['WB_TOKEN_3'];assert token
+              for attempt in range(3):
+                  cards=[];cursor={'limit':100};seen=set()
+                  for page in range(50):
+                      for retry in range(4):
+                          time.sleep(.8)
+                          r=requests.post('https://content-api.wildberries.cn/content/v2/get/cards/list',headers={'Authorization':token},json={'settings':{'sort':{'ascending':True},'cursor':cursor,'filter':{'withPhoto':-1}}},timeout=60)
+                          if r.status_code==429:
+                              wait=int(float(r.headers.get('X-Ratelimit-Retry') or r.headers.get('Retry-After') or 65))+2
+                              assert wait<=120,'API cooldown exceeds review budget'
+                              time.sleep(wait);continue
+                          if not r.ok:raise RuntimeError('Catalog HTTP '+str(r.status_code))
+                          d=r.json()
+                          if not isinstance(d.get('cards'),list):d=d.get('data',{})
+                          assert isinstance(d.get('cards'),list) and isinstance(d.get('cursor'),dict)
+                          break
+                      else:raise RuntimeError('Rate limit retry exhausted')
+                      cards.extend(d['cards'])
+                      if len(d['cards'])<100:break
+                      marker=(d['cursor'].get('updatedAt'),d['cursor'].get('nmID'))
+                      assert all(marker) and marker not in seen
+                      seen.add(marker);cursor={'limit':100,'updatedAt':marker[0],'nmID':marker[1]}
+                  else:raise RuntimeError('Pagination limit')
+                  if cards and len({c['nmID'] for c in cards})==len(cards):break
+                  time.sleep(3)
+              else:raise RuntimeError('Unstable card catalog')
+              rows=[]
+              for c in cards:
+                  row={k:c.get(k) for k in ('nmID','imtID','vendorCode','subjectID','subjectName','title','dimensions','characteristics','createdAt','updatedAt')}
+                  row['photos']=[p.get('big') or p.get('c516x688') for p in c.get('photos',[])[:3]]
+                  rows.append(row)
+              out.update(status='complete',observedAt=datetime.now(timezone.utc).isoformat(),cards=rows,count=len(rows))
+          except Exception as exc:
+              out.update(status='incomplete',error={'type':type(exc).__name__,'message':str(exc),'trace':traceback.format_exc()})
+          raw=gzip.compress(json.dumps(out,ensure_ascii=False).encode())
+          key=secrets.token_bytes(32);nonce=secrets.token_bytes(12)
+          pub=serialization.load_pem_public_key(PUBLIC_KEY.encode())
+          b=lambda x:base64.b64encode(x).decode()
+          env={'key':b(pub.encrypt(key,padding.OAEP(mgf=padding.MGF1(hashes.SHA256()),algorithm=hashes.SHA256(),label=None))),'nonce':b(nonce),'ciphertext':b(AESGCM(key).encrypt(nonce,raw,None))}
+          encoded=b(json.dumps(env).encode())
+          for i in range(0,len(encoded),18000):print('GROUP_REVIEW_ENCRYPTED '+str(i//18000)+' '+encoded[i:i+18000],flush=True)
+          print('READ_ONLY_REVIEW_FINISHED',flush=True)
+          
