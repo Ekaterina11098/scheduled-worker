@@ -36,7 +36,9 @@ def attach(bundle,source):
  else:
   sections['add']['period']=[scan['period_from'],scan['period_to']]
   for nm in dict.fromkeys(scan.get('candidate_ids',[])):
-   if any(r.get('nm_id')==nm and r.get('ready') for r in sections['add']['rows']):continue
+   # Full growth review selects one strengthening action per SKU: a raise wins
+   # over adding the same product elsewhere. Do not recreate it as unfinished.
+   if any(r.get('nm_id')==nm and r.get('ready') for key in ('add','raise') for r in sections[key]['rows']):continue
    e=(source.get('economics',{}).get('rows')or{}).get(str(nm))or{}
    if e and isinstance(e.get('stock_free'),(int,float)) and e['stock_free']<=0:continue
    if not e or e.get('expected_margin_before_ads_cny')is None:
