@@ -50,7 +50,7 @@ def main():
   # Only exact IDs with stock and published availability enter the unit model.
   ev['published']=copy.deepcopy(p['published']);ev['published']['raw']['stocks']=[s for s in ev['published']['raw']['stocks']if p['published']['size_to_nm'][str(s.get('chrtId',s.get('chrtID')))]in ids]
   inputs=dict(old,prices=v['prices']);p['economics']=guangzhou_models(inputs,route,ev,io.get('china_agent:new_ad_economics_policy:v1'));p['eligible_nm_ids']=sorted(ids);p['route']=route;save()
- if 'extra_category_quotes'not in p:
+ if not p.get('extra_category_quotes'):
   old=io.get('china_agent:advertising_full_growth:2026-11-20:v1:inputs');quotes={}
   for cp in old['campaigns']:
    for n in cp.get('nm_settings',[]):
