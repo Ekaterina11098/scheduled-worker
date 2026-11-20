@@ -173,3 +173,5 @@ jobs:
 # Dedicated report RPC uses the same compact UTF8 and bounded timeout as report state.
 
 # Validate the exact owner-approved publication view before freezing both families.
+
+# Selected raises do not reappear as unfinished additions in the four-way report.
