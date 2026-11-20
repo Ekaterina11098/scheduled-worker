@@ -56,7 +56,36 @@ jobs:
           from review_morning import main
           from stock_deploy_support import seal,error
           private_log=io.StringIO()
+          def clear_obsolete_backoff():
+              import os,sys,hmac,hashlib,psycopg
+              sys.path.insert(0,'review-approval-preparation')
+              from review_telegram_approval import Repository,sha
+              from review_approval_bridge import SQLSource
+              from review_morning import persist_source_snapshot
+              root=os.environ['SUPABASE_SECRET_KEY'].encode()
+              pw=hmac.new(root,b'veschi:review-approval-login:20261015:v1',hashlib.sha256).hexdigest()
+              with psycopg.connect(host='aws-0-eu-central-1.pooler.supabase.com',port=5432,dbname='postgres',user='review_approval_login_20261015.abxgjoqlddhtcmjcjwxw',password=pw,sslmode='require',autocommit=True,connect_timeout=15) as conn:
+                  deadline=time.monotonic()+13*60
+                  while not conn.execute("SELECT pg_try_advisory_lock(hashtextextended('reviews-morning-delivery',0))").fetchone()[0]:
+                      if time.monotonic()>deadline:raise RuntimeError('Collection busy')
+                      time.sleep(10)
+                  try:
+                      repo=Repository(conn,postgres=True);source=SQLSource(conn)
+                      control='questions-china-two-hour:2026-11-20'
+                      state=repo.get('events',control)
+                      for item in state['scopes']['token_3']['items']:
+                          candidate=state['items'].get('token_3:'+str(item['id']),{})
+                          trace=(candidate.get('last_error') or {}).get('trace','')
+                          if candidate.get('status')!='generate' or 'Observed review differs from immutable source snapshot' not in trace:continue
+                          version=candidate['version']
+                          key='reviews:source:'+sha(['token_3','questions',str(item['id']),version])
+                          payload=dict(cabinet='token_3',kind='questions',item_id=str(item['id']),version=version,item=item,source_sha256=sha(item),observed_at=state['scopes']['token_3']['observed_at'])
+                          persist_source_snapshot(source,key,payload,reuse_identical=True)
+                          candidate.pop('retry_at',None)
+                      with repo.transaction():repo.put('events',control,state)
+                  finally:conn.execute("SELECT pg_advisory_unlock(hashtextextended('reviews-morning-delivery',0))")
           try:
+              clear_obsolete_backoff()
               deadline=time.monotonic()+19*60
               while time.monotonic()<deadline:
                   with contextlib.redirect_stdout(private_log),contextlib.redirect_stderr(private_log):
