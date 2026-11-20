@@ -56,3 +56,5 @@ jobs:
 # Resume accepted deposit by readback; never repeat its POST.
 
 # Respect statistics Retry-After; existing accepted deposit is never submitted again.
+
+# Use syntax-checked readback recovery implementation.
