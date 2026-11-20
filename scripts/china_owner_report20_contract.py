@@ -7,17 +7,23 @@ ROOT='china_agent:owner_publish_reports:2026-11-20:r1'
 def check(io,item,before):
  from china_loss_control import digest
  c=io.get(item.get('owner_report20_contract',''))or{}
+ from china_confirmed_funding_context import reconcile
+ frozen=next((a for a in getattr(io,'daily_report_plan',{}).get('items',[])if a.get('id')==item.get('id')),item)
+ if item!=frozen:
+  derived=copy.deepcopy(frozen)
+  derived.update(budget_evidence=reconcile(io,frozen['budget_evidence'],before),nm_ids=sorted(n['nm_id']for n in before['nm_settings']))
+  if item!=derived:raise ValueError('Funding action differs from the exact verified companion reconciliation')
  now=datetime.now(timezone.utc)
  if (item.get('owner_report20_contract')!=ROOT+':contract:'+str(item['campaign_id'])
      or item.get('campaign_id')!=c.get('campaign_id')
      or c.get('status')!='ready_for_human_confirmation' or c.get('grants_action_permission')is not False
-     or c.get('action_sha256')!=digest([item]) or c.get('maximum_funding_cny')!=item['amount_cny']
+     or c.get('action_sha256')!=digest([frozen]) or c.get('maximum_funding_cny')!=item['amount_cny']
      or now>=datetime.fromisoformat(c.get('expires_at','2000-01-01T00:00:00+00:00'))):
   raise ValueError('Exact reviewed20 funding contract changed or expired')
  if c['period_to']>='2026-11-20' or not c.get('risk_disclosed_before_confirmation'):raise ValueError('Reviewed completed-day evidence missing')
  if before['id']!=item['campaign_id'] or before['currency']!='CNY' or before['status']!=item['status_before']:raise ValueError('Campaign status changed')
  if (io.get('china_agent:budget_owner_policy:v1')or{}).get('do_not_fund',{}).get(str(before['id'])):raise ValueError('Owner funding hold')
- e=copy.deepcopy(item['budget_evidence'])
+ e=copy.deepcopy(frozen['budget_evidence'])
  actual={str(n['nm_id']):n['bids_kopecks']for n in before['nm_settings']}
  if actual!=e['expected_bids']:
   from china_confirmed_funding_context import reconcile
