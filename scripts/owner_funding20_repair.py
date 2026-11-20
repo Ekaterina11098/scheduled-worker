@@ -46,8 +46,12 @@ def main():
  else:assert io.create(ROOT+':execution',e)
  def save():io.put(ROOT+':execution',copy.deepcopy(e))
  def req(path,method='GET',body=None):
-  time.sleep(1.2);r=requests.request(method,'https://advert-api.wildberries.ru'+path,headers={'Authorization':io.token},json=body,timeout=50)
-  r.raise_for_status();return r.json()if r.content else{}
+  time.sleep(1.2)
+  for attempt in range(3):
+   r=requests.request(method,'https://advert-api.wildberries.ru'+path,headers={'Authorization':io.token},json=body,timeout=50)
+   if method=='GET'and path.startswith('/adv/v3/fullstats')and r.status_code==429 and attempt<2:
+    delay=max(60,float(r.headers.get('Retry-After')or r.headers.get('X-Ratelimit-Retry')or60));time.sleep(min(delay,180));continue
+   r.raise_for_status();return r.json()if r.content else{}
  def campaign(cid):
   rows=req('/api/advert/v2/adverts?ids='+str(cid))['adverts'];assert len(rows)==1 and rows[0]['id']==cid;return rows[0]
  def budget(cid):
@@ -80,7 +84,7 @@ def main():
     if accepted and same(after,before)and cash>initial:
      day=datetime.now(timezone.utc).astimezone(__import__('zoneinfo').ZoneInfo('Europe/Moscow')).date().isoformat()
      stats=req('/adv/v3/fullstats?ids='+str(cid)+'&beginDate='+day+'&endDate='+day)
-     rows=[r for r in stats if r['advertId']==cid];assert len(rows)==1
+     rows=[r for r in stats if r['advertId']==cid];assert len(rows)==1 and rows[0].get('currency')=='CNY'
      spent=sum(d['sum']for d in rows[0].get('days',[])if d['date'][:10]==day)
      if cash+spent>=initial+amount:
       state['funding_consumption_reconciliation']=dict(kind='accepted_exact_deposit_readback_with_day_spend_bound',request_amount_cny=amount,accepted_http_response=True,before_budget=initial,after_budget=cash,observed_day_spend_upper_bound_cny=spent,day_msk=day,observed_at=now(),exact_between_readbacks_spend_unknown=True)
