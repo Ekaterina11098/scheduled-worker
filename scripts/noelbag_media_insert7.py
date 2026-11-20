@@ -72,38 +72,36 @@ def classify(card,article,nm,slide,raw_images):
     if len(photos)>=MAX_MEDIA:raise Blocked("photo_limit")
     return {"status":"ready_insert_at_7","photo_count":len(photos),"expected_count":len(photos)+1,"first_six_preserved":True,"tail_preserved":True}
 def get_drive_assets(supa,headers):
-    """Import uploaded approved PNG bytes from private Supabase cache chunks.
-    This avoids widening the existing drive.file OAuth scope, and never
-    exposes images in public GitHub or passes WB credentials to file hosts.
+    """Read the four owner-approved PNGs from private Supabase cache, no external Google access.
+
+    The private cache contains six checked base64 chunks per PNG, staged by the
+    authorized photo chat and SQL-readback SHA256 verified before this run.
     """
+    import base64
     outputs={}
-    expected_sizes={"1.png":2845650,"2(1).png":2846589,
-                    "3.png":2708000,"4.png":2701248}
-    for number,name in enumerate(("1.png","2(1).png","3.png","4.png"),1):
-        prefix=f"noelbag_media_insert7:v1:asset:{number}:"
-        response=requests.get(PROJECT_URL+"/rest/v1/telegram_api_cache",
-            headers=headers,params={"cache_key":"like."+prefix+"*",
-                "select":"cache_key,payload","order":"cache_key.asc","limit":20},timeout=100)
-        response.raise_for_status()
-        rows=response.json()
-        if len(rows)!=10:raise Blocked("private_asset_chunks_missing_"+name)
-        parts=[]
-        for i,row in enumerate(rows):
-            if row.get("cache_key")!=prefix+str(i).zfill(3):
-                raise Blocked("private_asset_chunk_order_invalid_"+name)
-            data=row.get("payload",{})
-            if data.get("index")!=i or data.get("total")!=10 or data.get("sha256")!=EXPECTED_SHA[name]:
-                raise Blocked("private_asset_chunk_metadata_invalid_"+name)
-            parts.append(data["b64"])
-        raw=base64.b64decode("".join(parts),validate=True)
-        if len(raw)!=expected_sizes[name] or digest(raw)!=EXPECTED_SHA[name]:
-            raise Blocked("private_asset_hash_invalid_"+name)
-        with Image.open(io.BytesIO(raw)) as image:
-            if image.format!="PNG" or image.size!=(1086,1448):
-                raise Blocked("private_asset_dimensions_invalid_"+name)
-            image.verify()
+    for name, sha in EXPECTED_SHA.items():
+        prefix="noelbag_media_insert7:private_asset:"+sha+":"
+        r=requests.get(PROJECT_URL+"/rest/v1/telegram_api_cache",
+            headers=headers,
+            params={"cache_key":"like."+prefix+"*","select":"cache_key,payload",
+                    "order":"cache_key.asc","limit":"50"},
+            timeout=100)
+        if r.status_code!=200:raise Blocked("private_asset_cache_unavailable_"+name)
+        rows=r.json()
+        if len(rows)!=6:raise Blocked("private_asset_chunks_missing_"+name)
+        pieces=[row["payload"] for row in rows]
+        if sorted(p["part"] for p in pieces)!=list(range(6)) or any(p["parts"]!=6 or p["sha256"]!=sha for p in pieces):
+            raise Blocked("private_asset_chunk_identity_"+name)
+        raw=base64.b64decode("".join(p["chunk"] for p in sorted(pieces,key=lambda x:x["part"])),validate=True)
+        if len(raw)!=pieces[0]["bytes"] or len(raw)>5_000_000 or digest(raw)!=sha:
+            raise Blocked("private_asset_sha256_mismatch_"+name)
+        with Image.open(io.BytesIO(raw)) as im:
+            if im.format!="PNG" or im.size!=(1086,1448):
+                raise Blocked("private_asset_format_"+name)
+            im.verify()
         outputs[name]=raw
     return outputs
+
 def catalog(token):
     session=requests.Session();session.headers.update({"Authorization":token})
     cur={"limit":100};out=[];seen=set()
