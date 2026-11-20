@@ -2,7 +2,7 @@
 No WB media update operations or image-generation calls in this module.
 Private source PNGs live in the single owner-authorized Drive folder.
 """
-import csv, hashlib, io, json, os, re, time
+import base64, csv, hashlib, io, json, os, re, time
 from pathlib import Path
 from PIL import Image, ImageChops, ImageOps, ImageStat
 import requests
@@ -72,25 +72,37 @@ def classify(card,article,nm,slide,raw_images):
     if len(photos)>=MAX_MEDIA:raise Blocked("photo_limit")
     return {"status":"ready_insert_at_7","photo_count":len(photos),"expected_count":len(photos)+1,"first_six_preserved":True,"tail_preserved":True}
 def get_drive_assets(supa,headers):
-    r=requests.post(PROJECT_URL+"/rest/v1/rpc/content_photo_drive_credentials",headers=headers,json={},timeout=40)
-    r.raise_for_status()
-    def transport(method,url,**kwargs):return requests.request(method,url,**kwargs)
-    drive=Delivery(r.json(),transport)
-    drive.refresh()
+    """Import uploaded approved PNG bytes from private Supabase cache chunks.
+    This avoids widening the existing drive.file OAuth scope, and never
+    exposes images in public GitHub or passes WB credentials to file hosts.
+    """
     outputs={}
-    for name,ident in DRIVE_IDS.items():
-        info=drive.metadata(ident)
-        if info.get("parents")!=[FOLDER] or info.get("mimeType")!="image/png" or info.get("trashed"):
-            raise Blocked("drive_folder_or_type_mismatch_"+name)
-        response=drive.call("GET", "https://www.googleapis.com/drive/v3/files/"+ident,params={"alt":"media"},stream=True)
-        if response.status_code!=200:raise Blocked("drive_download_failed_"+name)
-        content=response.content
-        if len(content)>5_000_000 or digest(content)!=EXPECTED_SHA[name]:
-            raise Blocked("private_png_sha256_mismatch_"+name)
-        with Image.open(io.BytesIO(content)) as im:
-            if im.format!="PNG" or im.size!=(1086,1448):raise Blocked("private_png_dimensions_mismatch_"+name)
-            im.verify()
-        outputs[name]=content
+    expected_sizes={"1.png":2845650,"2(1).png":2846589,
+                    "3.png":2708000,"4.png":2701248}
+    for number,name in enumerate(("1.png","2(1).png","3.png","4.png"),1):
+        prefix=f"noelbag_media_insert7:v1:asset:{number}:"
+        response=requests.get(PROJECT_URL+"/rest/v1/telegram_api_cache",
+            headers=headers,params={"cache_key":"like."+prefix+"*",
+                "select":"cache_key,payload","order":"cache_key.asc","limit":20},timeout=100)
+        response.raise_for_status()
+        rows=response.json()
+        if len(rows)!=10:raise Blocked("private_asset_chunks_missing_"+name)
+        parts=[]
+        for i,row in enumerate(rows):
+            if row.get("cache_key")!=prefix+str(i).zfill(3):
+                raise Blocked("private_asset_chunk_order_invalid_"+name)
+            data=row.get("payload",{})
+            if data.get("index")!=i or data.get("total")!=10 or data.get("sha256")!=EXPECTED_SHA[name]:
+                raise Blocked("private_asset_chunk_metadata_invalid_"+name)
+            parts.append(data["b64"])
+        raw=base64.b64decode("".join(parts),validate=True)
+        if len(raw)!=expected_sizes[name] or digest(raw)!=EXPECTED_SHA[name]:
+            raise Blocked("private_asset_hash_invalid_"+name)
+        with Image.open(io.BytesIO(raw)) as image:
+            if image.format!="PNG" or image.size!=(1086,1448):
+                raise Blocked("private_asset_dimensions_invalid_"+name)
+            image.verify()
+        outputs[name]=raw
     return outputs
 def catalog(token):
     session=requests.Session();session.headers.update({"Authorization":token})
