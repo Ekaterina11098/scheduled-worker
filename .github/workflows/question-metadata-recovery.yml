@@ -7,14 +7,20 @@ permissions:
   contents: read
 concurrency:
   group: question-metadata-recovery
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   recover:
     runs-on: ubuntu-latest
     timeout-minutes: 22
     steps:
       - uses: actions/checkout@v4
-        with: {persist-credentials: false}
+        with:
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*.py
+            /review-approval-preparation/
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - name: Verify metadata changes and immutable question content
