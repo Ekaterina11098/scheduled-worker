@@ -83,3 +83,5 @@ jobs:
 #19Nov: pending first-full-day rows without actions retain the canonical waiting decision.
 
 #20Nov: registry-history fixtures use explicit empty batches; all arithmetic and duplicate checks stay enabled.
+
+#20Nov: confirmed terminal archive before the report window cannot block active-campaign review; history retained.
