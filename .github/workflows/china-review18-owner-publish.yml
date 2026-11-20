@@ -1,0 +1,152 @@
+name: Publish owner-authorized China review November 18 once
+on:
+  push:
+    paths: ['.github/workflows/china-review18-owner-publish.yml']
+permissions: {contents: read}
+concurrency:
+  group: china-review18-owner-publish
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*.py
+            /review-approval-preparation/
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: d584a0cf857ccc1fcac1e23ce73d75be970476fc
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          path: private-source
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*.py
+            /*.md
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install 'psycopg[binary]==3.2.10' cryptography==46.0.2 requests==2.32.5 python-dotenv==1.1.1 openai==1.109.1
+      - name: Reconcile exact review and publish saved immutable answer once
+        env:
+          PYTHONPATH: ${{ github.workspace }}/private-source
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          REVIEW_PUBLICATION_ENABLED: '1'
+        run: |
+          python - <<'PY'
+          import os,sys,json,hmac,hashlib,base64,time,io,contextlib
+          from pathlib import Path
+          import psycopg,requests
+          sys.path.insert(0,'review-approval-preparation')
+          from review_telegram_approval import Approval,Repository,sha
+          from review_approval_bridge import SQLSource,DurableBridge
+          from review_telegram_runtime import CanonicalGuard
+          from review_approval_executor import Executor,WBAdapter,ExplicitRateLimit
+          from review_approval_backup import IncrementalSnapshot,encrypt
+          from review_auto_five_star import authorized_card,validate_preflight_response
+          from stock_deploy_support import OWNER_PUBLIC,seal,error
+          import wildberries as wb
+          INTENT='e1354e8c0c49d736230f20e6e16b5e23482c6ca99cee9ffc3d689a9daca3c589'
+          ITEM='iBQlX9UwAjMLbvN4jtJ9'
+          RECOVERY='owner-explicit-retry:'+INTENT+':20261120'
+          hidden=io.StringIO()
+          try:
+           with contextlib.redirect_stdout(hidden),contextlib.redirect_stderr(hidden):
+            root=os.environ['SUPABASE_SECRET_KEY'].encode()
+            pw=hmac.new(root,b'veschi:review-approval-login:20261015:v1',hashlib.sha256).hexdigest()
+            with psycopg.connect(host='aws-0-eu-central-1.pooler.supabase.com',port=5432,dbname='postgres',user='review_approval_login_20261015.abxgjoqlddhtcmjcjwxw',password=pw,sslmode='require',autocommit=True,connect_timeout=15,options='-c statement_timeout=30000') as conn:
+             repo=Repository(conn,postgres=True);source=SQLSource(conn)
+             cfg=source.read('reviews:telegram-approval:config:v1')
+             assert all(cfg.get(k) for k in ('enabled','publication_enabled','destination_verified'))
+             app=Approval(repo,base64.b64encode(hmac.new(root,b'veschi:review-approval-ingress:20261015:v1',hashlib.sha256).digest()).decode(),cfg['owner_id'],cfg['chat_id'],cfg['bot_id'],enabled=True)
+             app.group=source.read('reviews:content-group:v1') or {}
+             bridge=DurableBridge(app,source);adapter=WBAdapter(wb);canonical=CanonicalGuard(app,bridge.project)
+             intent=repo.get('intents',INTENT)
+             assert intent['item_id']==ITEM and intent['cabinet']=='token_3' and intent['kind']=='feedbacks'
+             assert intent['answer_sha256']=='206700e94e3784e16d8a985d2ee6c9426db9507b1252284613aaea7bb1dd2cbb'
+             card=repo.get('cards',intent['card_token'])
+             assert card['source']['article']=='63-NoelBag-zdarkblue' and sha(intent['answer'])==intent['answer_sha256']
+             app.chat=str(intent['chat_id'])
+             backup=IncrementalSnapshot(repo,None,root,os.environ['SUPABASE_URL']+':owner-retry')
+             out=Path(os.environ['RUNNER_TEMP'])/'review18-proof';out.mkdir(exist_ok=True)
+             def preserve():
+              (out/'protected-backup.aes.json').write_text(json.dumps(encrypt(backup.capture(),OWNER_PUBLIC.encode())))
+             def guard(card):return authorized_card(app,source,card) and canonical(card)
+             executor=Executor(app,guard,adapter,enabled=True,preserve=preserve)
+             original=requests.sessions.Session.request
+             def bound(session,method,url,*args,**kwargs):
+              from urllib.parse import urlsplit
+              u=urlsplit(str(url));method=method.upper()
+              if u.hostname and 'wildberries.' in u.hostname:
+               payload=kwargs.get('json') or {}
+               allowed=(u.hostname=='feedbacks-api.wildberries.ru' and ((method=='GET' and u.path=='/api/v1/feedback' and (kwargs.get('params') or {}).get('id')==ITEM) or (method=='POST' and u.path=='/api/v1/feedbacks/answer' and payload==dict(id=ITEM,text=intent['answer']))))
+               if not allowed or (kwargs.get('headers') or {}).get('Authorization')!=wb.feedback_token('token_3'):raise RuntimeError('Request outside exact owner authorization')
+              response=original(session,method,url,*args,**kwargs)
+              if u.hostname and 'wildberries.' in u.hostname:
+               receipt=repo.get('events',RECOVERY) or {}
+               receipt.update(last_http_status=response.status_code,last_method=method,last_checked_at=time.time(),run_id=os.environ.get('GITHUB_RUN_ID'))
+               repo.put('events',RECOVERY,json.loads(json.dumps(receipt)))
+               validate_preflight_response(intent,method,url,response)
+              return response
+             requests.sessions.Session.request=bound
+             deadline=time.monotonic()+10*60
+             locked=False
+             try:
+              while time.monotonic()<deadline:
+               locked=repo.execute('SELECT pg_try_advisory_lock(hashtextextended(?,0))',('review-approval:'+INTENT,)).fetchone()[0]
+               if locked:break
+               time.sleep(5)
+              if not locked:raise RuntimeError('Exact review busy')
+              current=repo.get('intents',INTENT)
+              receipt=repo.get('events',RECOVERY) or {}
+              if current['status'] not in ('confirmed','manual_present','blocked') and not receipt.get('retry_authorized_at'):
+               while adapter.pause('token_3') and time.monotonic()<deadline:time.sleep(min(15,adapter.pause('token_3')))
+               actual=adapter.read(current)
+               if actual.strip():
+                executor.save(current,'confirmed' if actual==current['answer'] else 'manual_present',actual_answer_sha256=sha(actual),confirmed_at=time.time())
+               else:
+                if not guard(card):raise RuntimeError('Canonical authorization changed')
+                receipt=repo.get('events',RECOVERY) or {}
+                receipt.update(retry_authorized_at=time.time(),empty_verified_at=time.time(),intent_id=INTENT,answer_sha256=current['answer_sha256'],authorization='explicit-owner-chat-publish',status='prepared')
+                preserve()
+                with repo.transaction():
+                 repo.put('events',RECOVERY,receipt)
+                 current.update(status='awaiting_preflight',preflight_verified_at=time.time(),retry_at=0,lease_until=0,owner_explicit_retry=RECOVERY)
+                 repo.put('intents',INTENT,current)
+                 state=repo.get('items',current['ref']);state['status']='approved';repo.put('items',current['ref'],state)
+                 card=repo.get('cards',current['card_token']);card['status']='approved';repo.put('cards',current['card_token'],card)
+                preserve()
+              while time.monotonic()<deadline:
+               current=repo.get('intents',INTENT)
+               if current['status'] in ('confirmed','manual_present','blocked'):break
+               executor.run(INTENT)
+               time.sleep(5)
+              current=repo.get('intents',INTENT)
+              receipt=repo.get('events',RECOVERY) or {}
+              receipt.update(status=current['status'],checked_at=time.time(),run_id=os.environ.get('GITHUB_RUN_ID'),answer_sha256=current['answer_sha256'])
+              with repo.transaction():
+               repo.put('events',RECOVERY,receipt)
+               card=repo.get('cards',current['card_token'])
+               card['status']='sent' if current['status']=='confirmed' else card['status']
+               repo.put('cards',current['card_token'],card)
+              preserve()
+              result=dict(status=current['status'],exact_answer_verified=current.get('actual_answer_sha256')==current['answer_sha256'])
+             finally:
+              requests.sessions.Session.request=original
+              if locked:repo.execute('SELECT pg_advisory_unlock(hashtextextended(?,0))',('review-approval:'+INTENT,))
+           print(json.dumps(result))
+           if result['status']!='confirmed':raise SystemExit(1)
+          except Exception as exc:
+           seal('review18-owner-publish-failure',dict(error=error(exc),private_log=hidden.getvalue()))
+           print('Publication not confirmed; protected diagnostics saved.');raise SystemExit(1)
+          PY
