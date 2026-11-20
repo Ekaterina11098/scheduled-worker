@@ -1,6 +1,8 @@
 name: Manual cancellation date audit 20Nov2026
 on:
   workflow_dispatch:
+  push:
+    paths: ['.github/workflows/owner-manual-cancel-dates-20261120.yml']
 permissions:
   contents: read
 concurrency:
