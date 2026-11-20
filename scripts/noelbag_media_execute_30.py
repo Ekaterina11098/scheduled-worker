@@ -3,10 +3,29 @@ import os,sys,json,time,io,hashlib,datetime as dt
 import requests
 from noelbag_media_insert7 import (Blocked,validate_plan,get_drive_assets,catalog,get_photos,
  classify,core,allowed_url,thumb,difference,EXPECTED_SHA,EXCLUDED,MAX_MEDIA,PROJECT_URL,WB_HOST,RESULT_KEY)
-from noelbag_media_execute import original_backup, client, read_nm
+from noelbag_media_execute import original_backup, client
+from noelbag_media_diagnose_047 import get_backup
 from pathlib import Path
 
 APPROVAL="APPROVED_NOELBAG_30_NO_VIDEO_INSERT7_20261120"
+
+def read_nm(token,nm):
+    """Targeted fresh read; retry temporary catalogue disappearance without duplicate writes."""
+    for attempt in range(8):
+        request={"settings":{"sort":{"ascending":False},"cursor":{"limit":100},
+            "filter":{"withPhoto":-1,"textSearch":str(nm)}}}
+        response=requests.post(WB_HOST+"/content/v2/get/cards/list",
+            headers={"Authorization":token},json=request,timeout=90)
+        if response.status_code==429:raise Blocked("wb_rate_limited")
+        response.raise_for_status()
+        data=response.json()
+        cards=data.get("cards") or data.get("data",{}).get("cards") or []
+        matches=[c for c in cards if c.get("nmID")==nm]
+        if len(matches)==1:return matches[0]
+        if len(matches)>1:raise Blocked("ambiguous_duplicate_nmID")
+        time.sleep(10)
+    raise Blocked("target_card_unavailable_after_eight_reads")
+
 BATCH_KEY="noelbag_media_insert7:v2:execution_30"
 READY_IDS={1473243914,1473243897,1473243898,1473243816,1473243817,1473243892,
 1473243824,1473243906,1473243819,1473243825,1594309320,1473243818,1473243826,
@@ -46,7 +65,33 @@ def execute_one(token,s,row,slide):
     originals=get_photos(before)
     state=classify(before,article,nm,slide,originals)
     if state["status"]=="already_present":
-        return {"nmID":nm,"article":article,"status":"skipped_duplicate","position":state["position"]}
+        at=state["position"]
+        if at==7 and nm==1473243914:
+            return {"nmID":nm,"article":article,"status":"verified_at_7",
+                    "position":7,"note":"verified_in_preceding_run"}
+        if nm==1473243897 and at==19 and len(originals)==19:
+            backup=get_backup(s)
+            if not compare_old_images(backup,originals[:-1]):
+                raise Blocked("047_backup_or_old_order_mismatch")
+            orig_core=core(before)
+            current=read_nm(token,nm)
+            if current.get("video") or core(current)!=orig_core or current.get("photos")!=before.get("photos"):
+                raise Blocked("047_concurrent_change_before_reorder")
+            urls=[allowed_url(p) for p in current["photos"]]
+            reordered=urls[:6]+[urls[-1]]+urls[6:-1]
+            resp=requests.post(WB_HOST+"/content/v3/media/save",
+               headers={"Authorization":token},json={"nmId":nm,"data":reordered},timeout=100)
+            if resp.status_code!=200 or resp.json().get("error") is not False:
+                raise Blocked("047_reorder_failed_or_uncertain")
+            def validate_resume(c):
+                if c.get("video") or core(c)!=orig_core:raise Blocked("047_nonmedia_changed")
+                if len(c.get("photos",[]))!=19:return False
+                pics=get_photos(c)
+                return difference(thumb(slide),thumb(pics[6]))<=10 and compare_old_images(backup,pics[:6]+pics[7:])
+            wait_card(token,nm,validate_resume,retries=20,delay=10)
+            return {"nmID":nm,"article":article,"status":"verified_at_7","position":7,
+                    "photo_count_before":18,"photo_count_after":19,"note":"repaired_tail_append_without_duplicate"}
+        return {"nmID":nm,"article":article,"status":"skipped_duplicate","position":at}
     if state["status"]!="ready_insert_at_7":raise Blocked("not_ready")
     if len(originals)+1>MAX_MEDIA:raise Blocked("photo_limit")
     original_backup(s,nm,originals)
