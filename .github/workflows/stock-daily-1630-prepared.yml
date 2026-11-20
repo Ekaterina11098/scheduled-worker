@@ -39,7 +39,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Ekaterina11098/VESCHI_AI
-          ref: a779c1c2273239c612d6244ccd3ddaa6bcac6439
+          ref: df8560faf0044875ab9df6ecf052b62b10cd880a
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           persist-credentials: false
           path: private-source
@@ -53,6 +53,7 @@ jobs:
           STOCK_DAILY_ENABLED: 'true'
           STOCK_OZON_ENABLED: 'true'
           STOCK_PENDING_RESERVE_ENABLED: 'true'
+          STOCK_CANCELLATION_RESTORE_ENABLED: 'true'
           STOCK_RUN_SLOT: ${{ github.event_name == 'workflow_dispatch' && inputs.slot || ((github.event.schedule == '0 2 * * *' || github.event.schedule == '10,20,30,40,50 2 * * *' || github.event.schedule == '*/10 3-8 * * *') && '0700' || '1630') }}
           STOCK_NOTIFICATIONS_ENABLED: 'true'
           STOCK_CLOUD_EXECUTION_ENABLED: 'true'
