@@ -1,6 +1,8 @@
 name: Owner cancellation trial 20Nov2026
 on:
   workflow_dispatch:
+  push:
+    paths: ['.github/workflows/owner-cancellation-trial-20261120.yml']
 permissions:
   contents: read
 concurrency:
@@ -21,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Ekaterina11098/VESCHI_AI
-          ref: 5776612884ecad646d50bb46b4040a297a7884a6
+          ref: 4a5ed236022a80fbcfd70c44202ada41d5f36836
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           persist-credentials: false
           path: private-source
