@@ -35,8 +35,8 @@ assert scope.get('campaign_ids')==[41967612,41296359]
 assert (datetime.now(timezone.utc)-datetime.fromisoformat(scope['observed_at'])).total_seconds()<3600
 assert {r['nm_id']for r in scope['prices']['rows']}==set(wanted),'Composition changed since exact-scope check'
 # A scoped refresh does not refresh the unqueried remainder of the catalogue.
-original=io.get('china_agent:advertising_artifacts:'+DAY+':v2')
-prior={str(m['nm']):m['economics']for c in original['bundle']['campaigns']for m in c.get('budget_members',[])if m.get('economics')}
+original_report=io.get('china_agent:advertising_artifacts:'+DAY+':v2')
+prior={str(m['nm']):m['economics']for c in original_report['bundle']['campaigns']for m in c.get('budget_members',[])if m.get('economics')}
 reference=next(e for nm,e in prior.items()if int(nm)not in wanted and e.get('price_observed_at'))
 for name,field in [('prices','price_observed_at'),('stock','stock_observed_at'),('published_stock','published_stock_observed_at')]:
  data[name]['observed_at']=reference[field]
