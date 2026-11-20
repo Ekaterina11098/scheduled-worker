@@ -185,6 +185,8 @@ def _render_legacy(bundle):
 
 def validate_mandatory_format(bundle):
  if not bundle.get('mandatory_campaign_format'):return
+ from china_report_cash_refresh import require_complete_cash_calculation
+ require_complete_cash_calculation(bundle)
  sections=bundle.get('recommendation_directions')
  if not isinstance(sections,dict)or set(sections)!={'raise','add','reduce','exclude'}:
   raise ValueError('Mandatory campaign format requires all four recommendation directions')
