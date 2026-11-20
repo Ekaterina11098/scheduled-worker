@@ -11,23 +11,26 @@ concurrency:
 jobs:
   apply:
     runs-on: ubuntu-latest
-    timeout-minutes: 9
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
           repository: Ekaterina11098/VESCHI_AI
-          ref: 746629523e62316a94c3642bf2d37049e1140a01
+          ref: 722b0c51c75be81c58fe8e7c5d2ff3b8d03650e4
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           persist-credentials: false
           path: private-source
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install requests pillow numpy
-      - name: Verify saved changes against recovery copies
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-rus
+          pip install requests pillow numpy
+      - name: Inventory catalog media
         working-directory: private-source
         env:
-          WB_TOKEN_1: ${{ secrets.WB_TOKEN_1 }}
+          WB_TOKEN_2: ${{ secrets.WB_TOKEN_2 }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-        run: python -u maya_ooo_restoration_check.py > /dev/null 2>&1
+        run: python -u maya_ip_three_slides_audit.py > /dev/null 2>&1
