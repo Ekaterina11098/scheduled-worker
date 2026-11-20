@@ -1,4 +1,5 @@
 name: Validate question metadata fix and resume China question collection
+# Includes validated clarification drafts for return questions lacking order context.
 on:
   push:
     paths:

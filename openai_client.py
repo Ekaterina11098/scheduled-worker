@@ -160,6 +160,19 @@ def generate_question_drafts(question):
         match = re.match(pattern, answer, re.IGNORECASE)
         return opening + " " + answer[match.end():].lstrip() if match else answer
 
+    def clarification_drafts():
+        # A return-process question without order context must not invent
+        # eligibility, deadlines or promises. These remain manual drafts and
+        # pass the same validator as generated text.
+        if not re.search(r"возврат|верну(?:ть|л|ла)", str(question.get("text") or ""), re.IGNORECASE):
+            return None
+        signature = "\n\nС уважением, команда VESCHI 👜✨"
+        first = opening + "\n\nУточните, пожалуйста, вы уже получили товар и по какой причине хотите его вернуть? Это поможет разобраться в вашей ситуации." + signature
+        second = opening + "\n\nПодскажите, пожалуйста, что произошло с покупкой. Вы планируете отказаться от заказа при получении или уже забрали его? Без этих подробностей мы не можем точно подсказать порядок действий." + signature
+        if all(validate_answer(text, check_data)["approved"] for text in (first, second)) and _sufficiently_different(first, second):
+            return {"variant1": first, "variant2": second}
+        return None
+
     try:
         for _ in range(3):
             first = create("Вариант 1: конкретный, краткий и деловой. Только текст ответа.")
@@ -168,6 +181,8 @@ def generate_question_drafts(question):
             if validation["approved"]:
                 break
         else:
+            clarification = clarification_drafts()
+            if clarification:return clarification
             raise RuntimeError("Не удалось подготовить корректный ответ на вопрос")
         validation_errors = []
         for _ in range(3):
@@ -180,6 +195,8 @@ def generate_question_drafts(question):
                 validation_errors = ["Второй ответ слишком похож на первый: измени формулировки и порядок мыслей, сохрани факты."]
             if validation["approved"] and different:
                 return {"variant1": first, "variant2": second}
+        clarification = clarification_drafts()
+        if clarification:return clarification
         raise RuntimeError("Не удалось получить достаточно отличающийся второй ответ на вопрос")
     except RuntimeError:
         raise
