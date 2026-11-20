@@ -1,5 +1,5 @@
 name: NoelBag insert at 7 - live read-only preflight
-# v3: sanitized Drive error diagnostics; WB writes remain disabled
+# v4: 4 PNG read from SHA-verified private Supabase cache; WB writes disabled
 # Rerun after mock fixture correction; safe WB reads only.
 on:
   push:
