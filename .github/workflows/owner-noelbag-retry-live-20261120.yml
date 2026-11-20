@@ -1,0 +1,316 @@
+name: WB NoelBag gallery rollout
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-noelbag-retry-live-20261120.yml]
+permissions: {}
+concurrency:
+  group: owner-noelbag-media-retry-20261120
+  cancel-in-progress: false
+jobs:
+  apply:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-noelbag-retry-live-20261120] Retry NoelBag media conflict'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - run: pip install --quiet requests==2.32.5 pillow==11.3.0
+      - name: Update and verify NoelBag galleries
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+        shell: python
+        run: |
+          import base64
+          import io
+          import json
+          import os
+          import subprocess
+          import tempfile
+          import time
+          import threading
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          from datetime import datetime, timezone
+          from pathlib import Path
+          
+          import requests
+          from PIL import Image, ImageChops, ImageStat
+          
+          prefix = "noelbag:20261120:trial:"
+          sb = os.environ["SUPABASE_URL"].rstrip("/")
+          key = os.environ["SUPABASE_SECRET_KEY"]
+          sh = {"apikey": key, "Authorization": "Bearer " + key}
+          wh = {"Authorization": os.environ["WB_TOKEN_3"]}
+          host = "https://content-api.wildberries.ru"
+          cache_url = sb + "/rest/v1/telegram_api_cache"
+          bucket = "owner-media-recovery"
+          storage = sb + "/storage/v1"
+          folder = "noelbag-retry-20261120"
+          
+          def response(method, url, **kw):
+              r = requests.request(method, url, timeout=70, **kw)
+              if not r.ok:
+                  raise RuntimeError("HTTP " + str(r.status_code))
+              return r
+          
+          def signed(name, raw, mime):
+              path = bucket + "/" + folder + "/" + name
+              response("POST", storage + "/object/" + path,
+                       headers={**sh, "Content-Type": mime, "x-upsert": "false"}, data=raw)
+              suffix = response("POST", storage + "/object/sign/" + path, headers=sh,
+                                json={"expiresIn": 86400}).json()["signedURL"]
+              return sb + ("/storage/v1" if suffix.startswith("/object/") else "") + suffix
+          
+          def thumbnail(raw):
+              with Image.open(io.BytesIO(raw)) as img:
+                  assert img.width >= 700 and img.height >= 900
+                  return img.convert("RGB").resize((96, 128), Image.Resampling.LANCZOS)
+          
+          def comparable(c):
+              result = {k: v for k, v in c.items() if k not in ("photos", "video", "updatedAt")}
+              if "characteristics" in result:
+                  result["characteristics"] = sorted(result["characteristics"], key=lambda x: x["id"])
+              return result
+          
+          def video_file(url, target):
+              # Remuxing copies the existing video and audio streams.
+              subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-i", url, "-map", "0:v:0",
+                              "-map", "0:a?", "-c", "copy", "-movflags", "+faststart", str(target)],
+                             check=True, timeout=110, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+              assert 0 < target.stat().st_size <= 50_000_000
+          
+          def video_signature(source):
+              duration_output = subprocess.check_output(
+                  ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                   "-of", "default=noprint_wrappers=1:nokey=1", str(source)], timeout=60,
+                  stderr=subprocess.DEVNULL)
+              duration = float(duration_output.strip())
+              assert duration > 0
+              frames = []
+              for ratio in (0.15, 0.50, 0.85):
+                  raw = subprocess.check_output(
+                      ["ffmpeg", "-v", "error", "-ss", str(duration * ratio), "-i", str(source),
+                       "-frames:v", "1", "-vf", "scale=64:64", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                      timeout=60, stderr=subprocess.DEVNULL)
+                  frames.append(Image.frombytes("RGB", (64, 64), raw))
+              return duration, frames
+          
+          def delta(a, b):
+              return sum(ImageStat.Stat(ImageChops.difference(a, b)).mean) / 3
+          
+          
+          root = "noelbag:20261120:retry:"
+          lock = threading.Lock()
+          next_wb = 0.0
+          
+          def wb(path, document):
+              global next_wb
+              for attempt in range(6):
+                  with lock:
+                      time.sleep(max(0, next_wb-time.monotonic()))
+                      next_wb = time.monotonic()+0.85
+                  r=requests.post(host+path,headers=wh,json=document,timeout=75)
+                  if r.status_code==429:
+                      if path.endswith("/media/save"):
+                          raise RuntimeError("WB rate limited media request")
+                      time.sleep(min(30,5*(attempt+1)))
+                      continue
+                  if not r.ok:
+                      raise RuntimeError(f"WB HTTP {r.status_code}")
+                  return r.json()
+              raise RuntimeError("WB read rate limit")
+          
+          def inventory(search=None):
+              cursor={"limit":100}
+              seen=set()
+              for _ in range(120):
+                  filt={"withPhoto":-1}
+                  if search is not None:
+                      filt["textSearch"]=str(search)
+                  page=wb("/content/v2/get/cards/list",{"settings":{"sort":{"ascending":True},"filter":filt,"cursor":cursor}})
+                  for card in page["cards"]:
+                      if card["nmID"] not in seen:
+                          seen.add(card["nmID"])
+                          yield card
+                  end=page["cursor"]
+                  if end.get("total",0)<100:
+                      return
+                  following={"limit":100,"updatedAt":end["updatedAt"],"nmID":end["nmID"]}
+                  if following==cursor:
+                      raise RuntimeError("WB cursor stalled")
+                  cursor=following
+              raise RuntimeError("WB inventory exceeded pagination guard")
+          
+          def exact(nm, article):
+              for search in (nm,article):
+                  for c in inventory(search):
+                      if c["nmID"]==nm and c["vendorCode"]==article:
+                          return c
+              for c in inventory():
+                  if c["nmID"]==nm and c["vendorCode"]==article:
+                      return c
+              raise RuntimeError("WB card unavailable")
+          
+          def write_record(suffix, value, claim=False):
+              prefer="ignore-duplicates" if claim else "merge-duplicates"
+              rows=response("POST",cache_url,headers={**sh,"Prefer":f"resolution={prefer},return=representation"},
+                            params={"on_conflict":"cache_key"},
+                            json={"cache_key":root+suffix,"payload":value,"updated_at":datetime.now(timezone.utc).isoformat(),
+                                  "expires_at":"2026-12-20T00:00:00Z"}).json()
+              assert len(rows)==1
+          
+          def get_photos(card):
+              raws=[]
+              for p in card.get("photos",[]):
+                  for attempt in range(3):
+                      try:
+                          raw=response("GET",p["big"],params={"v":time.time_ns()}).content
+                          thumbnail(raw)
+                          raws.append(raw)
+                          break
+                      except Exception:
+                          if attempt==2:
+                              raise
+                          time.sleep(2)
+              return raws
+          
+          def source_name(raw, number):
+              with Image.open(io.BytesIO(raw)) as img:
+                  fmt=img.format.lower()
+              return f"{number:02}."+{"jpeg":"jpg","png":"png","webp":"webp"}[fmt],"image/"+fmt
+          
+          slide_bytes=[]
+          for i in range(1,5):
+              rows=response("GET",cache_url,headers=sh,
+                            params={"cache_key":"eq."+prefix+f"slide:{i}","select":"payload"}).json()
+              slide_bytes.append(base64.b64decode(rows[0]["payload"]["data"],validate=True))
+          slide_thumbs=[thumbnail(raw) for raw in slide_bytes]
+          assert all(delta(a,b)>10 for i,a in enumerate(slide_thumbs) for b in slide_thumbs[i+1:])
+          assert response("GET",storage+"/bucket/"+bucket,headers=sh).json()["public"] is False
+          
+          def prepare(nm,article):
+              suffix=str(nm)
+              stage="preparing"
+              info={"nm_id":nm,"article":article,"status":stage}
+              write_record(suffix,info,claim=True)
+              try:
+                  before=exact(nm,article)
+                  originals=get_photos(before)
+                  old=[thumbnail(x) for x in originals]
+                  # Reuse the best existing match once for each slide. Preserve other photos in order.
+                  remaining=list(range(len(old)))
+                  reused={}
+                  selected=[]
+                  for i,slide in enumerate(slide_thumbs):
+                      candidates=sorted((delta(slide,old[j]),j) for j in remaining)
+                      if candidates and candidates[0][0]<5:
+                          _,j=candidates[0]
+                          remaining.remove(j)
+                          reused[str(i+7)]=j+1
+                          selected.append(originals[j])
+                      else:
+                          selected.append(slide_bytes[i])
+                  info.update(old_photos=len(old),reused=reused,added=4-len(reused),video_present=bool(before.get("video")))
+                  if len(remaining)<6:
+                      raise RuntimeError("Fewer than six photos outside the four slides")
+                  order=[originals[j] for j in remaining[:6]]+selected+[originals[j] for j in remaining[6:]]
+                  if len(order)>30:
+                      raise RuntimeError("WB 30-photo limit")
+                  planned=[thumbnail(raw) for raw in order]
+                  info["new_photos"]=len(order)
+                  if len(old)==len(planned) and max(delta(a,b) for a,b in zip(old,planned))<1:
+                      info.update(status="already_correct",slots=[7,8,9,10])
+                      write_record(suffix,info)
+                      return None
+                  urls=[]
+                  for i,raw in enumerate(order,1):
+                      name,mime=source_name(raw,i)
+                      urls.append(signed(f"{nm}/{name}",raw,mime))
+                  signature=None
+                  if before.get("video"):
+                      with tempfile.TemporaryDirectory() as scratch:
+                          target=Path(scratch)/"original.mp4"
+                          video_file(before["video"],target)
+                          signature=video_signature(target)
+                          urls.append(signed(f"{nm}/original.mp4",target.read_bytes(),"video/mp4"))
+                  fresh=exact(nm,article)
+                  if comparable(fresh)!=comparable(before) or fresh["photos"]!=before["photos"] or fresh.get("video")!=before.get("video"):
+                      raise RuntimeError("Card changed during preparation")
+                  stage="submitted"
+                  info["status"]=stage
+                  write_record(suffix,info)
+                  result=wb("/content/v3/media/save",{"nmId":nm,"data":urls})
+                  if result.get("error") is not False:
+                      raise RuntimeError("WB rejected media")
+                  stage="accepted"
+                  info["status"]=stage
+                  write_record(suffix,info)
+                  return (nm,article,before,planned,signature,info)
+              except Exception as e:
+                  info.update(status="failed_"+stage,error=type(e).__name__,
+                              reason=str(e) if type(e) is RuntimeError else None)
+                  write_record(suffix,info)
+                  return None
+          
+          def verify(details):
+              nm,article,before,planned,signature,info=details
+              for _ in range(14):
+                  try:
+                      after=exact(nm,article)
+                      if len(after.get("photos",[]))!=len(planned) or bool(after.get("video"))!=bool(signature):
+                          time.sleep(22)
+                          continue
+                      current=[thumbnail(raw) for raw in get_photos(after)]
+                      max_error=max(delta(a,b) for a,b in zip(current,planned))
+                      if max_error>=5:
+                          time.sleep(22)
+                          continue
+                      if signature:
+                          with tempfile.TemporaryDirectory() as scratch:
+                              target=Path(scratch)/"after.mp4"
+                              video_file(after["video"],target)
+                              duration,frames=video_signature(target)
+                          if abs(duration-signature[0])>1 or max(delta(a,b) for a,b in zip(signature[1],frames))>15:
+                              time.sleep(22)
+                              continue
+                      info.update(status="verified",slots=[7,8,9,10],video_verified=True,
+                                  other_card_fields_unchanged=comparable(after)==comparable(before),
+                                  max_photo_difference=round(max_error,3))
+                      write_record(str(nm),info)
+                      return
+                  except Exception:
+                      time.sleep(22)
+              info["status"]="readback_pending"
+              write_record(str(nm),info)
+          
+          def family(c):
+              article=c.get("vendorCode","").casefold().split("-")
+              return len(article)>2 and article[1]=="noelbag"
+          
+          rows=response("GET",cache_url,headers=sh,
+                        params={"cache_key":"eq.noelbag:20261120:rollout:manifest","select":"payload"}).json()
+          manifest=rows[0]["payload"]
+          assert manifest["status"]=="finished"
+          allowed={tuple(x) for x in manifest["targets"]}
+          rows=response("GET",cache_url,headers=sh,
+                        params={"cache_key":"like.noelbag:20261120:rollout:*","select":"payload"}).json()
+          targets=[(r["payload"]["nm_id"],r["payload"]["article"]) for r in rows
+                   if r["payload"].get("status")=="failed_submitted" and r["payload"].get("reason")=="WB HTTP 409"]
+          assert all(target in allowed and target[1].casefold()!="0-noelbag-green" for target in targets)
+          all_cards=range(manifest["catalog_count"])
+          write_record("manifest",{"status":"running","targets":targets,"catalog_count":len(all_cards)},claim=True)
+          
+          with ThreadPoolExecutor(max_workers=7) as executor, ThreadPoolExecutor(max_workers=8) as readers:
+              jobs=[executor.submit(prepare,*target) for target in targets]
+              checks=[]
+              for job in as_completed(jobs):
+                  result=job.result()
+                  if result:
+                      checks.append(readers.submit(verify,result))
+              for check in as_completed(checks):
+                  check.result()
+          write_record("manifest",{"status":"finished","targets":targets,"catalog_count":len(all_cards)})
