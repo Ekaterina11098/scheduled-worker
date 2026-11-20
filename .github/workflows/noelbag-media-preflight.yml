@@ -1,4 +1,5 @@
 name: NoelBag insert at 7 - live read-only preflight
+# Rerun after mock fixture correction; safe WB reads only.
 on:
   push:
     branches: [noelbag-media-insert7-preflight-20261120]
