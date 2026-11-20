@@ -1,0 +1,32 @@
+name: Check connected seller display
+on:
+  push:
+    branches: [private-catalog-check-20261120]
+    paths: [.github/workflows/private-seller-identity.yml]
+permissions:
+  contents: read
+jobs:
+  identify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - env:
+          WB_TOKEN_1: ${{ secrets.WB_TOKEN_1 }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          python - <<'PY'
+          import json,os,urllib.request,urllib.error
+          q=urllib.request.Request('https://common-api.wildberries.ru/api/v1/seller-info',headers={'Authorization':os.environ['WB_TOKEN_1']})
+          try:
+              with urllib.request.urlopen(q,timeout=20) as f:
+                  row=json.load(f)
+              data={k:row.get(k) for k in ('name','tradeMark','country')}
+          except urllib.error.HTTPError as exc:
+              data={'http_status':exc.code}
+          secret=os.environ['SUPABASE_SECRET_KEY']
+          endpoint=os.environ['SUPABASE_URL'].rstrip('/')+'/rest/v1/telegram_api_cache?on_conflict=cache_key'
+          body={'cache_key':'maya_investigation:ooo_seller_display','payload':data,'expires_at':'2026-12-20T00:00:00Z'}
+          req=urllib.request.Request(endpoint,method='POST',data=json.dumps(body).encode(),headers={'apikey':secret,'Authorization':'Bearer '+secret,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'})
+          with urllib.request.urlopen(req,timeout=25): pass
+          PY
