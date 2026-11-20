@@ -19,6 +19,8 @@ with runtime_db() as lock:
   with runtime_db() as db:
    s=Store(db,postgres=True);data=json.loads(s.sql('SELECT snapshot FROM stock_runs WHERE id=?',(ROOT,)).fetchone()[0]);db.commit()
    if data.get('execution_complete'):print(json.dumps({'status':'already_complete'}));raise SystemExit(0)
+   if data.get('error'):
+    data.setdefault('attempt_errors',[]).append({'error':data.pop('error'),'type':data.pop('error_type',None),'at':time.time()})
    def save():
     with s.transaction():s.sql('UPDATE stock_runs SET snapshot=? WHERE id=?',(canonical(data),ROOT))
    shared=SharedRequests(s,budget=lambda:g.check_run_budget());g.check_run_budget=lambda:None
@@ -84,6 +86,7 @@ with runtime_db() as lock:
      data.update(full_plan=plan,review=review,native_reserves=native,registry={},status='planned',phase='plan_saved');save()
      prepare_members(s,g,plan,source,source['started'],restored_cards(source),'owner-cancellation-trial',data['registry'],ROOT)
      save()
+    if set(data['registry'])!={m['article'] for m in plan['articles']}:raise Stopped('All trial member intents must be durably prepared')
     os.environ['STOCK_CANCELLATION_RESTORE_ENABLED']='true'
     from stock_live_capacity import LiveCapacity
     live=LiveCapacity(g,lambda:source)
