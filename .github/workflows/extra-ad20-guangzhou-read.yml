@@ -52,3 +52,5 @@ jobs:
           WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
           CHINA_TELEGRAM_BOT_TOKEN: ${{ secrets.CHINA_TELEGRAM_BOT_TOKEN }}
         run: PYTHONPATH=scripts:source python scripts/extra_ad20_guangzhou_read.py
+
+# Resume missing category minima from saved stages, without recollecting completed data.
