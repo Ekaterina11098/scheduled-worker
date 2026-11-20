@@ -60,7 +60,6 @@ def difference(a,b):
     return sum(ImageStat.Stat(ImageChops.difference(a,b)).mean)/3
 def classify(card,article,nm,slide,raw_images):
     if card.get("nmID")!=nm or card.get("vendorCode","").casefold()!=article.casefold():raise Blocked("card_identity_mismatch")
-    if card.get("video"):raise Blocked("video_requires_review")
     photos=card.get("photos")
     if not isinstance(photos,list) or len(photos)<6 or len(photos)!=len(raw_images):raise Blocked("invalid_existing_photo_count")
     score=[difference(thumb(slide),thumb(b)) for b in raw_images]
@@ -69,6 +68,7 @@ def classify(card,article,nm,slide,raw_images):
     if len(matches)==1:
         return {"status":"already_present","position":matches[0],"photo_count":len(photos)}
     if score and min(score)<15:raise Blocked("ambiguous_duplicate")
+    if card.get("video"):raise Blocked("video_requires_review")
     if len(photos)>=MAX_MEDIA:raise Blocked("photo_limit")
     return {"status":"ready_insert_at_7","photo_count":len(photos),"expected_count":len(photos)+1,"first_six_preserved":True,"tail_preserved":True}
 def get_drive_assets(supa,headers):
