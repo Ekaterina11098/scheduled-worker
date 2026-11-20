@@ -7,16 +7,16 @@ permissions:
   contents: read
 concurrency:
   group: private-media-maintenance-20261120
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   apply:
     runs-on: ubuntu-latest
-    timeout-minutes: 67
+    timeout-minutes: 9
     steps:
       - uses: actions/checkout@v4
         with:
           repository: Ekaterina11098/VESCHI_AI
-          ref: 0d70e84fc5144f0705835d225a0805801532a3f4
+          ref: 746629523e62316a94c3642bf2d37049e1140a01
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           persist-credentials: false
           path: private-source
@@ -24,10 +24,10 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install requests pillow numpy
-      - name: Apply scoped maintenance with verified private backups
+      - name: Verify saved changes against recovery copies
         working-directory: private-source
         env:
           WB_TOKEN_1: ${{ secrets.WB_TOKEN_1 }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-        run: python -u maya_ooo_cleanup.py > /dev/null 2>&1
+        run: python -u maya_ooo_restoration_check.py > /dev/null 2>&1
