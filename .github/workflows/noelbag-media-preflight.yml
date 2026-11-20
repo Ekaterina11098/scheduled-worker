@@ -1,4 +1,4 @@
-name: NoelBag 30 approved image insert at 7 and post-write verification
+name: NoelBag 047 read-only after write interruption
 # v4: 4 PNG read from SHA-verified private Supabase cache; WB writes disabled
 # Verify private Supabase staged hashes and current 45 cards; WB read-only.
 on:
@@ -24,6 +24,7 @@ jobs:
             scripts/noelbag_media_insert7.py
             scripts/noelbag_media_execute.py
             scripts/noelbag_media_execute_30.py
+            scripts/noelbag_media_diagnose_047.py
             scripts/test_noelbag_media_insert7.py
             scripts/noelbag_media_manifest.csv
             scripts/content_photo_drive.py
@@ -34,9 +35,9 @@ jobs:
       - run: pip install Pillow==11.3.0 requests==2.32.5
       - name: Run isolated unit tests without WB credentials
         run: python -m unittest discover -s scripts -p 'test_noelbag_media_insert7.py' -v
-      - name: Owner approved write for exactly 30 video-free NoelBag cards, with fresh per-card readback
+      - name: Read-only diagnosis of 047 after stopped execution
         env:
           WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           NOEL_MEDIA_WRITE_APPROVED: APPROVED_NOELBAG_30_NO_VIDEO_INSERT7_20261120
-        run: python scripts/noelbag_media_execute_30.py
+        run: python scripts/noelbag_media_diagnose_047.py
