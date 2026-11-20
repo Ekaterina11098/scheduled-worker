@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Ekaterina11098/VESCHI_AI
-          ref: 28b8a4a7252a80f95563cbeeb75302980184fe45
+          ref: fba4a41cd2d9476839d39d39c044664634046cf8
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           persist-credentials: false
           path: private-source
@@ -25,4 +25,4 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-        run: python -u maya_ooo_backup_contact_sheet.py > /dev/null 2>&1
+        run: python -u maya_ooo_restoration_refs.py > /dev/null 2>&1
