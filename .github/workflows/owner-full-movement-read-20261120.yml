@@ -1,8 +1,6 @@
 name: Owner all movement read 20Nov2026
 on:
   workflow_dispatch:
-  push:
-    paths: ['.github/workflows/owner-full-movement-read-20261120.yml']
 permissions:
   contents: read
 concurrency:
