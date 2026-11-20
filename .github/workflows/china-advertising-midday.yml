@@ -81,3 +81,5 @@ jobs:
 #19Nov: presentation reuse requires the same instruction, with full semantic-conflict tests.
 
 #19Nov: pending first-full-day rows without actions retain the canonical waiting decision.
+
+#20Nov: registry-history fixtures use explicit empty batches; all arithmetic and duplicate checks stay enabled.
