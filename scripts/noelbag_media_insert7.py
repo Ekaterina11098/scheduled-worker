@@ -31,6 +31,7 @@ def validate_plan(path):
     with open(path,encoding="utf-8-sig",newline="") as f: rows=list(csv.DictReader(f))
     if len(rows)!=46 or len({int(r["nmID_WB_China"]) for r in rows})!=46: raise Blocked("invalid_46_row_manifest")
     if {r["image"] for r in rows}!=set(DRIVE_IDS): raise Blocked("asset_set_mismatch")
+    if any(r["drive_file_id"]!=DRIVE_IDS[r["image"]] for r in rows): raise Blocked("drive_manifest_id_mismatch")
     if any(not r.get("vendorCode") or r.get("drive_file_id") is None for r in rows): raise Blocked("manifest_vendor_or_drive_missing")
     if sum(int(r["nmID_WB_China"])==EXCLUDED for r in rows)!=1: raise Blocked("excluded_id_missing")
     for r in rows:
