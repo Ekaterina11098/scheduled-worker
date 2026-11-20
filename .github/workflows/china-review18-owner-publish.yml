@@ -148,5 +148,7 @@ jobs:
            if result['status']!='confirmed':raise SystemExit(1)
           except Exception as exc:
            seal('review18-owner-publish-failure',dict(error=error(exc),private_log=hidden.getvalue()))
+           import traceback
+           print(json.dumps(dict(error_type=type(exc).__name__,locations=[dict(file=Path(f.filename).name,line=f.lineno,function=f.name) for f in traceback.extract_tb(exc.__traceback__)])))
            print('Publication not confirmed; protected diagnostics saved.');raise SystemExit(1)
           PY
