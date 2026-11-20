@@ -9,14 +9,14 @@ class RegistryHistory(unittest.TestCase):
    def db(self,path):self.query=path;return []
    def get(self,key):return {'1':'china_agent:new_recovery:execution'} if key=='china_agent:verified_campaign_state:v1' else receipt
   io=IO()
-  with patch('china_advertising_v2.read_price_experience',return_value=[]),patch('china_advertising_v2.read_economics',return_value={}):s=refresh_budget_context(io,{},'2026-11-01')
+  with patch('china_advertising_v2.read_price_experience',return_value=[]),patch('china_advertising_v2.read_economics',return_value={}),patch('china_advertising_v2.http',side_effect=AssertionError('Registry-only fixture must not call WB')):s=refresh_budget_context(io,{'batches':{}},'2026-11-01')
   events=history(s['executions']);self.assertEqual(len(events),1);self.assertEqual(events[0]['at'],'2026-10-31T07:14:25+00:00')
   self.assertIn('cache_key.like.china_agent:*:execution',io.query)
  def test_registry_pointer_with_wrong_campaign_is_not_proof(self):
   class IO:
    def db(self,path):return []
    def get(self,key):return {'1':'receipt'} if key=='china_agent:verified_campaign_state:v1' else dict(status='verified',after=dict(id=2))
-  with patch('china_advertising_v2.read_price_experience',return_value=[]),patch('china_advertising_v2.read_economics',return_value={}):s=refresh_budget_context(IO(),{},'2026-11-01')
+  with patch('china_advertising_v2.read_price_experience',return_value=[]),patch('china_advertising_v2.read_economics',return_value={}),patch('china_advertising_v2.http',side_effect=AssertionError('Registry-only fixture must not call WB')):s=refresh_budget_context(IO(),{'batches':{}},'2026-11-01')
   self.assertEqual(s['executions'],[])
 
 if __name__=='__main__':unittest.main()
