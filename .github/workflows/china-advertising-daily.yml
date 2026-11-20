@@ -177,3 +177,5 @@ jobs:
 # Selected raises do not reappear as unfinished additions in the four-way report.
 
 # Keep dated pre-window archive exclusions in the report audit; retain raw history.
+
+# Verify report view after budget inventory restoration, without dropping historical audit.
