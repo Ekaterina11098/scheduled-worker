@@ -1,0 +1,92 @@
+name: Create isolated loss customer order 20261120
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/loss-ip-four-order-20261120.yml']
+permissions:
+  contents: read
+concurrency:
+  group: loss-ip-four-20261111
+  cancel-in-progress: false
+jobs:
+  order:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Create and read back authorized customer order
+        shell: python
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          import sys,collections
+          sys.path.insert(0,'scripts')
+          import fbs_document_chain as m
+          ROOT='loss_report:ip:20261111:fourwarehouses:'
+          EXT='loss-ip-20261111-fourwarehouses-order'
+          NAME='111126 Утрата ИП'
+          class Scoped(m.Transport):
+           def request(self,base,path,method='GET',body=None,params=None):
+            if base==m.MS and method!='GET':
+             if not(method=='POST' and path=='entity/customerorder' and body.get('externalCode')==EXT):raise m.Stop('Write outside scoped order')
+            return super().request(base,path,method,body,params)
+          t=Scoped();db=m.Cache(t);w=m.Worker(t,db,{})
+          prep=db.get(ROOT+'preflight:v1');inp=db.get(ROOT+'input:v1')
+          assert prep and not prep['exceptions'] and prep['units']==3387 and len(prep['mapped'])==216
+          expected=collections.Counter()
+          for r in inp['rows']:expected[r[3]]+=r[4]
+          assert dict(expected)=={p['source_article']:p['quantity'] for p in prep['mapped']}
+          sample=t.request(m.MS,'entity/customerorder/'+prep['samples'][0]['document']['id'])
+          entities={}
+          for k in ('organization','agent','store'):
+           ref=sample[k];path='/'.join(m.href(ref).split('/')[-3:])
+           entities[k]=t.request(m.MS,path)
+          assert entities['organization']['name']=='ИП Лазарев Виктор Алексеевич'
+          assert entities['agent']['name']=='ООО "Вайлдберриз"'
+          assert entities['store']['name']=='Склад WB FBO'
+          state=[s for s in t.request(m.MS,'entity/customerorder/metadata')['states'] if s['name']=='Доставлен']
+          assert len(state)==1
+          wanted=collections.Counter()
+          for p in prep['mapped']:
+           fresh=t.request(m.MS,'entity/product/'+m.href(p['product']).split('/')[-1])
+           assert not fresh['archived'] and fresh['article'].casefold()==p['source_article'].casefold()
+           wanted[m.href(p['product'])]+=p['quantity']
+          assert sum(wanted.values())==3387 and len(wanted)==216
+          def positions(uid):return w.ms_rows('entity/customerorder/'+uid+'/positions')
+          def counts(ps):
+           c=collections.Counter()
+           for p in ps:c[m.href(p['assortment'])]+=p['quantity']
+           return c
+          found=w.ms_rows('entity/customerorder',{'filter':'externalCode='+EXT})
+          named=w.ms_rows('entity/customerorder',{'filter':'name='+NAME})
+          assert len(found)<=1 and len(named)<=1
+          if named and not found:raise m.Stop('Existing named order requires reconciliation')
+          for d in w.ms_rows('entity/customerorder',{'search':'Утрата'}):
+           if found and d['id']==found[0]['id']:continue
+           if counts(positions(d['id']))==wanted:raise m.Stop('Same composition already exists')
+          description='Утрата ИП по отчётам WB от 11.11.2026. Красный Бор — 5 шт.; Котовск — 2561 шт.; Владимир — 24 шт.; Невинномысск — 797 шт. Всего 3387 шт. Источник: объединённая таблица четырёх отчётов.'
+          if found:doc=t.request(m.MS,'entity/customerorder/'+found[0]['id'])
+          else:
+           previous=db.get(ROOT+'order_result:v1') or {}
+           if previous.get('pending'):raise m.Stop('Uncertain prior write; reconciliation required')
+           payload={k:m.meta(entities[k]) for k in ('organization','agent','store')}
+           payload.update(name=NAME,externalCode=EXT,moment='2026-11-11 00:00:00',applicable=True,state=m.meta(state[0]),rate=sample['rate'],vatEnabled=sample['vatEnabled'],vatIncluded=sample['vatIncluded'],description=description)
+           payload['positions']=[{'quantity':q,'price':0,'discount':0,'vat':0,'vatEnabled':False,'reserve':0,'assortment':{'meta':{'href':h,'type':'product','mediaType':'application/json'}}} for h,q in wanted.items()]
+           db.put(ROOT+'order_result:v1',{'status':'intent_saved','pending':True,'externalCode':EXT,'at':m.now(),'units':3387,'positions':216})
+           try:doc=t.request(m.MS,'entity/customerorder','POST',payload)
+           except Exception:
+            db.put(ROOT+'order_result:v1',{'status':'uncertain_write','pending':True,'externalCode':EXT,'at':m.now()})
+            raise
+          final=t.request(m.MS,'entity/customerorder/'+doc['id']);ps=positions(doc['id'])
+          assert final['name']==NAME and final['externalCode']==EXT and final['applicable'] and final['sum']==0
+          assert final['description']==description and m.href(final['state'])==m.href(state[0])
+          assert all(m.href(final[k])==m.href(entities[k]) for k in entities)
+          assert counts(ps)==wanted and len(ps)==216 and all(p['price']==0 and p.get('reserve',0)==0 for p in ps)
+          assert len(w.ms_rows('entity/customerorder',{'filter':'externalCode='+EXT}))==1
+          db.put(ROOT+'order_result:v1',{'status':'complete','pending':False,'id':final['id'],'name':final['name'],'moment':final['moment'],'positions':len(ps),'units':sum(p['quantity'] for p in ps),'applicable':final['applicable'],'prices_zero':True,'reserve_zero':True,'at':m.now(),'url':'https://online.moysklad.ru/app/#customerorder/edit?id='+final['id']})
+          print('Scoped customer order created and fully verified; private result saved.')
