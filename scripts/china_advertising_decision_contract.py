@@ -92,7 +92,8 @@ def comparable_action(action):
  """A repeated observation timestamp cannot change an otherwise identical proposal."""
  value=copy.deepcopy(action)
  if isinstance(value,dict) and isinstance(value.get('growth_evidence'),dict):
-  value['growth_evidence'].pop('observed_at',None)
+  for field in ('observed_at','prices_observed_at','buyout_observed_at','price_observed_at','stock_observed_at','published_stock_observed_at'):
+   value['growth_evidence'].pop(field,None)
   if value.get('kind')=='ad_set_bid'and value.get('direction')=='raise'and value['growth_evidence'].get('budget_policy_revision')=='owner-20261119-reserve-advisory':
    value['growth_evidence'].pop('budget_forecast',None)
  return value
