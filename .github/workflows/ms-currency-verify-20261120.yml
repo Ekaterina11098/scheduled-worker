@@ -1,0 +1,48 @@
+name: Verify RUB accounting currency
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/ms-currency-verify-20261120.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Verify currency and preserved amounts privately
+        shell: python
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          import sys
+          sys.path.insert(0,'scripts')
+          import fbs_document_chain as m
+          ROOT='ms_currency_normalize:20261120:'
+          class ReadOnly(m.Transport):
+           def request(self,base,path,method='GET',body=None,params=None):
+            if base==m.MS and method!='GET':raise m.Stop('Read only')
+            return super().request(base,path,method,body,params)
+          t=ReadOnly();db=m.Cache(t)
+          cur=t.request(m.MS,'entity/currency',params={'limit':1000})['rows']
+          settings=t.request(m.MS,'context/companysettings')
+          result={'at':m.now(),'currencies':cur,'company_currency':settings.get('currency'),'status':'checking','checks':[]}
+          db.put(ROOT+'base_result:v1',result)
+          assert cur and all(c.get('isoCode')=='RUB' for c in cur)
+          assert len([c for c in cur if c.get('default')])==1
+          before=db.get(ROOT+'cashout:candidates:v1')['documents']
+          for old in before:
+           new=t.request(m.MS,'entity/cashout/'+old['id'])
+           assert old['sum']==new['sum']
+           assert m.href(old['rate']['currency'])==m.href(new['rate']['currency'])
+           result['checks'].append({'type':'cashout','id':old['id'],'sum_unchanged':True})
+          result['status']='verified'
+          db.put(ROOT+'base_result:v1',result)
+          print('RUB accounting currency verified; numeric sample values unchanged; no document writes.')
+          
