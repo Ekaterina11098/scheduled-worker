@@ -1,4 +1,4 @@
-name: NoelBag 30 owner-approved resume and verification
+name: NoelBag 50 read-only partial-write inspection
 # v4: 4 PNG read from SHA-verified private Supabase cache; WB writes disabled
 # Verify private Supabase staged hashes and current 45 cards; WB read-only.
 on:
@@ -25,6 +25,7 @@ jobs:
             scripts/noelbag_media_execute.py
             scripts/noelbag_media_execute_30.py
             scripts/noelbag_media_diagnose_047.py
+            scripts/noelbag_media_diagnose_050.py
             scripts/test_noelbag_media_insert7.py
             scripts/noelbag_media_manifest.csv
             scripts/content_photo_drive.py
@@ -35,9 +36,9 @@ jobs:
       - run: pip install Pillow==11.3.0 requests==2.32.5
       - name: Run isolated unit tests without WB credentials
         run: python -m unittest discover -s scripts -p 'test_noelbag_media_insert7.py' -v
-      - name: Resume approved 30-card insertion with verified 047 recovery
+      - name: Inspect delayed WB readback for 50 without any writes
         env:
           WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           NOEL_MEDIA_WRITE_APPROVED: APPROVED_NOELBAG_30_NO_VIDEO_INSERT7_20261120
-        run: python scripts/noelbag_media_execute_30.py
+        run: python scripts/noelbag_media_diagnose_050.py
