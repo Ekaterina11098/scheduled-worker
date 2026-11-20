@@ -1,5 +1,5 @@
 name: NoelBag insert at 7 - live read-only preflight
-# v2: exact vendorCode mock fixed; WB writes remain disabled
+# v3: sanitized Drive error diagnostics; WB writes remain disabled
 # Rerun after mock fixture correction; safe WB reads only.
 on:
   push:
