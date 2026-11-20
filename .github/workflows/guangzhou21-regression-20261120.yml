@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: bot-stock
+  group: guangzhou21-source-tests
   cancel-in-progress: false
 jobs:
   stock:
