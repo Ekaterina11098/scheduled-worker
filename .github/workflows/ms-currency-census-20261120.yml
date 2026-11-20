@@ -1,0 +1,69 @@
+name: Read all document currencies 20261120
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/ms-currency-census-20261120.yml']
+permissions:
+  contents: read
+concurrency:
+  group: ms-currency-normalization-20261120
+  cancel-in-progress: false
+jobs:
+  census:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Read currencies and every currency-bearing document type
+        shell: python
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          import sys,collections
+          sys.path.insert(0,'scripts')
+          import fbs_document_chain as m
+          ROOT='ms_currency_normalize:20261120:'
+          TYPES=["cashin","cashout","commissionreportin","commissionreportout","customerorder","demand","enter","facturein","factureout","internalorder","invoicein","invoiceout","loss","move","paymentin","paymentout","prepayment","prepaymentreturn","purchaseorder","purchasereturn","retailsalesreturn","retaildemand","retaildrawercashin","retaildrawercashout","retireorder","salesreturn","supply"]
+          class ReadOnly(m.Transport):
+           def request(self,base,path,method='GET',body=None,params=None):
+            if base==m.MS and method!='GET':raise m.Stop('Read-only census')
+            return super().request(base,path,method,body,params)
+          t=ReadOnly();db=m.Cache(t)
+          def rows(path,params=None):
+           offset=0;total=None
+           while True:
+            data=t.request(m.MS,path,params={**(params or {}),'limit':1000,'offset':offset})
+            if total is None:total=data['meta']['size']
+            if data['meta']['size']!=total:raise m.Stop('Collection size changed during census')
+            batch=data['rows']
+            for d in batch:yield d
+            offset+=len(batch)
+            if offset==total:return
+            if not batch or offset>total:raise m.Stop('Incomplete pagination')
+          currencies=list(rows('entity/currency'));db.put(ROOT+'currencies:v1',currencies)
+          rub=[c for c in currencies if c.get('isoCode')=='RUB'];assert len(rub)==1
+          target=m.href(rub[0]);result={'status':'reading','started_at':m.now(),'types':{},'target':rub[0],'errors':[]}
+          for typ in TYPES:
+           entry={'status':'reading','count':0,'non_rub':0,'currencies':{},'missing_rate':0}
+           result['current_type']=typ;result['types'][typ]=entry;db.put(ROOT+'census:v1',result)
+           try:
+            counts=collections.Counter();candidates=[];missing=[]
+            for doc in rows('entity/'+typ,{'order':'id,asc'}):
+             entry['count']+=1
+             cur=m.href(doc.get('rate',{}).get('currency',{}));counts[cur]+=1
+             if not cur:missing.append({'id':doc['id'],'name':doc.get('name')})
+             elif cur!=target:candidates.append(doc)
+            entry.update(status='complete',non_rub=len(candidates),currencies=dict(counts),missing_rate=len(missing))
+            db.put(ROOT+typ+':candidates:v1',{'documents':candidates,'missing':missing})
+           except Exception as e:
+            entry.update(status='failed',error=str(e) if isinstance(e,m.Stop) else type(e).__name__)
+            result['errors'].append({'type':typ,'error':entry['error']})
+           db.put(ROOT+'census:v1',result)
+          result.update(status='complete' if not result['errors'] else 'incomplete',finished_at=m.now())
+          db.put(ROOT+'census:v1',result)
+          print('Document currency census saved privately; no document writes.')
