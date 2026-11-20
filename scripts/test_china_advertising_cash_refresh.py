@@ -21,5 +21,12 @@ class CashRefresh(unittest.TestCase):
   def http(io,path,method='GET',body=None):return dict(adverts=[dict(id=1,status=9)])if method=='GET'else dict(adverts=[])
   with self.assertRaises(ValueError):refresh(None,source,http,datetime(2026,11,20,6,tzinfo=timezone.utc))
   self.assertEqual(source,before)
+class PublicationReadiness(unittest.TestCase):
+ def test_live_missing_cash_cannot_be_published_as_finished(self):
+  from china_report_cash_refresh import require_complete_cash_calculation
+  with self.assertRaises(ValueError):require_complete_cash_calculation(dict(mandatory_campaign_format=True,campaigns=[dict(id=1,status=9,budget_audit_state='data_blocked')]))
+ def test_economic_no_fund_and_covered_are_complete_decisions(self):
+  from china_report_cash_refresh import require_complete_cash_calculation
+  require_complete_cash_calculation(dict(mandatory_campaign_format=True,campaigns=[dict(id=1,status=9,budget_audit_state='covered'),dict(id=2,status=9,budget_audit_state='reviewed_no_fund')]))
 if __name__=='__main__':unittest.main()
 
