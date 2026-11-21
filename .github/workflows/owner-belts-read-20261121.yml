@@ -72,3 +72,5 @@ jobs:
           path: ${{ runner.temp }}/stock-deploy-proof
           retention-days: 90
 
+
+# Read-only fallback skips the unavailable Content API; uses verified morning size IDs.
