@@ -97,6 +97,27 @@ def comparable_action(action):
   if value.get('kind')=='ad_set_bid'and value.get('direction')=='raise'and value['growth_evidence'].get('budget_policy_revision')=='owner-20261119-reserve-advisory':
    value['growth_evidence'].pop('budget_forecast',None)
  return value
+
+# Explicit owner instruction, 21Nov2026; applies to this campaign ID only.
+OWNER_UNCHANGED_CAMPAIGNS={42088552}
+def apply_owner_unchanged(bundle):
+ """Keep statistics and budget proposals; suppress advertising changes only."""
+ out=copy.deepcopy(bundle)
+ for cp in out.get('campaigns',[]):
+  if cp.get('id') not in OWNER_UNCHANGED_CAMPAIGNS:continue
+  cp.update(owner_unchanged=True,direction_recommendations=['Ничего не менять.'],
+   attention=[])
+  for row in cp.get('focus',[]):
+   row.update(action=None,decision='Ничего не менять.',reason='owner_instruction_2026-11-21')
+ for section in out.get('recommendation_directions',{}).values():
+  if isinstance(section,dict):
+   section['rows']=[r for r in section.get('rows',[])
+    if r.get('campaign_id',(r.get('action')or{}).get('campaign_id')) not in OWNER_UNCHANGED_CAMPAIGNS]
+ for row in out.get('decision_contract',{}).get('rows',[]):
+  if row.get('campaign_id')in OWNER_UNCHANGED_CAMPAIGNS:
+   row.update(action=None,decision='Ничего не менять.',reason='owner_instruction_2026-11-21')
+ return out
+
 def finalize(io,bundle,source,minima):
  """Shared entry point for morning, midday and a cached analyst preview; no API calls."""
  from china_advertising_economic_review import apply
@@ -107,10 +128,11 @@ def finalize(io,bundle,source,minima):
  for cp in out['campaigns']:
   cp['focus']=[additions.get((cp['id'],r['nm']),r)for r in cp.get('focus',[])]
   cp['attention']=[r for r in cp['focus']if r.get('action')]
- out=attach(out,source)
+ out=apply_owner_unchanged(attach(out,source))
  rows=[];ledger_key='china_agent:advertising_decisions:v1:'+REVISION+':'+out['day']
  prior=(io.get(ledger_key)or{})if io is not None else {};ledger=copy.deepcopy(prior)
  for cp in out['campaigns']:
+  if cp.get('owner_unchanged'):continue
   for r in cp.get('focus',[]):
    window=r.get('decision_window')
    if not window:continue
