@@ -60,6 +60,7 @@ jobs:
         run: |
           python scripts/install_china_dialog.py
           PYTHONPATH=scripts:source python scripts/conversion_watches.py --exact-dialog-job 359
+          PYTHONPATH=scripts:source python scripts/owner_reports21_fix208.py
           PYTHONPATH=scripts:source python scripts/china_loss_execute.py --job-id 359
           PYTHONPATH=scripts:source python -c "from china_advertising_state import AdvertisingIO; i=AdvertisingIO(); a=i.get('china_agent:loss_plan_approval:v1:359')or{}; e=i.get('china_agent:daily_ad_execution:v2:'+a.get('plan_id',''))or{}; assert len(e.get('items',[]))==25 and all(s.get('status')=='verified'for s in e['items']), 'Ads incomplete; budget step deferred'"
           PYTHONPATH=scripts:source python scripts/conversion_watches.py --exact-dialog-job 360
