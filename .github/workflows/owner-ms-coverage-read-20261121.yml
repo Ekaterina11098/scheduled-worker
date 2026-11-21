@@ -67,3 +67,5 @@ jobs:
           path: ${{ runner.temp }}/stock-deploy-proof
           retention-days: 90
 
+
+# Compare alternate read-only report shapes, preserving all balances.
