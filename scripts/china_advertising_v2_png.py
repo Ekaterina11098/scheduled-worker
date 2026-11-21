@@ -22,6 +22,7 @@ def summary(c):
  if p is None:return 'Статистика отсутствует; числовой результат не подтверждён.'
  return ('День: '+str(int(day['orders']))+' рекламных заказов; сумма '+money(day['amount'])+' ¥.\n' if day else 'День: нет данных.\n')+'3 дня: '+str(int(p['orders']))+' рекламных заказов; сумма '+money(p['amount'])+' ¥; '+str(int(p['clicks']))+' кликов.'
 def recommendations(c):
+ if c.get('owner_unchanged'):return ['Ничего не менять.']
  if 'direction_recommendations' in c:return c['direction_recommendations'] or ['Без изменений.']
  rows=[r for r in c.get('attention',[]) if r.get('action')]
  out=[r['article']+': '+r['decision'] for r in rows]
@@ -223,11 +224,12 @@ def owner_launch_day_view(bundle):
 
 def render(bundle):
  from china_archived_report_window import report_view
- bundle=report_view(owner_launch_day_view(bundle))
+ from china_advertising_decision_contract import apply_owner_unchanged
+ bundle=apply_owner_unchanged(report_view(owner_launch_day_view(bundle)))
  validate_mandatory_format(bundle)
  if bundle.get('recommendation_directions'):
   from china_advertising_directions import campaign_table
-  files=_render_legacy(campaign_table(bundle))
+  files=_render_legacy(apply_owner_unchanged(campaign_table(bundle)))
  elif not bundle.get('economic_review_complete'):files=_render_legacy(bundle)
  else:
   from china_advertising_review_png import pages
