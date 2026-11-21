@@ -22,7 +22,8 @@ with runtime_db() as lock:
    install(g);g.STOCK_FURCOAT_ENABLED=True;g.RUN_DEADLINE=time.monotonic()+2400
    from stock_card_lifecycle import Lifecycle
    g.STOCK_CARD_LIFECYCLE=Lifecycle(g,s,shared)
-   os.environ['STOCK_CANCELLATION_RESTORE_ENABLED']='false'
+   g.STOCK_CANCELLATION_STORE=s
+   os.environ['STOCK_CANCELLATION_RESTORE_ENABLED']='true'
    os.environ['STOCK_STORAGE_PROOF_FILE']=os.path.join(os.environ['RUNNER_TEMP'],'belt-common-verification-proof.json');os.environ['STOCK_STORAGE_PROOF_SCOPE']=ROOT
    def hw(v):data['storage_probe']=v;save()
    def hr():
