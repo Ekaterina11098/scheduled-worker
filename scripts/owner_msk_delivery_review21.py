@@ -33,5 +33,21 @@ def main():
   rows=data.get('orders',[]);keys=('id','createdAt','supplyId','warehouseId','officeId','nmId','article','deliveryType','cargoType','isB2B','convertedPrice','currencyCode','convertedCurrencyCode')
   return dict(raw_count=len(rows),next=data.get('next'),msk_rows=[{k:r.get(k)for k in keys}for r in rows if r.get('warehouseId')==2126188][:80],fur_rows=[{k:r.get(k)for k in keys}for r in rows if r.get('nmId')in(2215883910,2216111729,2216167898)])
  stage('orders_sample',orders)
+ def recent_supplies():
+  data=get('/api/v3/supplies',dict(limit=1000,next=0));rows=data.get('supplies',[])
+  selected=sorted([r for r in rows if r.get('destinationOfficeId')==236 and r.get('scanDt')],key=lambda r:r['scanDt'],reverse=True)[:8]
+  return dict(raw_count=len(rows),next=data.get('next'),rows=selected,coverage_complete=len(rows)<1000)
+ stage('recent_supplies',recent_supplies)
+ def recent_orders():
+  data=get('/api/v3/orders',dict(limit=1000,next=0,dateFrom=int(datetime(2026,11,20,tzinfo=timezone.utc).timestamp()),dateTo=int(datetime.now(timezone.utc).timestamp())))
+  rows=data.get('orders',[]);supplies={s['id']:s for s in v['recent_supplies']['data']['rows']};out=[]
+  for r in rows:
+   if r.get('warehouseId')!=2126188:continue
+   s=supplies.get(r.get('supplyId'))
+   if not s and r.get('nmId')not in(2215883910,2216111729,2216167898):continue
+   created=datetime.fromisoformat(r['createdAt'].replace('Z','+00:00'));scan=datetime.fromisoformat(s['scanDt'].replace('Z','+00:00'))if s else None
+   out.append(dict(id=r['id'],nm_id=r.get('nmId'),article=r.get('article'),created_at=r['createdAt'],supply_id=r.get('supplyId'),scan_at=s.get('scanDt')if s else None,closed_at=s.get('closedAt')if s else None,hours_to_supply_scan=(scan-created).total_seconds()/3600 if scan else None))
+  return dict(raw_count=len(rows),coverage_complete=len(rows)<1000,matched=out)
+ stage('recent_order_timelines',recent_orders)
  v.update(status='complete_with_gaps'if v['errors']else'complete',completed_at=now());save();print(json.dumps(dict(status=v['status'],errors=v['errors'])))
 if __name__=='__main__':main()
