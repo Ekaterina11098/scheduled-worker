@@ -1,0 +1,149 @@
+name: Add SALE label China group9 20261121
+on:
+  push:
+    branches: ['apply/china-sale-group9-20261121']
+    paths: ['.github/workflows/china-sale-group9-20261121.yml']
+permissions: {}
+concurrency:
+  group: china-sale-group9-20261121
+  cancel-in-progress: false
+jobs:
+  apply:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5 cryptography
+      - name: Add SALE label to exact group9 cards and verify
+        shell: python
+        env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+        run: |
+          import os,json,time,requests,hashlib,gzip,base64,secrets,traceback
+          from datetime import datetime,timezone
+          from cryptography.hazmat.primitives import serialization,hashes
+          from cryptography.hazmat.primitives.asymmetric import padding
+          from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+          PLAN=[{"number":9,"cards":[[1900197978,"f7b03a242fd4c127cfb7f4069908d4eaf39a9df58f8daa34664bc04e1fb43c01"],[1473243447,"5bb1d9bd47c90045aad926f189fb844bea57af3a8fbd2bc744549fa8e58f31d2"],[1473243445,"185e0a0921a91886e8b0cc52b7e6191763477b3ffc81be2e21df219a70426426"],[1473243444,"87f5df7f447481c2b0786364ee5986205222409ea9f2dab96c0712e07798224e"],[1473243443,"c225bfa96da81caeb60c604d3265328ae6e039dbf225e29e015c86690fd90c5b"],[1473243442,"5217e2d765c08b4b2dcb1edbf8c8f53a41758324c1af20962a6b383df1f6fa53"],[1473243440,"772d209829f60d6b06926fd0618d8eb9fd044789960eabb3f6541d6ac5d8423b"],[1473242762,"bd1849a853bf8cfa07e210e55fda7a7e698a18dbe23f4caca2a3ab5e1289f07d"],[1473242761,"46451b84b7f7e55ad3f9856e8ccf9cb2e0ff677135d2fd05790a2ddf004bc3f1"],[1473242760,"f60e468cda28c959ef41e34ea71804c6de84860f679a83c4e24c41fa3c6a5a6c"],[1473242759,"52572e6d0d735c5a87f624bd88e3f92c824c87dcf81030437858ac8e8eb4d44b"],[1473242758,"15275c021994bce9f7d835a3c85d139468950281503832fe6eb574069779a882"],[1473242757,"4b5c01bda6791ecb1b031498ecb12f7439bff116ff2e5e70f357b8a93fa7d1fd"],[1473242756,"fc1e2cba9ef19d1f4f7dd9e494cb1bec8235c28fb9841d420b46d44be1684ad1"],[1473242754,"8f0e8cca64b71dc19182417382b189b928e60175f343942981b06222eb54f668"],[1473242753,"34e0aadfe6ae454856ed8edd932dd3f165a6f70dabb3b5880478b8ed9738d30e"],[1473244989,"62e37d24922546f802bd8641c39dadab4706ea54c9d37a871355f82fb3930ed1"],[1473244985,"04e5e90c4a3dbc0f62c964508a4f0ebef2c01c977d2bb38c5e67b68a8500af81"],[1473244992,"0fc1db59e3879dea727843e701b9bbc49a63ad30f6849d43d46bb7869e9f2af6"],[1473244996,"cdadb51722462547a7aa11de913d6469ea2d9f71c2bbd18e99fcc52aaf087ae3"],[1473244997,"b6d615daa96fc57d648c8b0933c82cf996b1c1ce7327e0ac6efb85d038e8fc6b"],[1473244990,"44d26812c0ea3e6e2551972bdcb15b1afe4ff0bef86179a21dc05f184b46414f"],[1473244984,"96bdf5533fae1b5618580fe889cd41f9de76577321e6e988d5f6c201180f7315"],[1473244988,"bd55154781ce1af0a329a15e3dcc42a1d7a56d4322d1787c5b6f8ae2669ad80e"],[1604165742,"9ae7531504b767412a07a08d97ddce70374a346e52176d12cbfa5500d20029fb"],[1473244983,"90eadbadf5908ecda077ea744d8e383c59f48437b1ca75adc9465f4f819e7bd0"],[1473244986,"cc41cee8ca686a5a728449578e3659a828872c2fa875115f2b1ee85f57397c8e"],[1473244982,"b28c3817190aa96da74ea2d3b1667a767ef896ecb10177809db85dd565c54ad5"],[1473244987,"3c3d1ac975508a53f1cf8b54d4aefae70aa902a0b4b2b0bb4acb0f3e0fb92679"],[1473244991,"f39ec545665e6a099b8efaef8ef0ea03c420accda335e1884cd68e355c8abe2d"]]}]
+          PUBLIC_KEY="-----BEGIN PUBLIC KEY-----\nMIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAqZNUrOvZ4UeO29b+p61F\niH/TYX0CFHtnqndnmHR4leDh/pqkTFqC+EryTPqjLJBylfgeqPqc0Bywo7WeHNxe\nvbOmih5rb9wRTYgJRBx7ruUJaWiJLP0yp2KwLMf8Vc0tRxRBIfXV/CHQjVIIc0rY\nOEW8+gwrAgsqFgs0944OpliDwm0aI9UX+j4gCTCmktk5swzFuqyxcDUH7fOUDKe1\nOOSqDB/lODw3333K6mjuHxRcDUD69EdTOS+hJb+ZqQOCT9JGtE2b6H9+Uf6B9cYs\nKu7JDPUD/5ETgxz3Oa3YgM7XPWwamcn5MYq8HMJ2e4F2B1x/mxSpUk6RFDR8hW/W\nFpqmg+JxpZpKwuSgBhegRpWwJ1+gS0z0h31a58XweTDtA8nd7WJjhiegbmSwItLM\npC3FVE8HzAeP6h8C+7l2r/Vl81y59CE+VHvgSmUobNRmHdY+laFAU2v8PfuebV5C\nDku+Uuz+AjUYKOtflqUc8HQQHGldtkkXG1iafKKIpZyTAgMBAAE=\n-----END PUBLIC KEY-----\n"
+          out={'status':'started','verified':False,'requests':[],'startedAt':datetime.now(timezone.utc).isoformat()}
+          token=os.environ['WB_TOKEN_3']
+          def digest(value):
+              return hashlib.sha256(json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+          def content(c):
+              fields=('nmID','nmUUID','subjectID','subjectName','vendorCode','brand','title','description','sizes','photos','video','characteristics','dimensions','kizMarked','needKiz')
+              v={k:c.get(k) for k in fields}
+              v['characteristics']=sorted(v.get('characteristics') or [],key=lambda x:x.get('id',0))
+              v['sizes']=sorted(v.get('sizes') or [],key=lambda x:x.get('chrtID',0))
+              if isinstance(v.get('dimensions'),dict):v['dimensions']={k:x for k,x in v['dimensions'].items() if k!='isValid'}
+              return digest(v)
+          def request(path,body,write=False,method="POST"):
+              for retry in range(4):
+                  time.sleep(1.2)
+                  try:r=requests.request(method,'https://content-api.wildberries.cn'+path,headers={'Authorization':token},json=body,timeout=90)
+                  except requests.RequestException:
+                      if write:raise RuntimeError('Write response unknown; do not retry automatically')
+                      if retry==3:raise
+                      time.sleep(5);continue
+                  if r.status_code==429:
+                      wait=int(float(r.headers.get('X-Ratelimit-Retry') or r.headers.get('Retry-After') or 65))+3
+                      assert wait<=180,'Cooldown exceeds run budget'
+                      time.sleep(wait);continue
+                  if write:
+                      record={'payload':body,'http':r.status_code,'at':datetime.now(timezone.utc).isoformat()}
+                      out['requests'].append(record)
+                  assert r.ok,'API HTTP '+str(r.status_code)
+                  data=r.json()
+                  if write:
+                      record['response']=data
+                      assert data.get('error') is not True,'WB rejected membership request'
+                      record['status']='accepted'
+                  return data
+              raise RuntimeError('Rate limit retry exhausted')
+          def scan():
+              cards=[];cursor={'limit':100};seen=set()
+              for page in range(50):
+                  data=request('/content/v2/get/cards/list',{'settings':{'sort':{'ascending':True},'cursor':cursor,'filter':{'withPhoto':-1}}})
+                  if not isinstance(data.get('cards'),list):data=data.get('data',{})
+                  assert isinstance(data.get('cards'),list) and isinstance(data.get('cursor'),dict),'Bad catalog schema'
+                  cards.extend(data['cards'])
+                  if len(data['cards'])<100:break
+                  marker=(data['cursor'].get('updatedAt'),data['cursor'].get('nmID'))
+                  assert all(marker) and marker not in seen,'Bad pagination cursor'
+                  seen.add(marker);cursor={'limit':100,'updatedAt':marker[0],'nmID':marker[1]}
+              else:raise RuntimeError('Catalog pagination limit')
+              # Retain newest duplicate only during post-write verification, and require exact expected set below.
+              by={}
+              for c in cards:
+                  if c['nmID'] not in by or c.get('updatedAt','')>=by[c['nmID']].get('updatedAt',''):by[c['nmID']]=c
+              return by,len(cards)==len(by)
+          def signature(by):return digest([[n,c['imtID'],content(c)] for n,c in sorted(by.items())])
+          def read_before():
+              previous=None
+              for attempt in range(7):
+                  by,unique=scan()
+                  if unique and by:
+                      sig=signature(by)
+                      if sig==previous:return by
+                      previous=sig
+                  time.sleep(5)
+              raise RuntimeError('Preflight catalog did not stabilize')
+          def members(by,imt):return {n for n,c in by.items() if c['imtID']==imt}
+          def compact(by):
+              return [{k:c.get(k) for k in ('nmID','imtID','vendorCode','subjectID','subjectName','title')} for n,c in sorted(by.items())]
+          try:
+              assert token
+              before=read_before();out['beforeCount']=len(before)
+              target_ids={e[0] for e in PLAN[0]['cards']}
+              assert len(target_ids)==30
+              actual_ids={n for n,c in before.items() if c['imtID']==4559527621}
+              assert actual_ids==target_ids,'Group 9 no longer matches approved membership'
+              for nm,sku_hash in PLAN[0]['cards']:
+                  assert hashlib.sha256(before[nm]['vendorCode'].lower().encode()).hexdigest()==sku_hash,'Article identity mismatch'
+              def tagids(c):
+                  tags=c.get('tags') or []
+                  assert isinstance(tags,list),'Bad card tag schema'
+                  return {int(t['id']) for t in tags}
+              old_tags={n:tagids(c) for n,c in before.items()}
+              tags=request('/content/v2/tags',None,method='GET')
+              assert tags.get('error') is not True and isinstance(tags.get('data'),list),'Bad labels list'
+              labels=tags['data'];out['labelsBefore']=labels
+              matches=[t for t in labels if t['name']=='SALE'] or [t for t in labels if t['name'].casefold()=='sale']
+              if not matches:
+                  assert len(labels)<15,'All 15 seller labels are already in use'
+                  request('/content/v2/tag',{'name':'SALE','color':'FEE0E0'},write=True)
+                  tags=request('/content/v2/tags',None,method='GET')
+                  matches=[t for t in tags['data'] if t['name']=='SALE']
+              assert len(matches)==1,'SALE label is missing or ambiguous'
+              label=matches[0];sale_id=int(label['id']);out['label']=label
+              for nm in target_ids:assert len(old_tags[nm]|{sale_id})<=15,'Card tag capacity exceeded'
+              out['targets']=[{'nmID':nm,'vendorCode':before[nm]['vendorCode'],'tagsBefore':sorted(old_tags[nm])} for nm in sorted(target_ids)]
+              for nm in sorted(target_ids):
+                  merged=old_tags[nm]|{sale_id}
+                  if merged==old_tags[nm]:continue
+                  request('/content/v2/tag/nomenclature/link',{'nmID':nm,'tagsIDs':sorted(merged)},write=True)
+              for attempt in range(10):
+                  time.sleep(8)
+                  after,unique=scan()
+                  if set(after)!=set(before):continue
+                  membership_ok=all(after[n]['imtID']==before[n]['imtID'] for n in before)
+                  content_ok=all(content(after[n])==content(before[n]) for n in before)
+                  tags_ok=all(tagids(after[n])==(old_tags[n]|({sale_id} if n in target_ids else set())) for n in before)
+                  if membership_ok and content_ok and tags_ok:
+                      out.update(status='complete',verified=True,group=9,groupIMT=4559527621,count=30,afterCount=len(after),membershipsPreserved=True,contentEqual=True,otherTagsPreserved=True)
+                      for item in out['targets']:item['tagsAfter']=sorted(tagids(after[item['nmID']]))
+                      break
+              else:raise RuntimeError('Post-write label verification did not complete')
+          except Exception as exc:
+              out['status']='incomplete';out['error']={'type':type(exc).__name__,'message':str(exc),'trace':traceback.format_exc()}
+          finally:
+              out['finishedAt']=datetime.now(timezone.utc).isoformat()
+              raw=gzip.compress(json.dumps(out,ensure_ascii=False).encode());key=secrets.token_bytes(32);nonce=secrets.token_bytes(12)
+              pub=serialization.load_pem_public_key(PUBLIC_KEY.encode());b=lambda v:base64.b64encode(v).decode()
+              env={'key':b(pub.encrypt(key,padding.OAEP(mgf=padding.MGF1(hashes.SHA256()),algorithm=hashes.SHA256(),label=None))),'nonce':b(nonce),'ciphertext':b(AESGCM(key).encrypt(nonce,raw,None))}
+              encoded=b(json.dumps(env).encode())
+              for i in range(0,len(encoded),18000):print('SALE_LABEL_ENCRYPTED '+str(i//18000)+' '+encoded[i:i+18000],flush=True)
+              print('SALE_LABEL_FINISHED',flush=True)
+          
