@@ -69,3 +69,5 @@ jobs:
 
 
 # Compare alternate read-only report shapes, preserving all balances.
+
+# Explicit grouping and single known-product comparison.
