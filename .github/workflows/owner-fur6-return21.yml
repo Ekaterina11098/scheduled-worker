@@ -59,3 +59,4 @@ jobs:
           CHINA_TELEGRAM_BOT_TOKEN: ${{ secrets.CHINA_TELEGRAM_BOT_TOKEN }}
         run: PYTHONPATH=scripts:source python scripts/owner_fur6_reconcile21.py
 # Resume saved read-only checkpoints after JSON normalization.
+# Uncached read-only reconciliation; no mutation replay.
