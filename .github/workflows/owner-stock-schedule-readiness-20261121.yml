@@ -25,7 +25,7 @@ jobs:
           source=base64.b64decode(f['content']).decode()
           pin=re.search(r'ref: ([a-f0-9]{40})',source).group(1)
           assert w['state']=='active'
-          assert pin=='e108f8068539324134c62d5a5467fe86bdc83ba9'
+          assert pin=='88e7f53365e5ec4505fe73624d4ce7063847be46'
           assert "cron: '0 17 * * *'" in source
           assert "cron: '0 2 * * *'" in source
           assert "STOCK_DAILY_ENABLED: 'true'" in source
