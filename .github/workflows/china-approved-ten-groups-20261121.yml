@@ -1,0 +1,154 @@
+name: Apply approved China ten groups 20261121
+on:
+  push:
+    branches: ['apply/china-approved-groups-20261121']
+    paths: ['.github/workflows/china-approved-ten-groups-20261121.yml']
+permissions: {}
+concurrency:
+  group: china-approved-ten-groups-20261121
+  cancel-in-progress: false
+jobs:
+  apply:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5 cryptography
+      - name: Apply owner-approved exact group membership and verify
+        shell: python
+        env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+        run: |
+          import os,json,time,requests,hashlib,gzip,base64,secrets,traceback
+          from datetime import datetime,timezone
+          from cryptography.hazmat.primitives import serialization,hashes
+          from cryptography.hazmat.primitives.asymmetric import padding
+          from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+          PLAN=[{"number":1,"cards":[[2245828179,"395e6df5476ef300531928c69f26de840f617352da2028b90c12cdf2dd708c00"],[2245828182,"adba5702a8b1d0b7fcd3c23aa742cc4ce991491af1abd039e73f4daa8d393391"],[2245828213,"d4b2fe1c20efdde6ca59aed1370971e64541315d8422fb34425851f9b4a146f1"],[2245828192,"a9a2010a74d06a0a75c8985dc19b2c198828217fcc09df2c0262e5c625d46916"],[1473243909,"be70c7080a6c6d4732c1b932467a4efb6db690a14a0b8a356c30155c5bb8eefe"],[1473243908,"b1bacb0c8fcd6221a4606c65fa4dd85cf82d3f3301d84752650bc9f0a2bfe42c"],[1473243910,"18532e19c699ce16820b9eb6b34de79ea6212903c2decf92a244ea90768060d1"],[1473243905,"e87aea8ae6854ca57e888a28bcf412f80775c37198106c274fb975dcea3806da"],[1473243900,"daf3f5bd25f4f6b6a42ff671c12ae1bf719907bb77831de194371344d0a4ec01"],[1473243919,"99c5f5afa626b4a74b50dd7e597c6bceee38ba2160efd4a2b09d0729f858941b"],[1473243918,"9acb653433f4d2b18f6d0da800b5a3c04e9ef24ad911e95cbe9c3a2a78d6be27"],[1473243915,"cca0d6db412f7a92820840af368655e5aa168df255c23669ac5024c034d2c3ba"],[1473243912,"d6357f3841117e4c0fece0797ad91cbf8737dd29ea108078a7acf838f0950ec6"],[1473243911,"1bdbfc12db1cd0180af3d3017dbc2bd51053b7781520b43b4ddc635c4a4d8b5d"],[1473243914,"5a3a8dfd1fe79474c627fad3fe23a9991ae20f96c0532821ce9144cc316a7a3e"],[1473243916,"8314be9b4ab6a6e5158ed5aeb843346d3155934523668abad00a5af941d01783"],[1473243903,"29a40587656cd73e4023703a43e43c865e2090a8ccccbe78d8b187f57eb5eec4"],[1473243901,"50fa66c2f011f6b413c9a17a24c41d4a1142a432bb28a1bfd10ad2298b288139"],[1473243904,"b15ebf5f5ba1a319fa78fe71eaa147366369dcae9449df39b655629417a7e545"],[1473243906,"cf670730dbb9983f4a720c37d88d89a137af0b760e78795459b5c050b47ab9b6"],[1473243896,"f94b4d1ae3e43c47528798341b5eeb87fd65b296806cb64de36812d39d0b99ec"],[1473243894,"ac6f2d3fd18eb24bd3e51e6649391ddec850b40e32528c50a47d4491d8e52563"],[1473243827,"66430c6474410fb063eb5b12f1974fbab3bdf0e0c1cd3b373540d77451639349"],[1473243825,"36d0764cb24c4a885bd1f83866478572851db853c6e7921acda288860f7b149d"],[1473243891,"f4484970d4a5a4401b1e61eb528868d8e353559aa4360e27360ac55852627e23"],[1473243890,"282e3d0717e49c9ce68a8b508a16ed70e50f8c64f9d75a2c9a9cb5cfa9e4d908"]]},{"number":2,"cards":[[1473243907,"9d98982c2a2e1b758941307d3e136a52f662f41c99d73c7b9defdcb268c0bbb8"],[1473243917,"4786bf09926b27c905a5605a352e9ed9e3bfb500924997d556da76886c092945"],[1473243913,"03848a20437562c8c01dae41a6cb6b61681dcaedb94539b8c7fcac37ff611b32"],[1473243893,"a363a71ae8b0dfe31995bef85834bdee5b5d94f26bf647b37d11615c3ddca096"],[1473243902,"3d52a951400144da4551453728da03c5b7ba6ecad00dc6663bf1c2619e5bd124"],[1473243899,"df8f2b686462ecfe76efdf08fe6fe8cd1d9eeadcf64c495b1d01a43d4baed981"],[1473243895,"76f09ab686c6dda0f6d030b636b03dc10a83a0bb2b80e30df8c07d60726ab558"],[1473243897,"0aa7086e33ec449d5306797aa557779dbb60f047e03e89c6c7e995064daa29e6"],[1473243822,"8738bf3406fb036a391b0234c7fda0b69dccf04cd096410736ea1e199d7b3cbc"],[1473243892,"8feee55bd48e29392ee65c799980851c0e75208c14a317954b3e2185a9c1ce47"],[1473243818,"f8b4fb5b3e97c5d17bcdb0b36cbe6dd711c58c3b6c1f11ace0b03399c84d822e"],[1594295903,"640224ee11a34d4e429d5aed5d32043e299e00eb28b1d019bd4572c036ab6491"],[1473243819,"b138ab271132dd99a4cc9d6033badd0144a89cea54b58a112ea002299c070842"],[1473243817,"9de4c9eb7e415a6b428b5015c5472eaae51d33c66278c2e61d669e16e95675e6"],[1594309320,"b538d516254c87f6138a5d4963c15cebf9fe1d24942700d22f2eddc41332e934"],[1473243816,"8221223503047294c6d7238d9ddce6cc04a931b93e3d930e7fe01d119e8316d2"],[1473243828,"fd66802a26830b64321e52fdbaafee066be52cb8df02dea850c6ed2cf4504830"],[1473243823,"b4c795be66981f68fc36dc060ea117d77bac6f849ec4f5e5eeaf2c70a8c99fd7"],[1473243824,"9a4297ac4c2ef247edbe144c18e9ffcd18a6b3b6cbfbdad5e76ad9eef6437580"],[1473243820,"607cc5317630ff970f6916ec6872826c2b96f8c4d4a7370465764e602756c116"],[1473243821,"fa9402d9b85638c5706dfc965b387d7da299163065295dc4f7813fe4ddfae4f4"],[1473243826,"bad44bd818f06e99c7be536cc58f87e3a5b321cbc87a2fc0e13df0e1e1fc6c53"],[1473243829,"24c1abbb69e62144d8c140f14009418a4f916b9001de01e60e63dcb0072d1179"]]},{"number":3,"cards":[[2129309887,"032323473c7b460a0c0a788b09b1938cff5a1433e758ebd145fd79014849ac96"],[2129309886,"3ef9009fb0292a2520ef90307c11123e4ba85e54de2325bdf5bc7967277bdad0"],[2129309885,"2d1241542bcb5ad3217db849507b9b0a5d9ac963270d68fe8e99ade3d74d4d25"],[1473245517,"9ddf0b8eccc2e1e434b3fa269630b5a0f0f3a392cc5645d88dc5091a48fbf690"],[1473245516,"a7250eeb2f3b0b0bd885302f03da9d8c079033e00957c7e3bb4a76454a22bcb7"],[1473245515,"6a810a6ed36ff7e283d1a3d0a47c9986b2e3ae0aab5128124f148c9c2e1ecd5b"],[1473245509,"25db0a6306b2d834939896635ca7e3187c4a5624b47f2eef291b20a1ca4c03c1"],[1473245508,"e38556cde034457bc2d7cfc9fb235588a3e2e5f5ead482f439073909d4b5a9e5"],[1473245507,"d7a692de6dff4e9e67c041cafa08c6557343d6ab23330122b3e813ac90c35204"],[1473245506,"32cf705886fbf5349e2a7b0834f3f14dc04c268e6dcbf1f1df31b82af654b367"],[1473245505,"1e2a394163764fb1210bcabc37c455b09023d8ebdb1124b415fd0e2ce6aecfa3"],[1473245494,"d1444ed8967f657467dfd91f395ef6f255753afa94740d9b53e0cdf308cf91f0"],[2129309888,"92b084cdda823d86f7adf4e47db69ff0ed20f1dc09b3182308a7356f8aa2dfb9"],[2245828159,"8fa8a424f3a7782b0a07d636025281143239c08dcaf90bc12e7f5b6b08ef018f"],[2245828190,"41e8929934bf7f26f9b33939c6166be4e87b94fb5e93fb11c29ef9e91bb3e154"],[1473245510,"94686e6f0d8efd23dc19ba0c588bb7344b81999bce3f2a6fcd37b8b050aced44"],[1473245492,"57ddd96acb1db15c1b61a8c399dc9c17116b8b1674d49f536c316566d5b9ba8f"],[2129199358,"547d8baba6adba53daf936090bdf859b24ad86798dea6b2f84a9dd02ea2b9436"],[2129199357,"20aafda5a6b80201c64d1d55f3b5c902f9c4b0ce58d21cb492206f83947a02fd"],[1473243454,"b24bf152f93c0ba8a4a328c88f9e68e7f0649be8d07cf53d5b28aa22078d63db"],[1473243453,"8816b1278d68755f4d69fe4470d97ff2cdfa5e13efad784af2e15fb8ed38cc43"],[1473243455,"697db3d731802140a26ba26f98c7ee52002118d43df2ec159437fd5c4d914f3a"],[1473244000,"e853c41504150d183ff245654483687e32cea87c601608f8e2304cd7f49a164e"],[2245828095,"3e548a02631ae4da908b8a6a24197a431db0395183a36cdf5e96dee52c6620b8"],[2245828147,"89d901905caa8ef079a336d8443c7bf73113946ba67c340de6341d4379b2159b"],[2245828151,"7ad30d9acdd06adaa3b06d86c5051d2bd8b44276f245c4e134311180c12cb64b"],[2245828175,"037739d2151ac46193bdb1fa8f4fcdef11de07cdf0a09f211cf5c458a060167b"],[2245828150,"cf6d27e5ae8d13dda8d113b19ba9c059cba2a637328d39b054e3d9858cf1762b"],[2245828209,"35f3a051b3fc5379fceee328306765b148ecd403301af9f2678be3aebf10256b"]]},{"number":4,"cards":[[2245828173,"a51d06ce231ae7f858b4deb42ab9350c002d1b1861949a9a060088cbe18bf756"],[2245828239,"8e74622f1bbd00f94a8960b19e76b4aa8512aae2ce0313f6b1c986a3c1df85fe"],[2245828148,"cc1a3899ad5104e1362eff77a6f6cfd783b9ce21c5efd83a81a168d6cafed6d7"],[2245828341,"d383aaf564e2518c690b7bb30271bc9307f2719470e876c9dbd37bd64fca4c01"],[2129309883,"898a0c11f2b5f18fb3db8e57712a061f5a847041c3ac5541159f1d723dcd8f7d"],[2129309884,"8eff01d04f3ee9865bebf8e541ba331b003f65e5dbd468293fdf7d1c6289e5b0"],[2129309882,"80b22974b2008fe454f469552e687078b27db4efe16723867bf96700051a54f7"],[2129199361,"2e19c6a3fa581677262263a7c28cfc6a0fe3d22d633da55adda95c94ec90f900"],[2129199360,"db504e183042fb0df2999b65cef7fb8f9477bc176000281a1e64e9f33611d27a"],[2129199359,"6f9c1f454023de1ebe0812dae058e81328bee1972d0b16949f79cac38dc273f4"],[1473242589,"7f147f47e1981d7c9ad6463c42b22772cee00c484e44f72dc93e0f08dd92cb7e"],[1473242588,"cf58fa16da7ec3f699758b2f2552f9a1f81b6b0e6785e37ea7b3602eface3127"],[1473242587,"d30f6e04d3b3ad06f58615e66af63ad936475043f3126a8913ca8cab6911505d"],[1473242586,"db05ee5885e654b2490a2b1a34414a148b00ffc80818840f27c18cbcbb71ec98"],[1473242585,"ab321a52790f1d85f779042304917fac2e070e5c8b3d182d089885a4d8724b1f"],[1473242584,"0f87a1f4f0b91f4cee80342816ade88ced10a2da48cf2f8cf7086fcc2b92e906"],[1473243093,"deb7adeb8b72d26fcd8d6b6479042abaf2cfb34c6faa566cdf28e239088e867c"],[1473243239,"17aa6fa0499dcb7d9d2db485c1d668238a652c11267b95e9893c03c4ef0e34e3"],[1473243095,"0e132089f7a4dab674d2356f5722213fd53bd5b4bba8226c0e1d2ab183b0459a"],[1473243094,"32ec3d374175439189646c603043288afe591b5897cc6ab2adab6fd8f5c42932"],[1473243090,"f6f54b80897aea0018da2f70b876663f69575df0a1387b8168dd4cb39d5f73c7"],[1473243091,"e09df9e92bd67b70f6f563691ebd336bfbb338ae9a49c2fd41eed58966d31408"],[1473243092,"2cdf5a3c4f86a1d4a1d7b72ee1a9d9b0cd9b8e75fda9a82386b42cdbdf966173"],[1473243089,"b48b630952a8f2ef1af14f1ff1ce331c784ef7d9f27743696259f8394342f050"]]},{"number":5,"cards":[[1473244360,"c489de3e7161aebfe179c64f3c88edaf95416d24a00edea88d9ccdda78b0c1cb"],[1473244359,"dc3a6f2be39890b10e01ac8f0f8a6f0bbd32930bccb988902fa299047318b4a8"],[1473244358,"9b80189d342fa44723d4400a9e5ca7cc6aa08a9634197a7a403563bba87e9669"],[1473244357,"da0b78885b4b415ac14c587f560b8322fcdc5153005f820bf5c7acd8d5f338ab"],[1473244356,"a6630151407de91d5131b63831c0a346280b97e72ccc2d26a73018e9fe206650"],[1473244355,"4c47823ceb1501891511de126d21a50b1ad5bee98d2a30b148675eb43cb12808"],[1473244354,"c3e344ca5cf6bcf01d0322de8e8c38b894a4427aa934726842e79c37a714c8b7"],[1473244353,"05d530325c5d82037c935a790a311cd939a5e81532b8eeaf2f8937838d8237b2"],[1473244352,"72ef646101dd606215a31c7c044181bd1cfbf3fe732689d88916ac317f85f20e"],[1473244351,"d0d74fb9979bc73fbb555d5408f06a55c320024471548040e174a8d83e33e670"],[1473244348,"84ece23f91957e1c3a2341348b0024469c6844dfc9040a2da4b402974a2dc8cb"],[1473244346,"8ffa26eeeff24727a1c7f6289f75eb2fe2de819f89c195058d70c5df778bcddc"],[1473244345,"6c1da1b1078f652d61f276158a0c05629b674adb3a390befbccef1d361ad10e0"],[1473244344,"3c09308301f3b4ff2deb1160b72dc9559d5b182df653db050455bd8cd21bec3f"],[1473244343,"59ee245da1e788b81e104d44f61fb95b9fab00141644a0e68092811d59aae596"],[1473244342,"3ec1d9a8dba2214247cf8d40887468a5795a97cd3acf698fed36a9108add51b2"],[1473244341,"6e1ecabcfb1e51539c01b50b2480a05594887b8f3d953fb427da5426e4867c74"],[1473244340,"dc9beaab6c91763298748597ed86a90b8218b790a1b1babd80b25baaad286343"],[1473244338,"71995c56e4daa5e284a79e79be85d2ff6d68d1f0e9924a95bd7355e87da695c3"],[1473244337,"544929352b481393cc565f9091c28edf93942f29b0fcb7f79cd089e8d3405140"],[2245828097,"7fb9523f5981020df3b408f2aeb9908264001ede81ad69cf6d984444586e885b"],[2245828303,"fb4dafe2d21489bb518a29acf222a20bf9d62917bff33e90c621a91f254ae538"],[2245828292,"b77bb7e66f406a55a48722eaf4cf903d20ddd7497aab85b33c7d630e67b2d343"],[1473244347,"74c39fbf8c18b003f0b4cf49b2af309c9a750d19c527a7e3315ada07752f1cfd"]]},{"number":6,"cards":[[1473245518,"67743fc3f077c86aa2734f63648df6ca4a119eb65b872868f652b322d1d56825"],[1473245513,"c7dd9339ac5d90e847f4b1569792cc45520fa65c8624d785c9a529f52b485055"],[1473245512,"450ce2360d06cc1462238d1c66c3fc4b0be031cd0bd693e3cc0baaff6343c1ea"],[1473245499,"5ffb86202109e85062a36fd176290bc0b03740f49efcfefea23bd820bc0a4383"],[1473245498,"e8c36fb2ddd58f2a1617caa9ff0ae25f1934cb8df23e55bbc5d2c2e1edae8cf9"],[1473245497,"008e62b00a44c3321a88267bc7d00f575bf6e6d6dbf08c3e90b84ac8308ae37f"],[1473245496,"6e01c52fdb55ae2973d66c101914780241a0e0c125d5867c3e4aed5b91ebd314"],[1473245495,"5441e8016dde57ce189fc891a81da39ba08030e0759f871df2e1bbc6c80cd7df"],[1473245493,"d0cdf0c66a2a20f44f8ef654f29e475f14301c1b6f6739315e5aab0ac56618fb"],[1473244349,"9fea537b2b3df5c5652a891deb182bb8d5ebfb4bfc3254a9f4530bc075c1db1e"],[1473244339,"eb99a2eb9edd74431178b3eaf98e93896ce4e7e037cbab2aadde9c43cd29a7da"],[1473244336,"deba19fe8dc81158711b530d12bc8d2eda8166090efba890dc75bb53834ef12b"],[1473243452,"e52dce2f37dcf92187be4540242d5b9c53a2c6af58e2cb66c593bddedcbe5dc6"],[1473243449,"072a60cd3833055f88574b11b1a8f351703c225e86a8b9d8b2e5626e6874a7ec"],[1473243448,"8a3b205ac8a771e5ee11d393ca4e48c887db3fba139569a03e8fbb56ecefdda2"],[1473243098,"4cd63f77ceeb05af0c4b025c96bf645f0f5ab7e5a8beaddb916026e153d2a9dc"],[1473243097,"c22c9b60b36675e22d1ba0e0bed9ee5d8190f0a0548b393c6bdd78aaf9599c1c"],[1473243096,"0beade827a42a69f00779bcbf0f2f1617c8043023bb89534a7c481d0864b101c"],[2128836687,"3921e4a99499edb7182af0121f0e2d8da3eecfa049e49fc926b2a832a27bc2df"],[2128836688,"fc29f43ab38f2bd28ad8c5192a477e4e0039ca82caf9a5d9e46e375592dbd878"],[2128972258,"38d7394b4ece25d03f6c4bbf5361de64ea962b3f6808a679cfbe4cf7fb558b93"],[2128990207,"7165423431bd87f6241e80c23dbbd11073e82575ed4aff15f4d838157d6b324a"],[2129004929,"18201017cf2d28f6148425d2cf47564414702d10f7b905ff1c340e5b35b6003c"],[2128711871,"75da98f343f6b732afc25ff5645c1f7ce17c2b09d50ae9f810f7da7f63878d59"],[2245828255,"8a6a53251c9030761edd8dbfbcd9bd25174f9a46672418440f06dbf70a1e51b3"],[2245828178,"ed8ef6d0d3787012adf60c39fde9e47a5c4a9a9a2c8db242b71d8c783508003a"]]},{"number":7,"cards":[[1473245006,"7d81a87e502824a14f189124bc2dfd8d13a131e142bca07846486cb4cc3cf32e"],[1473245007,"bf3542ae56eff89cd4fe57bf4bc343f3264173306d051a4fd3e27bcbea43afc9"],[1473245001,"a0cf27fc6eb9f71596914cd2383efbc2969b7c22043b4dd2644ffe5a496604aa"],[1473245002,"620f5e4c09244ca1369f41ed5b661ce523193dfe77e80e786fbd9935b4c58b0a"],[1473245003,"4075265a0a9d7935269e8413e6d9b37b6909065986d7de9821169e1fa8775f76"],[1473245004,"3c1381c8af31e5f3bdcdd49a63c33904a0ee9aa6c8cd336c05b06866c60dd0a1"],[1473245005,"7eec738dfa6157c60e46f5c759b91f606428ffdcb457d188f00196d79b4ef0c3"],[1473245008,"175cf7594468104082c387c61c6b8d031dee761a2675a529001d4d54afaa67d2"],[1473246053,"566f9a8f78d54284ed3dbe2977f81dc024bcc6f69c8c72b265252ba377668f4d"],[1473246054,"7301fe22c6cbd230f610163f607677662ea6161a7f8b64030e50bc6640135293"],[1473246055,"2485a1989392de1e4ab661fdb22dc7fc3c34baab3b7b465fdad64608ff4763b0"],[1473246056,"85d213e7eac802d409230a354bf392d3168212804c519b67225a205a955e6da5"],[1473242575,"c72dcb12df74ece1e42ebac5dcf741d67e96331597d239ef67abb769c777ab88"],[1473242576,"673fee3c64d052869cfc95768d398520e1013ce33bbf642c1a5e7d834cedee37"],[1473242577,"403e5f5e4044370a960b97ecfe919df4af3d6056368e475261b4e8bf1c6c52c1"],[1473242578,"c2d5e9ef9c97c4d2e293a5ccd7641c1cfa49c122f6927ea86ff0c4e8e4e18979"],[1473242579,"5f320ff6d2f1bbccd3d4bf6b5e13b6eefc477db7af07c0ea660a3d2f0cc32e36"],[1473242580,"236a7a99d4f7b881ce2a44f06284660d19ce5123523178610a8dd914905ade29"],[1473242581,"8a289899b72689f1abea0c901a39bd8fe825f8c491a02baa300fda2ff4421d74"],[1473242582,"3480981c1120c26c6c438eb734cb190ce041982ea5e1f3e5c5194d96eac8eea8"],[1473242583,"d0a173c7f24fb6a13048c47d955920b543dc9729917103a3bb6191cb57a017f6"],[1473246046,"e6dfbc66ae7684e55cafaaeebb3190c298e59ee95420540b3c6d3e47938043eb"],[1473246047,"957dff6ccbb39f3eee49cde3002bdd758b25c6acfa40fd9adc83374aae9546df"],[1473246048,"a88ad8443fc39d9ac697f4884d5a92ef919c95de3f958f4396c75bedb3840934"],[1473246049,"714201c72088768cbc380f045b6a1c91d9e2c1ba9bcd1d0aa9eee6b25d2922e7"],[1473246050,"6bf9c6917c3c936db5d3f181c8f4e02245ecb39b30c8cab7f561b5f4f5cc2b82"],[1473246051,"6631691122d952e8d45a049448db288a7ecdbe370712eb5d777e6ec07b2aa405"],[1473246052,"445e7ab10f26518085c0ee0defb4ef9ce68ad521af2b2ba506395eeae473331f"],[1473242572,"aaef4e3fc55e9ab246632cee5045d5cc694abe747943fb7c547f7037fd2544d2"],[1473242573,"f82ec7f36e4492d227692850a1dba34041ce9d25fb54ddf7b7b9fa4eb9e8b0f9"]]},{"number":8,"cards":[[1473242574,"7476ab73153098aa8acd444095a33ecb07b162eea3dbc3642aab20ebf055808a"],[1473246039,"1059ac130f779e3c35b1fa5451bcc2d03d97e6a40bcda7651fd69e4a5ba95746"],[1473246036,"2d1641ea41a9a8417ede404ba35d0bc5d5c3872b65869f6dd5ec740acc3dd15a"],[1473246034,"21fc5161a3400221654d0ebdb24b3ffe39277f392d9fd2910531c5a8b9f20883"],[1473243446,"e11c4610b17a9ddb872606142c4cbfa5930e266719dcf46eced449a35d7f2e42"],[1473246032,"ee7e206baee4162a9a4c49a8675b8fe5e0fff8fa33aa74070731c52627810c55"],[1473242571,"c4121c975fa2bd241fcbc4b46477a1e5ef66599082c3fdfa34a03c03eac49254"],[1473242569,"c354ec7483786ed41bc7a1a8067fa0d5173bb84acea883844ed4351360a8730a"],[1473242568,"d33592fa0ba470fa8fdde2c4d6b50a55912d7341dc8238460290437ebb3237e7"],[1473246033,"95901e53773be2b21451274b26b4d2965f5f4b59c81ca17ddaf6d2bd744478f5"],[1473242772,"f9e5c31e996ca19c34ae6eed43d1196af3af6c5cb1d469e67895bc2dd3d520d8"],[1473242771,"b29081215666f91570419ebe94476e89595dbe1b94c10d895a26069a5f8ae45e"],[1473242769,"6b696faabef16d77e54874ad32cf11febe38f0d27f2946a595ca591ee8fe6852"],[1473242768,"618639f14a5de14b444a2618c4d99316b97c00b8e352441cc47b5cfdc37e28e7"],[1473242767,"79e4c7e53f28d44f9f038798e73ff2031d90b4b637b1a133a86ec71b150c8c6a"],[1473242766,"6b53c69a5e25119c9e24453e5b464eb286c7563c88af5a12b4b4767abc6c8da0"],[1473242765,"89d5b7abc7b58205d5860c099ff238b54e990e12b4358a4944c62b56cfabb43c"],[1473244999,"6c0023556dadb5a9a9762ab8eddbe6bd76151c562c1f2a32d09191d7d666a0a0"],[1473244998,"3c9901c565f64880e33276925989bc8964022269829ee1930cd09aed5f1fa395"],[1473244993,"ff441378fc5bd48c6b396658451db471892b3fe16ebc199a9b04ac3fe0f9346f"],[1473244995,"3a3384d4db97213c94f61fe7b76d1438d58bf412feb45919fc46808a1bae0232"],[1473244994,"3181af410a58eceeeeac171a75bcd026d9f6721d3a8ea50efe2739c209942b69"],[1473242764,"f523705021a59cda32870388e96308a429dac7fca8830b80de95dec083aa5e58"],[1473242570,"7f3ff6f4f271f86b76e3766fe6c12d202c914f0f7637e9ab125c717520ea84cc"],[1473246041,"1d465c94e677a79d9ec417bdb5588bebfa80290f5b12aa02b384091621e106ff"],[1473246045,"0eac35aea27bb627cbc9fa1da3a04a8cef4fd0aba99ac217c5bed832017a2289"],[1473246044,"79799bca7841a0079c23b2898cd1246dbdbaf802d24debfa150f2e8ebe71c122"],[1473246043,"b73967ccc8f2c53b0a4d029351c10338832ae4a66983a3f7b07a23748f49cf31"],[1473246042,"e279bf38ddf44a3f876a7a70ece8e0e577e502aaa50e90a67def612ac8f6884f"],[1473246040,"79405aa4165160ea9c1592a1361168dfa9954964404a459cc7fea77e24c484e4"]]},{"number":9,"cards":[[1900197978,"f7b03a242fd4c127cfb7f4069908d4eaf39a9df58f8daa34664bc04e1fb43c01"],[1473243447,"5bb1d9bd47c90045aad926f189fb844bea57af3a8fbd2bc744549fa8e58f31d2"],[1473243445,"185e0a0921a91886e8b0cc52b7e6191763477b3ffc81be2e21df219a70426426"],[1473243444,"87f5df7f447481c2b0786364ee5986205222409ea9f2dab96c0712e07798224e"],[1473243443,"c225bfa96da81caeb60c604d3265328ae6e039dbf225e29e015c86690fd90c5b"],[1473243442,"5217e2d765c08b4b2dcb1edbf8c8f53a41758324c1af20962a6b383df1f6fa53"],[1473243440,"772d209829f60d6b06926fd0618d8eb9fd044789960eabb3f6541d6ac5d8423b"],[1473242762,"bd1849a853bf8cfa07e210e55fda7a7e698a18dbe23f4caca2a3ab5e1289f07d"],[1473242761,"46451b84b7f7e55ad3f9856e8ccf9cb2e0ff677135d2fd05790a2ddf004bc3f1"],[1473242760,"f60e468cda28c959ef41e34ea71804c6de84860f679a83c4e24c41fa3c6a5a6c"],[1473242759,"52572e6d0d735c5a87f624bd88e3f92c824c87dcf81030437858ac8e8eb4d44b"],[1473242758,"15275c021994bce9f7d835a3c85d139468950281503832fe6eb574069779a882"],[1473242757,"4b5c01bda6791ecb1b031498ecb12f7439bff116ff2e5e70f357b8a93fa7d1fd"],[1473242756,"fc1e2cba9ef19d1f4f7dd9e494cb1bec8235c28fb9841d420b46d44be1684ad1"],[1473242754,"8f0e8cca64b71dc19182417382b189b928e60175f343942981b06222eb54f668"],[1473242753,"34e0aadfe6ae454856ed8edd932dd3f165a6f70dabb3b5880478b8ed9738d30e"],[1473244989,"62e37d24922546f802bd8641c39dadab4706ea54c9d37a871355f82fb3930ed1"],[1473244985,"04e5e90c4a3dbc0f62c964508a4f0ebef2c01c977d2bb38c5e67b68a8500af81"],[1473244992,"0fc1db59e3879dea727843e701b9bbc49a63ad30f6849d43d46bb7869e9f2af6"],[1473244996,"cdadb51722462547a7aa11de913d6469ea2d9f71c2bbd18e99fcc52aaf087ae3"],[1473244997,"b6d615daa96fc57d648c8b0933c82cf996b1c1ce7327e0ac6efb85d038e8fc6b"],[1473244990,"44d26812c0ea3e6e2551972bdcb15b1afe4ff0bef86179a21dc05f184b46414f"],[1473244984,"96bdf5533fae1b5618580fe889cd41f9de76577321e6e988d5f6c201180f7315"],[1473244988,"bd55154781ce1af0a329a15e3dcc42a1d7a56d4322d1787c5b6f8ae2669ad80e"],[1604165742,"9ae7531504b767412a07a08d97ddce70374a346e52176d12cbfa5500d20029fb"],[1473244983,"90eadbadf5908ecda077ea744d8e383c59f48437b1ca75adc9465f4f819e7bd0"],[1473244986,"cc41cee8ca686a5a728449578e3659a828872c2fa875115f2b1ee85f57397c8e"],[1473244982,"b28c3817190aa96da74ea2d3b1667a767ef896ecb10177809db85dd565c54ad5"],[1473244987,"3c3d1ac975508a53f1cf8b54d4aefae70aa902a0b4b2b0bb4acb0f3e0fb92679"],[1473244991,"f39ec545665e6a099b8efaef8ef0ea03c420accda335e1884cd68e355c8abe2d"]]},{"number":10,"cards":[[1473243937,"01a7bc0d2c84d470c56c9ef3ea2ba00fae186905ab67de14cadc359ddd055eaa"],[1473243934,"8e0ce03f1cd0945e8d277c31e5aa992016d86af64b15ae6cdc336a5c67032f86"],[1473243936,"41aa290bdaa769c03829deeaa989e2847d8f2141ac0c9a97aaeba35004adec7c"],[1473243935,"332960c354460d81e7b7bd19f0841f793fa43903d2b638abf472afa11a652dcc"],[1473243933,"404c83637295aec8130f758983b4f9e0ae676bded58be42963e2077f51894019"]]}]
+          PUBLIC_KEY="-----BEGIN PUBLIC KEY-----\nMIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAqZNUrOvZ4UeO29b+p61F\niH/TYX0CFHtnqndnmHR4leDh/pqkTFqC+EryTPqjLJBylfgeqPqc0Bywo7WeHNxe\nvbOmih5rb9wRTYgJRBx7ruUJaWiJLP0yp2KwLMf8Vc0tRxRBIfXV/CHQjVIIc0rY\nOEW8+gwrAgsqFgs0944OpliDwm0aI9UX+j4gCTCmktk5swzFuqyxcDUH7fOUDKe1\nOOSqDB/lODw3333K6mjuHxRcDUD69EdTOS+hJb+ZqQOCT9JGtE2b6H9+Uf6B9cYs\nKu7JDPUD/5ETgxz3Oa3YgM7XPWwamcn5MYq8HMJ2e4F2B1x/mxSpUk6RFDR8hW/W\nFpqmg+JxpZpKwuSgBhegRpWwJ1+gS0z0h31a58XweTDtA8nd7WJjhiegbmSwItLM\npC3FVE8HzAeP6h8C+7l2r/Vl81y59CE+VHvgSmUobNRmHdY+laFAU2v8PfuebV5C\nDku+Uuz+AjUYKOtflqUc8HQQHGldtkkXG1iafKKIpZyTAgMBAAE=\n-----END PUBLIC KEY-----\n"
+          out={'status':'started','verified':False,'requests':[],'startedAt':datetime.now(timezone.utc).isoformat()}
+          token=os.environ['WB_TOKEN_3']
+          def digest(value):
+              return hashlib.sha256(json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+          def content(c):
+              fields=('nmID','nmUUID','subjectID','subjectName','vendorCode','brand','title','description','sizes','photos','video','characteristics','dimensions','kizMarked','needKiz')
+              v={k:c.get(k) for k in fields}
+              v['characteristics']=sorted(v.get('characteristics') or [],key=lambda x:x.get('id',0))
+              v['sizes']=sorted(v.get('sizes') or [],key=lambda x:x.get('chrtID',0))
+              if isinstance(v.get('dimensions'),dict):v['dimensions']={k:x for k,x in v['dimensions'].items() if k!='isValid'}
+              return digest(v)
+          def request(path,body,write=False):
+              for retry in range(4):
+                  time.sleep(1.2)
+                  try:r=requests.post('https://content-api.wildberries.cn'+path,headers={'Authorization':token},json=body,timeout=90)
+                  except requests.RequestException:
+                      if write:raise RuntimeError('Write response unknown; do not retry automatically')
+                      if retry==3:raise
+                      time.sleep(5);continue
+                  if r.status_code==429:
+                      wait=int(float(r.headers.get('X-Ratelimit-Retry') or r.headers.get('Retry-After') or 65))+3
+                      assert wait<=180,'Cooldown exceeds run budget'
+                      time.sleep(wait);continue
+                  if write:
+                      record={'payload':body,'http':r.status_code,'at':datetime.now(timezone.utc).isoformat()}
+                      out['requests'].append(record)
+                  assert r.ok,'API HTTP '+str(r.status_code)
+                  data=r.json()
+                  if write:
+                      record['response']=data
+                      assert data.get('error') is not True,'WB rejected membership request'
+                      record['status']='accepted'
+                  return data
+              raise RuntimeError('Rate limit retry exhausted')
+          def scan():
+              cards=[];cursor={'limit':100};seen=set()
+              for page in range(50):
+                  data=request('/content/v2/get/cards/list',{'settings':{'sort':{'ascending':True},'cursor':cursor,'filter':{'withPhoto':-1}}})
+                  if not isinstance(data.get('cards'),list):data=data.get('data',{})
+                  assert isinstance(data.get('cards'),list) and isinstance(data.get('cursor'),dict),'Bad catalog schema'
+                  cards.extend(data['cards'])
+                  if len(data['cards'])<100:break
+                  marker=(data['cursor'].get('updatedAt'),data['cursor'].get('nmID'))
+                  assert all(marker) and marker not in seen,'Bad pagination cursor'
+                  seen.add(marker);cursor={'limit':100,'updatedAt':marker[0],'nmID':marker[1]}
+              else:raise RuntimeError('Catalog pagination limit')
+              # Retain newest duplicate only during post-write verification, and require exact expected set below.
+              by={}
+              for c in cards:
+                  if c['nmID'] not in by or c.get('updatedAt','')>=by[c['nmID']].get('updatedAt',''):by[c['nmID']]=c
+              return by,len(cards)==len(by)
+          def signature(by):return digest([[n,c['imtID'],content(c)] for n,c in sorted(by.items())])
+          def read_before():
+              previous=None
+              for attempt in range(7):
+                  by,unique=scan()
+                  if unique and by:
+                      sig=signature(by)
+                      if sig==previous:return by
+                      previous=sig
+                  time.sleep(5)
+              raise RuntimeError('Preflight catalog did not stabilize')
+          def members(by,imt):return {n for n,c in by.items() if c['imtID']==imt}
+          def compact(by):
+              return [{k:c.get(k) for k in ('nmID','imtID','vendorCode','subjectID','subjectName','title')} for n,c in sorted(by.items())]
+          try:
+              assert token
+              before=read_before();out['beforeCount']=len(before);out['membershipBefore']=compact(before)
+              expected=set();group_ids={}
+              for group in PLAN:
+                  ids={entry[0] for entry in group['cards']}
+                  assert 1<=len(ids)<=30 and not(expected&ids),'Invalid approved partition'
+                  expected|=ids;group_ids[group['number']]=ids
+                  for nm,sku_hash in group['cards']:
+                      assert nm in before,'Approved card missing: '+str(nm)
+                      c=before[nm]
+                      assert hashlib.sha256(c['vendorCode'].lower().encode()).hexdigest()==sku_hash,'Article identity mismatch'
+                  assert len({before[n]['subjectID'] for n in ids})==1,'Subcategory mismatch'
+              assert len(expected)==247 and len(PLAN)==10
+              out['beforeContentHashes']={str(n):content(c) for n,c in before.items()}
+              out['preflightAt']=datetime.now(timezone.utc).isoformat()
+              for group in PLAN:
+                  ids=group_ids[group['number']]
+                  imts={before[n]['imtID'] for n in ids}
+                  if len(imts)==1 and members(before,next(iter(imts)))==ids:
+                      out['requests'].append({'group':group['number'],'status':'already_correct','imtID':next(iter(imts))});continue
+                  # WB: separating several nmIDs in a single request merges them under one new imtID.
+                  # Every request contains exactly one approved final group, with at most 30 cards.
+                  request('/content/v2/cards/moveNm',{'nmIDs':[e[0] for e in group['cards']]},write=True)
+                  out['requests'][-1]['group']=group['number']
+                  time.sleep(2)
+              out['status']='writes_accepted_verifying'
+              last_issues=[]
+              for attempt in range(12):
+                  time.sleep(10 if attempt else 8)
+                  after,unique=scan();issues=[]
+                  if set(after)!=set(before):issues.append('Active card set changed')
+                  else:
+                      for group in PLAN:
+                          ids=group_ids[group['number']];imts={after[n]['imtID'] for n in ids}
+                          if len(imts)!=1 or members(after,next(iter(imts)))!=ids:issues.append('Group membership mismatch '+str(group['number']))
+                      unexpected=[n for n in before if n not in expected and before[n]['imtID']!=after[n]['imtID']]
+                      if unexpected:issues.append('Unrelated membership changed')
+                      different=[n for n in before if content(before[n])!=content(after[n])]
+                      if different:issues.append('Content changed')
+                  out['membershipAfter']=compact(after);out['afterCount']=len(after);out['verificationAttempts']=attempt+1
+                  last_issues=issues
+                  if not issues:
+                      out.update(verified=True,status='complete',allCardsPreserved=True,unrelatedGroupsPreserved=True,contentEqual=True)
+                      out['groups']=[{'number':g['number'],'imtID':after[g['cards'][0][0]]['imtID'],'count':len(g['cards'])} for g in PLAN]
+                      out['changes']=[{'nmID':n,'vendorCode':before[n]['vendorCode'],'fromIMT':before[n]['imtID'],'toIMT':after[n]['imtID'],'group':next(g['number'] for g in PLAN if n in group_ids[g['number']])} for n in sorted(expected) if before[n]['imtID']!=after[n]['imtID']]
+                      break
+              else:raise RuntimeError('Verification incomplete: '+', '.join(last_issues))
+          except Exception as exc:
+              out['status']='incomplete';out['error']={'type':type(exc).__name__,'message':str(exc),'trace':traceback.format_exc()}
+          finally:
+              out['finishedAt']=datetime.now(timezone.utc).isoformat()
+              raw=gzip.compress(json.dumps(out,ensure_ascii=False).encode());key=secrets.token_bytes(32);nonce=secrets.token_bytes(12)
+              pub=serialization.load_pem_public_key(PUBLIC_KEY.encode());b=lambda v:base64.b64encode(v).decode()
+              env={'key':b(pub.encrypt(key,padding.OAEP(mgf=padding.MGF1(hashes.SHA256()),algorithm=hashes.SHA256(),label=None))),'nonce':b(nonce),'ciphertext':b(AESGCM(key).encrypt(nonce,raw,None))}
+              encoded=b(json.dumps(env).encode())
+              for i in range(0,len(encoded),18000):print('APPROVED_GROUPS_ENCRYPTED '+str(i//18000)+' '+encoded[i:i+18000],flush=True)
+              print('APPROVED_GROUP_APPLICATION_FINISHED',flush=True)
+          
