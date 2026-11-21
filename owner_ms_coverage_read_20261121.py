@@ -10,7 +10,7 @@ try:
  g.check_run_budget=lambda:None
  def read(path,**params):
   v=g.api('GET',g.MS_API+path,g.MS_TOKEN,wb=False,retry_read_network=True,params=dict(limit=3,offset=0,**params))
-  return {'meta':v.get('meta'),'rows':[{'id':r.get('id'),'article':r.get('article'),'archived':r.get('archived'),'name':r.get('name'),'meta':r.get('meta'),'stockByStore':r.get('stockByStore')} for r in v.get('rows',[])]}
+  return {'meta':v.get('meta'),'rows':[{'id':r.get('id'),'article':r.get('article'),'archived':r.get('archived'),'name':r.get('name'),'meta':r.get('meta'),'stockByStore':r.get('stockByStore'),'stock':r.get('stock'),'reserve':r.get('reserve'),'quantity':r.get('quantity')} for r in v.get('rows',[])]}
  data['assortment_all']=read('/entity/assortment',filter='archived=false;archived=true')
  data['assortment_no_filter']=read('/entity/assortment')
  data['products_active']=read('/entity/product',filter='archived=false')
@@ -22,6 +22,11 @@ try:
  data['msk_stock_all']=read('/report/stock/all',filter='store='+store+';stockMode=all')
  data['msk_stock_all_query']=read('/report/stock/all',filter='store='+store,stockMode='all')
  data['bystore_unfiltered']=read('/report/stock/bystore',stockMode='all')
+ data['bystore_product']=read('/report/stock/bystore',filter='store='+store+';stockMode=all',groupBy='product')
+ data['bystore_variant']=read('/report/stock/bystore',filter='store='+store+';stockMode=all',groupBy='variant')
+ data['all_product']=read('/report/stock/all',filter='store='+store+';stockMode=all',groupBy='product')
+ data['regina_bystore']=read('/report/stock/bystore',filter='store='+store+';stockMode=all;product='+g.MS_API+'/entity/product/762a7b63-d3cf-11ef-0a80-0e8500025f22',groupBy='product')
+ data['regina_all']=read('/report/stock/all',filter='store='+store+';stockMode=all;product='+g.MS_API+'/entity/product/762a7b63-d3cf-11ef-0a80-0e8500025f22',groupBy='product')
  data.update(status='complete',finished=time.time())
 except Exception as exc:data.update(status='stopped',error=str(exc),error_type=type(exc).__name__)
 with runtime_db() as lock:
