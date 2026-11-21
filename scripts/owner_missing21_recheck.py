@@ -13,7 +13,8 @@ def main():
  if v['status']=='complete':print('Already complete');return
  def save():
   v['updated_at']=now()
-  io.put(ROOT,copy.deepcopy(v))if io.get(ROOT)else io.create(ROOT,copy.deepcopy(v))
+  payload=json.loads(json.dumps(v,ensure_ascii=False))
+  io.put(ROOT,payload)if io.get(ROOT)else io.create(ROOT,payload)
  orig=requests.sessions.Session.request
  def guard(session,method,url,*a,**kw):
   u=urlparse(url);m=method.upper();host=u.hostname or''
