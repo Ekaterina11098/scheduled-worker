@@ -59,3 +59,4 @@ jobs:
           CHINA_TELEGRAM_BOT_TOKEN: ${{ secrets.CHINA_TELEGRAM_BOT_TOKEN }}
         run: PYTHONPATH=scripts:source python scripts/owner_reports21_preflight.py
 # Resume saved read-only checkpoints after JSON normalization.
+# Complete read adapter audit v2.
