@@ -73,6 +73,27 @@ def apply(bundle,source,minima):
    cost_action=existing.get('kind')=='ad_exclude_sku' or (existing.get('kind')=='ad_set_bid' and existing.get('target_minor',0)<existing.get('old_minor',0))
    if not risk and not cost_action:continue
    e=economics.get(str(r['nm']),{});old=settings[r['nm']]['bids_kopecks'][zone];minimum=minima.get(str(c['id'])+':'+str(r['nm']))
+   # An explicitly confirmed zero published balance proves unavailability, not loss.
+   # It does not require inventing a missing buyout/logistics model.
+   inputs=source.get('full_growth_inputs')or{}
+   published=inputs.get('published_stock')or{}
+   amounts=published.get('amounts')or{}
+   prices=inputs.get('prices')or{}
+   exact_prices=[x for x in prices.get('rows',[])if x.get('nm_id')==r['nm']]
+   if (str(r['nm'])in amounts and type(amounts[str(r['nm'])])in(int,float)
+       and amounts[str(r['nm'])]==0 and str(r['nm'])not in published.get('missing_nm_ids',[])
+       and dated(published.get('observed_at'),24) and dated(prices.get('observed_at'),24)
+       and len(exact_prices)==1 and exact_prices[0].get('currency')=='CNY'
+       and finite(exact_prices[0].get('seller_price')) and exact_prices[0]['seller_price']>0):
+    r.pop('data_blocker',None)
+    r.update(candidate_for_manual_review=False,economics=dict(published_stock=0,
+      published_stock_observed_at=published['observed_at'],availability_only=True,
+      financial_model_unavailable=not bool(e),not_proven_financial_loss=True))
+    r['action']=dict(id=str(c['id'])+':'+str(r['nm']),kind='ad_exclude_sku',
+      campaign_id=c['id'],nm_id=r['nm'],placement=zone,old_minor=old,article=r['article']) if len(settings)>1 and state.get('restrictions',{}).get('can_change_nms')is True else None
+    r['decision']='Исключить из этой РК до восстановления опубликованного остатка WB.' if r['action'] else 'Не повышать ставку: опубликованный остаток WB отсутствует.'
+    r['reason']='WB подтвердил опубликованный остаток 0; слабый спрос или убыток этим не доказаны.'
+    continue
    r['current_bid_minor']=old;r['minimum_bid_minor']=minimum
    if finite(e.get('stock_free')) and e['stock_free']<=0 and dated(e.get('stock_observed_at'),24):
     r['candidate_for_manual_review']=False;r['economics']=copy.deepcopy(e)
