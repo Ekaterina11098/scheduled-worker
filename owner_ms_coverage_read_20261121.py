@@ -17,6 +17,11 @@ try:
  data['products_archived']=read('/entity/product',filter='archived=true')
  for name,ident in [('msk','3c67619d-f25d-11ee-0a80-0c6f000a027a'),('guangzhou','2233c6a7-d906-11f1-0a80-197e004df0d2')]:
   data[name]=read('/report/stock/bystore',filter='store='+g.MS_API+'/entity/store/'+ident+';stockMode=all')
+ store=g.MS_API+'/entity/store/3c67619d-f25d-11ee-0a80-0c6f000a027a'
+ data['msk_stockmode_query']=read('/report/stock/bystore',filter='store='+store,stockMode='all')
+ data['msk_stock_all']=read('/report/stock/all',filter='store='+store+';stockMode=all')
+ data['msk_stock_all_query']=read('/report/stock/all',filter='store='+store,stockMode='all')
+ data['bystore_unfiltered']=read('/report/stock/bystore',stockMode='all')
  data.update(status='complete',finished=time.time())
 except Exception as exc:data.update(status='stopped',error=str(exc),error_type=type(exc).__name__)
 with runtime_db() as lock:
