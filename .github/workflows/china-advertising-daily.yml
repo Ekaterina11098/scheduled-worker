@@ -179,3 +179,5 @@ jobs:
 # Keep dated pre-window archive exclusions in the report audit; retain raw history.
 
 # Verify report view after budget inventory restoration, without dropping historical audit.
+
+# Verify exact published-stock zero without inventing a buyout model.
