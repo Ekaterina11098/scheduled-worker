@@ -126,7 +126,7 @@ def risk_summary(c,bundle):
   return ['ДРР включает расход уже исключённых товаров; повторно не исключать.',
           'Новый состав: без повышения ставок и пополнения; оценка '+
           (date.fromisoformat(bundle['day'])+timedelta(days=1)).strftime('%d.%m')+'.']
- rows=[r for r in c.get('focus',[])if not r.get('already_excluded')and r.get('decision')and r.get('period',{}).get('spend',0)>0]
+ rows=[r for r in c.get('focus',[])if not r.get('already_excluded')and r.get('decision')and (r.get('period')or{}).get('spend',0)>0]
  if pending:return [r['article']+': '+r['decision']for r in pending[:2]]
  if rows:
   return [r['article']+': '+r['decision']for r in sorted(rows,key=lambda r:r['period'].get('spend',0),reverse=True)[:2]]
