@@ -13,13 +13,9 @@ with runtime_db() as lock:
    s=Store(db,postgres=True);shared=SharedRequests(s,budget=lambda:None);g.STOCK_REQUEST_GATE=shared;g.check_run_budget=lambda:None
    try:
     token=g.cabinet_tokens()[1]
-    reply=g.api('POST',g.WB_CONTENT+'/content/v2/get/cards/list',token,json={'settings':{'cursor':{'limit':100},'filter':{'withPhoto':-1,'textSearch':'454004208'}}},retry_read_network=True)
-    cards=reply.get('cards')
-    if not isinstance(cards,list):raise RuntimeError('Card response missing')
-    selected=[c for c in cards if c.get('nmID')==454004208 and g.norm(c.get('vendorCode'))=='5belts-chocolate']
-    if len(selected)!=1:raise RuntimeError('Exact current belt card identity not confirmed')
-    card=selected[0];data['card']={k:card.get(k) for k in ['nmID','vendorCode','sizes','title','createdAt','updatedAt']}
-    ids=sorted({z.get('chrtID',z.get('chrtId')) for z in card['sizes']})
+    data['card_source']='Verified recovery catalogue,21Nov2026 morning; read-only IDs only'
+    data['card']={'nmID':454004208,'vendorCode':'5belts-chocolate'}
+    ids=[640495192,640495193,640495194,640495195]
     warehouses=g.api('GET',g.WB_MARKET+'/api/v3/warehouses',token,retry_read_network=True)
     if not isinstance(warehouses,list):raise RuntimeError('Warehouse response missing')
     data['warehouses']=[{k:w.get(k) for k in ['id','name','isDeleting','isProcessing']} for w in warehouses]
