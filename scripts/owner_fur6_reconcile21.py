@@ -19,9 +19,9 @@ def main():
  expected=copy.deepcopy(s['before']);expected['nm_settings'].append(next(n for n in s['steps']['add']['after']['nm_settings']if n['nm_id']==2216111729))
  def normalized(c):return {k:(sorted(c[k],key=lambda n:n['nm_id'])if k=='nm_settings'else c[k])for k in('id','status','currency','settings','bid_type','nm_settings')}
  consecutive=[];audit=[]
- for attempt in range(18):
+ for attempt in range(6):
   if attempt:time.sleep(10)
-  r=requests.get('https://advert-api.wildberries.ru/api/advert/v2/adverts',params={'ids':42022679},headers={'Authorization':io.token},timeout=40);r.raise_for_status();c=r.json()['adverts'][0]
+  r=requests.get('https://advert-api.wildberries.ru/api/advert/v2/adverts',params={'ids':42022679,'_owner_read_nonce':str(time.time_ns())},headers={'Authorization':io.token,'Cache-Control':'no-cache, no-store','Pragma':'no-cache'},timeout=40);r.raise_for_status();c=r.json()['adverts'][0]
   audit.append(dict(at=now(),campaign=c))
   if normalized(c)==normalized(expected):consecutive.append(c)
   else:consecutive=[]
