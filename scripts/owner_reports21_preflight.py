@@ -4,7 +4,7 @@ from urllib.parse import urlparse,parse_qs
 from datetime import datetime,timezone
 from china_advertising_state import AdvertisingIO
 from china_loss_control import PLAN,APPROVAL,digest
-ROOT='china_agent:owner_reports21_preflight:v1'
+ROOT='china_agent:owner_reports21_preflight:v2'
 def main():
  real=AdvertisingIO();memory={};campaigns={};budgets={};reads={};attempts=[]
  original=requests.sessions.Session.request;nap=time.sleep
@@ -57,6 +57,7 @@ def main():
   return r
  class IO:
   token=real.token
+  wb=real.wb
   daily_report_current_revalidation=True
   def get(self,key):
    if key not in memory:memory[key]=real.get(key)
