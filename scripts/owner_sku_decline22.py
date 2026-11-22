@@ -12,7 +12,8 @@ def stamp():return datetime.now(timezone.utc).isoformat()
 def main():
  io=AdvertisingIO();saved=io.get(ROOT+':result')
  if saved and saved.get('status')=='complete':print('Existing complete result; no repeat');return
- v=dict(status='collecting',observed_at=stamp(),errors={},wb_writes=0,model_calls=0,telegram_calls=0)
+ v=saved or dict(status='collecting',observed_at=stamp(),errors={},wb_writes=0,model_calls=0,telegram_calls=0)
+ if saved is None:assert io.create(ROOT+':result',v)
  def save():io.put(ROOT+':result',v)
  orig=requests.sessions.Session.request
  def guard(s,method,url,*a,**kw):
@@ -35,6 +36,7 @@ def main():
    tool('lk_wb_cabinets',dict(action='select',id=10026946))
    assert [x['id']for x in tool('lk_wb_cabinets',dict(action='list'))if x.get('selected')]==[10026946]
    for name,start,end in [('previous','2026-11-08','2026-11-14'),('current','2026-11-15','2026-11-21')]:
+    if name in v:continue
     args=dict(date_from=start,date_to=end,start_row=0,end_row=300)
     data=complete_products(tool,args,sanitize(tool('lk_wb_products',args)))
     body=data['data'];fields=['nm_id','sa_name','name','subject_id','subject_name','orders_count','orders_sum','open_card_count','add_to_cart_count','funnel_orders_count','price_after_discount','price_after_spp','price_spp','fbs_stock','days_in_stock']
