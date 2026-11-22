@@ -64,7 +64,7 @@ jobs:
         run: |
           python warehouse_id_patch.py private-source
           python -c "import stock_deploy_support, stock_regular_job"
-          (cd private-source && python -m unittest test_stock_china_cancellation_release test_stock_china_mgt test_stock_china_mgt_daily test_stock_unposted_orders test_stock_belt_common_pool test_stock_cancellation_credit)
+          (cd private-source && env -u STOCK_DAILY_ENABLED -u STOCK_OZON_ENABLED -u STOCK_PENDING_RESERVE_ENABLED -u STOCK_CANCELLATION_RESTORE_ENABLED -u STOCK_RUN_SLOT -u STOCK_NOTIFICATIONS_ENABLED -u STOCK_CLOUD_EXECUTION_ENABLED -u STOCK_JOURNAL_IMPORT_ACCEPTED python -m unittest test_stock_china_cancellation_release test_stock_china_mgt test_stock_china_mgt_daily test_stock_unposted_orders test_stock_belt_common_pool test_stock_cancellation_credit)
           python owner_china_cancel_release_20261122.py
       - uses: actions/upload-artifact@v4
         if: always()
