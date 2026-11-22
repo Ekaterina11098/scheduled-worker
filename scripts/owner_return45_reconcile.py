@@ -9,7 +9,10 @@ def main():
  else:assert io.create(ROOT+':reconcile',out)
  ids=[g['cid']for g in e['groups']]+[42088552]
  for _ in range(3):
-  time.sleep(3);r=requests.get('https://advert-api.wildberries.ru/api/advert/v2/adverts',params={'ids':','.join(map(str,ids)),'owner_read':time.time_ns()},headers={'Authorization':io.token,'Cache-Control':'no-cache,no-store'},timeout=(10,55));r.raise_for_status();out['batches'].append(r.json()['adverts']);io.put(ROOT+':reconcile',out)
+  batch=[]
+  for cid in ids:
+   time.sleep(1.2);r=requests.get('https://advert-api.wildberries.ru/api/advert/v2/adverts',params={'ids':str(cid),'owner_read':time.time_ns()},headers={'Authorization':io.token,'Cache-Control':'no-cache,no-store','Pragma':'no-cache'},timeout=(10,55));r.raise_for_status();batch+=r.json()['adverts']
+  out['batches'].append(batch);io.put(ROOT+':reconcile',out)
  out['status']='complete';out['completed_at']=datetime.now(timezone.utc).isoformat();io.put(ROOT+':reconcile',out)
  print(json.dumps(dict(status='complete',counts={c['id']:len(c['nm_settings'])for c in out['batches'][-1]})))
 if __name__=='__main__':main()
