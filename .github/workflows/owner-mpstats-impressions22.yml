@@ -1,4 +1,4 @@
-name: Owner MPStats impressions22 read only
+name: Owner MPStats daily funnel read only
 on:
   push:
     branches: [main]
@@ -38,8 +38,78 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           OPENAI_API_KEY: ''
-        run: PYTHONPATH=source python scripts/owner_mpstats_impressions22.py
-
-# Documented articles entity; bounded two-read capability check.
-
-# Read Pulse product export for 8–21Nov, no refresh/write.
+        run: |
+          PYTHONPATH=source python - <<'PY'
+          import os, time
+          from datetime import date, datetime, timedelta, timezone
+          from analytics.mpstats_probe import discover, unpack_tool, sanitize
+          from analytics.collect import database
+          
+          ROOT = 'china_agent:mpstats_daily_funnel:2026-11-22:v1'
+          CABINET = 10026946
+          FIELDS = ('nm_id', 'p_id', 'sa_name', 'open_card_count', 'add_to_cart_count',
+                    'funnel_orders_count', 'funnel_buyouts_count', 'orders_count', 'orders_sum',
+                    'add_to_cart_percent', 'cart_to_order_percent', 'sales_count')
+          
+          def now():
+              return datetime.now(timezone.utc)
+          
+          def save(key, payload):
+              ts = now()
+              database('POST', 'telegram_api_cache', body={
+                  'cache_key': ROOT + ':' + key, 'payload': payload,
+                  'updated_at': ts.isoformat(), 'expires_at': (ts + timedelta(days=365)).isoformat()
+              }, params={'on_conflict': 'cache_key'})
+          
+          def read_days(call, checks, known):
+              def tool(name, args):
+                  return sanitize(unpack_tool(call('tools/call', dict(name=name, arguments=args))))
+          
+              cabinets = checks['lk_wb_cabinets']
+              initial = [r['id'] for r in cabinets if r.get('selected')]
+              assert len(initial) <= 1
+              assert any(r.get('id') == CABINET and r.get('name') == 'VESCHI Гонконг' and
+                         r.get('valid') is True for r in cabinets)
+              changed = initial != [CABINET]
+              complete, failed = [], []
+              try:
+                  if changed:
+                      tool('lk_wb_cabinets', dict(action='select', id=CABINET))
+                  assert [r['id'] for r in tool('lk_wb_cabinets', dict(action='list')) if r.get('selected')] == [CABINET]
+                  for offset in range(14):
+                      day = (date(2026, 11, 8) + timedelta(days=offset)).isoformat()
+                      try:
+                          raw = tool('lk_wb_products', dict(date_from=day, date_to=day, start_row=0, end_row=500))
+                          cursor = raw
+                          while isinstance(cursor, dict) and 'data' in cursor:
+                              cursor = cursor['data']
+                          assert isinstance(cursor, list) and cursor and all(isinstance(r, dict) and r.get('nm_id') for r in cursor)
+                          assert len(cursor) == len({int(r['nm_id']) for r in cursor}), 'Duplicate SKU'
+                          keys = set().union(*(r.keys() for r in cursor))
+                          save(day, dict(status='received', date=day, checked_at=now().isoformat(), fields=FIELDS,
+                                         metric_keys=sorted(k for k in keys if any(x in k.lower() for x in ('view','traffic','ctr','ransom','buy','open','cart','order'))),
+                                         rows=[[r.get(k) for k in FIELDS] for r in cursor]))
+                          complete.append(day)
+                          print(day, len(cursor), flush=True)
+                      except Exception as exc:
+                          failed.append(day)
+                          save(day, dict(status='failed', date=day, exception=type(exc).__name__))
+                          print(day, type(exc).__name__, flush=True)
+                      time.sleep(1)
+                  try:
+                      broad = tool('lk_wb_dashboard_sales_funnel', dict(date_from='2026-11-08', date_to='2026-11-21'))
+                      save('dashboard', dict(status='received', checked_at=now().isoformat(), payload=broad))
+                  except Exception as exc:
+                      save('dashboard', dict(status='failed', exception=type(exc).__name__))
+              finally:
+                  if changed:
+                      tool('lk_wb_cabinets', dict(action='select', id=initial[0]) if initial else dict(action='reset'))
+                  restored = [r['id'] for r in tool('lk_wb_cabinets', dict(action='list')) if r.get('selected')]
+                  assert restored == initial, 'Selected cabinet not restored'
+                  save('checkpoint', dict(complete=complete, failed=failed, cabinet_restored=True))
+              return dict(status='complete' if not failed else 'partial')
+          
+          result = discover(os.environ['MPSTATS_API_TOKEN'], read_checks=True, extra_reader=read_days)
+          save('result', dict(status=result.get('status'), calls=result.get('executed_data_tools')))
+          print(result.get('status'), flush=True)
+          PY
