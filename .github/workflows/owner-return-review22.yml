@@ -7,13 +7,13 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: bot-mpstats-data
+  group: china-owner-return-read-only22
   cancel-in-progress: false
 jobs:
   prepare:
     if: github.run_attempt == 1
     concurrency:
-      group: china-dialog-data
+      group: china-owner-return-inputs22
       cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 40
