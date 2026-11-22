@@ -15,8 +15,8 @@ def main():
  v=old or dict(status='collecting',observed_at=now(),errors={},wb_writes=0,telegram_calls=0,model_calls=0)
  if old is None:assert io.create(ROOT+':fresh',v)
  orig=requests.sessions.Session.request
- def guard(s,m,url,*args,**kw):
-  u=urlparse(url);h=u.hostname;m=m.upper()
+ def guard(s,method,url,*args,**kw):
+  u=urlparse(url);h=u.hostname;m=method.upper()
   if h==urlparse(os.environ['SUPABASE_URL']).hostname:ok=m in('GET','POST','PATCH')and u.path.startswith('/rest/v1/')
   elif h=='advert-api.wildberries.ru':ok=m=='GET'and u.path in('/adv/v1/promotion/count','/api/advert/v2/adverts','/api/advert/v1/config')or m=='POST'and u.path=='/api/advert/v1/bids/min'
   elif h=='discounts-prices-api.wildberries.ru':ok=m=='GET'and u.path=='/api/v2/list/goods/filter'
