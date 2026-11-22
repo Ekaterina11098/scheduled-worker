@@ -3,7 +3,7 @@ import os,json
 from datetime import datetime,timezone,timedelta
 from analytics.mpstats_probe import discover,unpack_tool,sanitize
 from analytics.collect import database
-ROOT='china_agent:mpstats_impressions_api:2026-11-22:v2'
+ROOT='china_agent:mpstats_impressions_api:2026-11-22:v3'
 def save(key,p):
  database('POST','telegram_api_cache',body=dict(cache_key=ROOT+':'+key,payload=p,updated_at=datetime.now(timezone.utc).isoformat(),expires_at=(datetime.now(timezone.utc)+timedelta(days=365)).isoformat()),params={'on_conflict':'cache_key'})
 def main():
@@ -14,8 +14,8 @@ def main():
   try:
    tool('lk_wb_cabinets',dict(action='select',id=10026946))
    assert [r['id']for r in tool('lk_wb_cabinets',dict(action='list'))if r.get('selected')]==[10026946]
-   for name in ['lk_wb_card_table','lk_wb_card_widget']:
-    args=dict(type='articles',value='149503425',period_type='30days',self_redemption=False)
+   for name in ['lk_wb_pulse_products']:
+    args=dict(date_from='2026-11-08',date_to='2026-11-21',start_row=0,end_row=1000,refresh=False)
     try:save(name,dict(status='received',tool=name,arguments=args,data=tool(name,args),observed_at=datetime.now(timezone.utc).isoformat()))
     except Exception as e:save(name,dict(status='failed',error=type(e).__name__,detail=sanitize(getattr(e,'detail',None)),reason=str(e)[:100]))
   finally:tool('lk_wb_cabinets',dict(action='select',id=initial[0])if initial else dict(action='reset'))
