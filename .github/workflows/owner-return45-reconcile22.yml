@@ -65,3 +65,5 @@ jobs:
 # Keyword-compatible transport guard. Prior failed checks made no WB calls.
 
 # Read amended package only; zero mutations.
+
+# Individual campaign readback after stale bulk response.
