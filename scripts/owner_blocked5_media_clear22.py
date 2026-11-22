@@ -4,14 +4,20 @@ from urllib.parse import urlparse
 from china_advertising_state import AdvertisingIO
 ROOT='china_agent:owner_blocked5_media:2026-11-22:v1'
 def now():return datetime.now(timezone.utc).isoformat()
-def stable(c):return {k:v for k,v in c.items()if k not in('photos','video','updatedAt')}
+def stable(c):
+ d={k:copy.deepcopy(c.get(k))for k in('nmID','vendorCode','title','brand','description','sizes','characteristics','dimensions','kizMarked')}
+ if d['characteristics']:d['characteristics']=sorted(d['characteristics'],key=lambda x:x['id'])
+ if d['sizes']:d['sizes']=sorted(d['sizes'],key=lambda x:x.get('chrtID',0))
+ return d
 def main():
  io=AdvertisingIO();a=io.get(ROOT+':approval');d=io.get(ROOT+':discovery');assert a['status']=='approved'and a['owner_id']==5122667182 and d['status']=='complete';assert len(a['nm_ids'])==5 and set(a['nm_ids'])=={r['nmId']for r in d['blocked_report']}
  assert datetime.now(timezone.utc)<datetime.fromisoformat(a['expires_at'])
  e=io.get(ROOT+':execution')
  if e and e['status']=='verified':print('Already verified');return
- assert e is None,'Existing media operations must not replay'
- e=dict(status='preflight',created_at=now(),items=[],wb_writes=0,telegram_calls=0,model_calls=0,backup_key=ROOT+':discovery');assert io.create(ROOT+':execution',e)
+ assert e is None or e['wb_writes']==0 and all(not i.get('operation')for i in e['items']),'Existing media operations must not replay'
+ previous=e;e=dict(status='preflight',created_at=now(),items=[],wb_writes=0,telegram_calls=0,model_calls=0,backup_key=ROOT+':discovery')
+ if previous:e['zero_write_preflight_audit']=previous;io.put(ROOT+':execution',e)
+ else:assert io.create(ROOT+':execution',e)
  def save():io.put(ROOT+':execution',copy.deepcopy(e))
  original=requests.sessions.Session.request;allowed=None
  def guard(s,method,url,*args,**kw):
@@ -29,7 +35,7 @@ def main():
   for nm in a['nm_ids']:
    before=card(nm);assert before['vendorCode']==d['cards'][str(nm)]['vendorCode'];item=dict(nm_id=nm,article=before['vendorCode'],before=before,status='preflight');e['items'].append(item);save()
   for item in e['items']:
-   nm=item['nm_id'];before=item['before'];assert card(nm)==before,'Card changed since preflight'
+   nm=item['nm_id'];before=item['before'];check=card(nm);item['prewrite_read']=check;save();assert stable(check)==stable(before)and check.get('photos')==before.get('photos')and check.get('video')==before.get('video'),'Card changed since preflight'
    if before.get('photos')or before.get('video'):
     body=dict(nmId=nm,data=[]);item['operation']=dict(status='submitting',body=body,submitted_at=now());save();allowed=('POST','/content/v3/media/save',body)
     try:
