@@ -61,3 +61,5 @@ jobs:
         run: PYTHONPATH=scripts:source python scripts/owner_return_review22.py
 
 # Checkpoint row created before collection; no paid model calls or WB writes.
+
+# Keyword-compatible transport guard. Prior failed checks made no WB calls.
