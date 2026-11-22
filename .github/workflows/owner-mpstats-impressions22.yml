@@ -39,3 +39,5 @@ jobs:
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           OPENAI_API_KEY: ''
         run: PYTHONPATH=source python scripts/owner_mpstats_impressions22.py
+
+# Documented articles entity; bounded two-read capability check.
