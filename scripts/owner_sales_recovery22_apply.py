@@ -48,7 +48,18 @@ def main():
   return orig(session,method,url,*args,**kw)
  requests.sessions.Session.request=guard
  def req(path,method='GET',body=None):
-  time.sleep(1.2);r=requests.request(method,'https://advert-api.wildberries.ru'+path,headers={'Authorization':io.token,'Cache-Control':'no-cache,no-store','Pragma':'no-cache'},json=body,timeout=(10,55));r.raise_for_status();return r.json()if r.content else{}
+  base=path.split('?')[0]
+  safe=method=='GET'and base in('/api/advert/v1/config','/adv/v1/promotion/count','/api/advert/v2/adverts','/adv/v1/balance')or method=='POST'and base in('/api/advert/v2/budget','/api/advert/v1/bids/min')
+  for attempt in range(3 if safe else 1):
+   time.sleep(1.2)
+   try:
+    r=requests.request(method,'https://advert-api.wildberries.ru'+path,headers={'Authorization':io.token,'Cache-Control':'no-cache,no-store','Pragma':'no-cache'},json=body,timeout=(10,55))
+    if safe and r.status_code in(429,500,502,503,504)and attempt<2:
+     time.sleep(65 if r.status_code==429 else 4);continue
+    r.raise_for_status();return r.json()if r.content else{}
+   except(requests.Timeout,requests.ConnectionError):
+    if not safe or attempt==2:raise
+    time.sleep(4)
  def camp(cid):
   x=req('/api/advert/v2/adverts?ids='+str(cid)+'&owner_read='+str(time.time_ns()))['adverts'];assert len(x)==1 and x[0]['id']==cid and x[0]['currency']=='CNY';return x[0]
  def budget(cid):
@@ -84,6 +95,8 @@ def main():
  def fail(key,ex):e['errors'][key]=type(ex).__name__+': '+str(ex)[:240];save()
  try:
   if 'preflight'not in e:
+   assert e['wb_writes']==0,'Cannot rebuild preflight after a write'
+   e['groups']=[];e['errors'].pop('root',None);save()
    cfg=req('/api/advert/v1/config');assert cfg['currency']=='CNY'
    listing=req('/adv/v1/promotion/count');ids=sorted({x['advertId']for g in listing.get('adverts',[])for x in g.get('advert_list',[])})
    states=[]
