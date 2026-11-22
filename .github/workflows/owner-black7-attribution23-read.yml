@@ -63,3 +63,5 @@ jobs:
 # Checkpoint row created before collection; no paid model calls or WB writes.
 
 # Keyword-compatible transport guard. Prior failed checks made no WB calls.
+
+# Incremental read of prior-click window only; completed stages retained.
