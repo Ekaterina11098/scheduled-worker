@@ -41,3 +41,5 @@ jobs:
         run: PYTHONPATH=source python scripts/owner_mpstats_impressions22.py
 
 # Documented articles entity; bounded two-read capability check.
+
+# Read Pulse product export for 8–21Nov, no refresh/write.
