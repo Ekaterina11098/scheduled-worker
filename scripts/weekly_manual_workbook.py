@@ -241,6 +241,11 @@ def main():
     progress('creating_returns_in_workbook_order')
     for ident,items in groups.items():
         basis=doc('demand',ident);assert basis.get('applicable')
+        existing_return=rows('entity/salesreturn',{'filter':'externalCode='+prefix+'return-'+ident})
+        assert len(existing_return)<=1
+        if existing_return:
+            ensure('salesreturn','return-'+ident,{},items)
+            continue
         # Recheck capacity immediately before creating each return.
         cap=counts(positions('demand',ident));used=collections.Counter()
         for ref in basis.get('returns',[]):
