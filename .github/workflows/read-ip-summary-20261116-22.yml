@@ -1,0 +1,90 @@
+name: Read scoped weekly summary documents
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/read-ip-summary-20261116-22.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ip-weekly-documents-source
+  cancel-in-progress: false
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Preserve requested summary documents privately
+        shell: python
+        env:
+          WB_TOKEN_2: ${{ secrets.WB_TOKEN_2 }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          import os,sys,json,urllib.request,urllib.error,gzip,base64,io,zipfile,shutil,tempfile,subprocess,datetime as dt
+          sys.path.insert(0,'scripts')
+          import fbs_document_chain as m
+          db=m.Cache(m.Transport())
+          ROOT='weekly_report_review:ip:20261116_20261122:'
+          gate='weekly_report_review:ip:documents_download_access:v1'
+          cfg=db.get(ROOT+'request:v1') or {}
+          if cfg.get('source_requests_authorized') is not True or cfg.get('status') in ('cancelled','canceled'):
+           print('Request disabled.');sys.exit(0)
+          old=db.get(ROOT+'summary_document:v1') or {}
+          if old.get('status')=='downloaded':
+           print('Existing private documents retained.');sys.exit(0)
+          now=dt.datetime.now(dt.timezone.utc);access=db.get(gate) or {}
+          if access.get('next_allowed_at') and m.stamp(access['next_allowed_at'])>now:
+           db.put(ROOT+'summary_document:v1',{'status':'waiting_for_server_retry','next_allowed_at':access['next_allowed_at']})
+           print('Document cooldown active.');sys.exit(0)
+          proof=db.get(ROOT+'source_proof:v1') or {};ids=proof.get('report_ids') or []
+          assert len(ids)==2 and proof['dateFrom']==cfg['date_from'] and proof['dateTo']==cfg['date_to']
+          token=os.environ['WB_TOKEN_2'];assert token
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+           def redirect_request(self,*args,**kwargs):raise RuntimeError('Redirect blocked')
+          opener=urllib.request.build_opener(NoRedirect)
+          body={'params':[{'serviceName':'weekly-implementation-report-'+str(rid),'extension':'zip'} for rid in ids]}
+          next_at=(now+dt.timedelta(hours=24,seconds=5)).isoformat()
+          db.put(gate,{'status':'requesting','last_request_at':m.now(),'next_allowed_at':next_at,'task':ROOT})
+          try:
+           req=urllib.request.Request('https://documents-api.wildberries.ru/api/v1/documents/download/all',data=json.dumps(body).encode(),method='POST',headers={'Authorization':token,'Content-Type':'application/json','Accept-Encoding':'gzip'})
+           with opener.open(req,timeout=120) as resp:
+            raw=resp.read();http=resp.status;headers=dict(resp.headers.items())
+            if resp.headers.get('Content-Encoding')=='gzip':raw=gzip.decompress(raw)
+           data=json.loads(raw)['data'];archive=base64.b64decode(data['document'])
+           db.put(ROOT+'summary_document_response:v1',{'data':data,'report_ids':ids})
+           out={'status':'downloaded','at':m.now(),'http':http,'report_ids':ids,'bytes':len(archive),'files':[],'texts':[]}
+           def extract(blob,depth=0,prefix=''):
+            assert depth<=3
+            with zipfile.ZipFile(io.BytesIO(blob)) as z:
+             for info in z.infolist():
+              assert info.file_size<50000000
+              name=prefix+info.filename
+              out['files'].append({'name':name,'bytes':info.file_size})
+              if info.filename.casefold().endswith('.zip'):extract(z.read(info),depth+1,name+'/')
+              elif info.filename.casefold().endswith('.pdf') and shutil.which('pdftotext'):
+               with tempfile.NamedTemporaryFile(suffix='.pdf') as tmp:
+                tmp.write(z.read(info));tmp.flush()
+                txt=subprocess.check_output(['pdftotext','-layout',tmp.name,'-'],timeout=60).decode('utf-8')
+                out['texts'].append({'name':name,'text':txt})
+           extract(archive)
+           db.put(ROOT+'summary_document:v1',out)
+           db.put(gate,{'status':'read_complete','http':http,'next_allowed_at':next_at,'last_request_at':now.isoformat(),'task':ROOT})
+           print('Requested summaries preserved privately.')
+          except urllib.error.HTTPError as exc:
+           retry=86405
+           for k,v in exc.headers.items():
+            if k.casefold() in ('retry-after','x-ratelimit-retry','x-ratelimit-reset'):
+             try:retry=max(retry,float(v)+5)
+             except ValueError:pass
+           end=(dt.datetime.now(dt.timezone.utc)+dt.timedelta(seconds=retry)).isoformat()
+           db.put(ROOT+'summary_document:v1',{'status':'source_error','http':exc.code,'next_allowed_at':end,'at':m.now()})
+           db.put(gate,{'status':'source_error','http':exc.code,'next_allowed_at':end,'task':ROOT})
+           print('Document source unavailable; private receipt saved.')
+          except Exception as exc:
+           db.put(ROOT+'summary_document:v1',{'status':'processing_error','error_type':type(exc).__name__,'at':m.now()})
+           print('Document processing stopped; private receipt saved.');sys.exit(1)
