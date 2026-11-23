@@ -67,3 +67,5 @@ jobs:
 # Incremental read of prior-click window only; completed stages retained.
 
 # Resume after interrupted script upload; no prior data reads.
+
+# Resume after transport interruption; immutable stage checkpoints.
