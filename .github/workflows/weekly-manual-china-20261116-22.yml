@@ -28,3 +28,5 @@ jobs:
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           WEEKLY_MANUAL_ROOT: 'weekly_report_review:china:20261116_20261122:'
         run: python scripts/weekly_manual_workbook.py
+
+# Resume after owner-confirmed stock replenishment; reconcile existing returns.
