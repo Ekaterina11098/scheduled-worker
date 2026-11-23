@@ -7,7 +7,7 @@ permissions: {}
 concurrency: wb-copy-bag-662
 jobs:
   copy:
-    if: github.run_attempt == 1 && github.event.head_commit.message == 'Check brand mentions in bag 662 description'
+    if: github.run_attempt == 1 && github.event.head_commit.message == 'Clear brand and description from China bag 662'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -58,14 +58,45 @@ jobs:
           if len(found) != 1:
               raise SystemExit('Expected one destination card')
           card = found[0]
-          normalize = lambda value: unicodedata.normalize('NFKC', value).casefold()
-          brand = card.get('brand', '').strip()
-          description = card.get('description', '')
-          if not brand:
-              raise SystemExit('Brand field empty')
-          pattern = r'[\s\W_]*'.join(re.escape(c) for c in normalize(brand) if c.isalnum())
-          hits = list(re.finditer(r'(?<!\w)' + pattern + r'(?!\w)', normalize(description)))
-          print('Checked card:', card['nmID'], 'brand:', brand, 'description length:', len(description))
-          print('Brand mentions:', len(hits))
-          for hit in hits:
-              print('Matched text:', hit.group())
+          def preserved(c):
+              return (c['title'], c['subjectID'],
+                      {k:v for k,v in c['dimensions'].items() if k != 'isValid'},
+                      {a['id']:a['value'] for a in c['characteristics']},
+                      [(s['chrtID'], s.get('techSize', ''), s.get('wbSize', ''), s['skus']) for s in c['sizes']],
+                      c.get('photos') or [], c.get('video') or '')
+          def cleared(c):
+              return (c.get('brand', '').strip().casefold() in ('', 'без бренда') and
+                      not c.get('description', '').strip())
+          if cleared(card):
+              print('Brand and description already empty:', card['nmID'])
+              raise SystemExit(0)
+          payload = {k:card[k] for k in ('nmID', 'vendorCode', 'title')}
+          payload.update(brand='', description='')
+          payload['dimensions'] = {k:v for k,v in card['dimensions'].items() if k != 'isValid'}
+          payload['characteristics'] = [{k:a[k] for k in ('id', 'value')} for a in card['characteristics']]
+          payload['sizes'] = [{k:s[k] for k in ('chrtID', 'techSize', 'wbSize', 'skus') if k in s}
+                              for s in card['sizes']]
+          result = api('cn', china, '/content/v2/cards/update', [payload])
+          if result.get('error'):
+              print('Wildberries update error:', result.get('errorText'))
+              raise SystemExit(1)
+          print('Wildberries accepted update')
+          for attempt in range(14):
+              time.sleep(12)
+              current = select(cards('cn', china, code))
+              if current and cleared(current[0]):
+                  if preserved(current[0]) != preserved(card):
+                      raise SystemExit('Another field changed')
+                  print('Verified:', card['nmID'], 'brand:', repr(current[0].get('brand', '')),
+                        'description length:', len(current[0].get('description', '')),
+                        'characteristics:', len(current[0]['characteristics']),
+                        'barcodes:', [s['skus'] for s in current[0]['sizes']],
+                        'photos:', len(current[0].get('photos') or []))
+                  break
+          else:
+              if not current:
+                  current = select(cards('cn', china, None))
+              if current:
+                  print('Final brand:', repr(current[0].get('brand', '')),
+                        'description length:', len(current[0].get('description', '')))
+              raise SystemExit('Update not verified')
