@@ -7,7 +7,7 @@ permissions: {}
 concurrency: wb-copy-bag-662
 jobs:
   copy:
-    if: github.run_attempt == 1 && github.event.head_commit.message == 'Clear brand and description from China bag 662'
+    if: github.run_attempt == 1 && github.event.head_commit.message == 'Locate and clear brand and description on bag 662'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -51,10 +51,18 @@ jobs:
           china = os.environ['CHINA']
           code = '662-CelineaBag-blue'
           def select(items):
-              return [c for c in items if c['nmID'] == 2342818446 and c['vendorCode'] == code]
-          found = select(cards('cn', china, code))
-          if not found:
-              found = select(cards('cn', china, None))
+              return [c for c in items if c['nmID'] == 2342818446 and c['vendorCode'].casefold() == code.casefold()]
+          def locate():
+              for search in (code, '2342818446', '662', None):
+                  found = select(cards('cn', china, search))
+                  if found:
+                      return found
+              return []
+          for attempt in range(5):
+              found = locate()
+              if found:
+                  break
+              time.sleep(6)
           if len(found) != 1:
               raise SystemExit('Expected one destination card')
           card = found[0]
@@ -83,7 +91,7 @@ jobs:
           print('Wildberries accepted update')
           for attempt in range(14):
               time.sleep(12)
-              current = select(cards('cn', china, code))
+              current = select(cards('cn', china, code)) or select(cards('cn', china, '2342818446'))
               if current and cleared(current[0]):
                   if preserved(current[0]) != preserved(card):
                       raise SystemExit('Another field changed')
