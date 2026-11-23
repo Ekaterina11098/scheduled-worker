@@ -1,0 +1,110 @@
+name: Copy Wildberries bag card 662
+on:
+  push:
+    branches: [ops/wb-copy-bag-662-20261123]
+    paths: [.github/workflows/wb-copy-bag-662-20261123.yml]
+permissions: {}
+concurrency: wb-copy-bag-662
+jobs:
+  copy:
+    if: github.run_attempt == 1 && github.event.head_commit.message == 'Copy one Wildberries bag card 662 without media'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - shell: python
+        env:
+          CHINA: ${{ secrets.WB_TOKEN_3 }}
+          IP: ${{ secrets.WB_TOKEN }}
+          IP1: ${{ secrets.WB_TOKEN_1 }}
+        run: |
+          import json, os, re, time
+          from urllib.error import HTTPError
+          from urllib.request import Request, urlopen
+
+          def api(region, token, path, body):
+              request = Request(f'https://content-api.wildberries.{region}{path}',
+                                data=json.dumps(body).encode(),
+                                headers={'Authorization': token, 'Content-Type': 'application/json'})
+              try:
+                  with urlopen(request, timeout=30) as response:
+                      return json.load(response)
+              except HTTPError as exc:
+                  raise RuntimeError(f'{region} {path}: HTTP {exc.code}') from None
+
+          def cards(region, token, search):
+              cursor = {'limit': 100}
+              seen = set()
+              result = []
+              while True:
+                  data = api(region, token, '/content/v2/get/cards/list',
+                             {'settings': {'cursor': cursor, 'filter': {'withPhoto': -1, 'textSearch': search}}})
+                  result.extend(data['cards'])
+                  page = data['cursor']
+                  if page['total'] < cursor['limit']:
+                      return result
+                  marker = (page['updatedAt'], page['nmID'])
+                  if marker in seen:
+                      raise RuntimeError('Repeated catalog cursor')
+                  seen.add(marker)
+                  cursor.update(updatedAt=marker[0], nmID=marker[1])
+
+          china = os.environ['CHINA']
+          source_tokens = set(filter(None, [os.environ['IP'], os.environ['IP1']])) - {china}
+          if not china or len(source_tokens) != 1:
+              raise SystemExit('The China and uniquely identified IP credentials are required')
+          source_token = source_tokens.pop()
+          matches = [c for c in cards('ru', source_token, '662')
+                     if re.match(r'^662(?:$|[-_ /])', c['vendorCode'], re.I)
+                     and 'сумк' in c['subjectName'].lower()]
+          exact = [c for c in matches if c['vendorCode'] == '662']
+          if len(exact or matches) != 1:
+              print('Source candidates:', json.dumps([c['vendorCode'] for c in matches], ensure_ascii=False))
+              raise SystemExit('Source card is missing or ambiguous')
+          source = (exact or matches)[0]
+          code = source['vendorCode']
+          fields = ('vendorCode', 'title', 'description', 'brand', 'dimensions', 'characteristics')
+          variant = {field: source[field] for field in fields if field in source}
+          variant['sizes'] = [{key: size[key] for key in ('techSize', 'wbSize', 'skus') if key in size}
+                              for size in source['sizes']]
+          barcodes = sorted(sku for size in variant['sizes'] for sku in size['skus'])
+          if not barcodes:
+              raise SystemExit('Source has no barcodes')
+
+          def matching_destination():
+              return [c for c in cards('cn', china, code) if c['vendorCode'].casefold() == code.casefold()]
+
+          def matches_source(card):
+              compare = lambda items: {item['id']: item['value'] for item in items}
+              return (card['subjectID'] == source['subjectID'] and
+                      all(card.get(k) == source[k] for k in ('title', 'description', 'brand') if k in source) and
+                      all(card['dimensions'].get(k) == v for k, v in source.get('dimensions', {}).items()
+                          if k != 'isValid') and
+                      compare(card.get('characteristics', [])) == compare(source.get('characteristics', [])) and
+                      sorted((s.get('techSize', ''), s.get('wbSize', ''), sorted(s['skus'])) for s in card['sizes']) ==
+                      sorted((s.get('techSize', ''), s.get('wbSize', ''), sorted(s['skus'])) for s in variant['sizes']) and
+                      not card.get('photos') and not card.get('video'))
+
+          existing = matching_destination()
+          if existing:
+              if len(existing) != 1 or not matches_source(existing[0]):
+                  raise SystemExit('Destination already contains a different card with that vendor code')
+              print('Verified existing card:', existing[0]['nmID'])
+              raise SystemExit(0)
+          for barcode in barcodes:
+              if any(barcode in s['skus'] for c in cards('cn', china, barcode) for s in c['sizes']):
+                  raise SystemExit('Destination already contains a source barcode')
+          result = api('cn', china, '/content/v2/cards/upload',
+                       [{'subjectID': source['subjectID'], 'variants': [variant]}])
+          if result.get('error'):
+              raise SystemExit('Wildberries rejected the upload')
+          for attempt in range(18):
+              time.sleep(15)
+              received = matching_destination()
+              if received:
+                  if len(received) != 1 or not matches_source(received[0]):
+                      raise SystemExit('Card appeared but does not match the source')
+                  print('Verified card:', received[0]['nmID'], 'vendor code:', code,
+                        'barcodes:', ', '.join(barcodes), 'photos: 0')
+                  break
+          else:
+              raise SystemExit('Upload accepted, but card has not appeared yet')
