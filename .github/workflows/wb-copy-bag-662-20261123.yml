@@ -7,7 +7,7 @@ permissions: {}
 concurrency: wb-copy-bag-662
 jobs:
   copy:
-    if: github.run_attempt == 1 && github.event.head_commit.message == 'Copy Wildberries bag 662 from the IP catalog'
+    if: github.run_attempt == 1 && github.event.head_commit.message == 'Verify copied Wildberries bag 662 fields'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -89,27 +89,27 @@ jobs:
                       sorted((s.get('techSize', ''), s.get('wbSize', ''), sorted(s['skus'])) for s in variant['sizes']) and
                       not card.get('photos') and not card.get('video'))
 
-          existing = matching_destination()
-          if existing:
-              if len(existing) != 1 or not matches_source(existing[0]):
-                  raise SystemExit('Destination already contains a different card with that vendor code')
-              print('Verified existing card:', existing[0]['nmID'])
-              raise SystemExit(0)
-          for barcode in barcodes:
-              if any(barcode in s['skus'] for c in cards('cn', china, barcode) for s in c['sizes']):
-                  raise SystemExit('Destination already contains a source barcode')
-          result = api('cn', china, '/content/v2/cards/upload',
-                       [{'subjectID': source['subjectID'], 'variants': [variant]}])
-          if result.get('error'):
-              raise SystemExit('Wildberries rejected the upload')
-          for attempt in range(18):
-              time.sleep(15)
-              received = matching_destination()
-              if received:
-                  if len(received) != 1 or not matches_source(received[0]):
-                      raise SystemExit('Card appeared but does not match the source')
-                  print('Verified card:', received[0]['nmID'], 'vendor code:', code,
-                        'barcodes:', ', '.join(barcodes), 'photos: 0')
-                  break
-          else:
-              raise SystemExit('Upload accepted, but card has not appeared yet')
+          received = matching_destination()
+          if len(received) != 1:
+              raise SystemExit(f'Expected one destination card, got {len(received)}')
+          card = received[0]
+          print('Vendor code:', code, 'Wildberries ID:', card['nmID'])
+          print('Category matches:', card['subjectID'] == source['subjectID'])
+          for field in ('title', 'description', 'brand'):
+              print(field, 'matches:', card.get(field, '') == source.get(field, ''))
+          dims = lambda c: {k:v for k,v in c.get('dimensions', {}).items() if k != 'isValid'}
+          print('Dimensions:', dims(source), dims(card))
+          def attrs(c):
+              return {a['id']: a['value'] for a in c.get('characteristics', [])}
+          original, copied = attrs(source), attrs(card)
+          print('Source characteristics:', len(original), 'destination:', len(copied))
+          for key in sorted(original.keys() | copied.keys()):
+              if original.get(key) != copied.get(key):
+                  def norm(value):
+                      return sorted(map(str, value)) if isinstance(value, list) else value
+                  print('Characteristic difference:', key, 'order only:', norm(original.get(key)) == norm(copied.get(key)),
+                        'source present:', key in original, 'destination present:', key in copied)
+          def sizes(c):
+              return [(s.get('techSize', ''), s.get('wbSize', ''), sorted(s['skus'])) for s in c['sizes']]
+          print('Sizes (source, destination):', sizes(source), sizes(card))
+          print('Photos:', len(card.get('photos') or []), 'video:', bool(card.get('video')))
