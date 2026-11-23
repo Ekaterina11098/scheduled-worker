@@ -78,11 +78,16 @@ class Client:
   if step and step in self.state['steps']:
    old=self.state['steps'][step]
    if old['status']=='accepted':return old.get('response',{})
-   if old['status']=='rejected':raise Rejected(old['http_status'],old['detail'])
-   raise RuntimeError('Prior write outcome unresolved; no repeat')
+   retry429=step=='deposit2000'and old['status']=='rejected'and old.get('http_status')==429 and self.state.get('fallback_minimum_rejection_verified')is True
+   if not retry429:
+    if old['status']=='rejected':raise Rejected(old['http_status'],old['detail'])
+    raise RuntimeError('Prior write outcome unresolved; no repeat')
   for attempt in range(3 if not step else 1):
    pause=self.wait(path);self.guard()
-   if step:self.state['steps'][step]=dict(status='submitting',path=path,body=body,params=params,at=stamp());self.save()
+   if step:
+    old=self.state['steps'].get(step)
+    if old:self.state.setdefault('prior_rejections',{}).setdefault(step,[]).append(json.loads(json.dumps(old)))
+    self.state['steps'][step]=dict(status='submitting',path=path,body=body,params=params,at=stamp());self.save()
    time.sleep(2)
    try:r=requests.request(method,'https://'+HOST+path,headers={'Authorization':self.wb.token},params=params,json=body,timeout=(10,65),allow_redirects=False)
    except requests.RequestException:
@@ -190,4 +195,37 @@ def run():
    if c.state.get('status')!='active_verified':c.state.update(status='attention',error=str(exc)if isinstance(exc,(RuntimeError,ValueError,PermissionError))else type(exc).__name__);c.save()
   raise
  for c in clients:print(json.dumps({'cabinet':c.item['cabinet'],'campaign_id':c.item['campaign_id'],'status':c.state['status'],'selected_count':len(c.item['skus']),'auto_topup':False,'model_calls':0}),flush=True)
-if __name__=='__main__':run()
+def continue_known_rejection():
+ if os.environ.get('GITHUB_REPOSITORY')!=REPO or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Public main only')
+ db=State();auth=db.get(ROOT+':launch_authorization')or{};validate_authorization(auth)
+ states={item['cabinet']:db.get(ROOT+':launch_v4:'+item['cabinet'])or{}for item in auth['items']}
+ for item in auth['items']:
+  s=states[item['cabinet']]
+  if s.get('authorization_sha256')!=digest(auth)or s.get('settings_verified')is not True:raise PermissionError('Identical verified launch scope required')
+  if any(x.get('status')in('submitting','uncertain')for x in s['steps'].values()):raise PermissionError('Unresolved write; no continuation')
+  if s['steps'].get('start'):raise PermissionError('Prior start must be reviewed, not repeated')
+ ip=states['token_2'];ooo=states['token_1']
+ if ip.get('funding_verified')is not True or ip.get('budget')!=1000 or ip['steps'].get('deposit1000',{}).get('status')!='accepted':raise PermissionError('Exact funded IP receipt missing')
+ first=ooo['steps'].get('deposit1000',{});fallback=ooo['steps'].get('deposit2000',{})
+ if first.get('status')!='rejected'or not minimum_rejection(Rejected(first.get('http_status'),first.get('detail')))or fallback.get('status')!='rejected'or fallback.get('http_status')!=429 or ooo.get('fallback_minimum_rejection_verified')is not True:raise PermissionError('Not the exact definitive minimum/429 rejection sequence')
+ claim=ROOT+':continue_known429'
+ if not db.put(claim,{'status':'running','authorization_sha256':digest(auth),'started_at':stamp()},once=True):raise RuntimeError('Continuation already claimed; inspect receipts')
+ clients={i['cabinet']:Client(db,auth,i,states[i['cabinet']],ROOT+':launch_v4:'+i['cabinet'])for i in auth['items']}
+ for c in clients.values():c.wb.identity();c.state['previous_error']=c.state.pop('error',None);c.state['status']='continuing';c.save()
+ try:
+  clients['token_2'].start()
+  c=clients['token_1'];receipt=c.call('/adv/v1/budget/deposit','POST',{'sum':2000,'type':1,'return':True},{'id':c.item['campaign_id']},step='deposit2000')
+  total=receipt.get('total')if isinstance(receipt,dict)else None
+  if type(total)is not int:total=c.budget()
+  if total!=2000:raise RuntimeError('OOO fallback funding differs; no activation')
+  c.state.update(funding_verified=True,budget=2000,funding_readback=receipt,funding_verified_at=stamp());c.save();c.start()
+ except Exception as exc:
+  for c in clients.values():
+   if c.state.get('status')!='active_verified':c.state.update(status='attention',error=str(exc)if isinstance(exc,(RuntimeError,ValueError,PermissionError))else type(exc).__name__);c.save()
+  raise
+ db.put(claim,{'status':'complete','completed_at':stamp(),'authorization_sha256':digest(auth)})
+ print(json.dumps({'status':'both_active_verified','selected_count':24,'model_calls':0}))
+if __name__=='__main__':
+ import argparse
+ p=argparse.ArgumentParser();p.add_argument('--continue-known-rejection',action='store_true');args=p.parse_args()
+ continue_known_rejection()if args.continue_known_rejection else run()

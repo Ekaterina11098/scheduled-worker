@@ -58,6 +58,8 @@ jobs:
           WB_TOKEN_1: ${{ secrets.WB_TOKEN_1 }}
           WB_TOKEN_2: ${{ secrets.WB_TOKEN_2 }}
           OPENAI_API_KEY: ""
-        run: python -u scripts/owner_ad_tests23_launch.py
+        run: python -u scripts/owner_ad_tests23_launch.py --continue-known-rejection
 
 # Reuse recent, dated WB stock and proven zero budgets after a write-free read failure.
+
+# Continue only accepted IP funding and the exact OOO minimum-rejected/429 fallback sequence.

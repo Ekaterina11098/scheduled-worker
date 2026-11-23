@@ -41,6 +41,17 @@ class Funds(unittest.TestCase):
   with self.assertRaises(ValueError):c.fund()
   self.assertFalse(any(x.kwargs.get('step')for x in c.call.call_args_list))
 class Boundaries(unittest.TestCase):
+ def test_only_definitively_rejected_429_fallback_can_retry_and_keeps_history(self):
+  c=object.__new__(m.Client);c.item={'campaign_id':42139012};c.state={'steps':{'deposit2000':{'status':'rejected','http_status':429,'detail':{'error':'rate'}}},'fallback_minimum_rejection_verified':True}
+  c.guard=Mock();c.wait=Mock(return_value='pause');c.save=Mock();c.wb=types.SimpleNamespace(token='synthetic-not-a-real-token');c.db=Mock()
+  response=types.SimpleNamespace(ok=True,status_code=200,headers={},content=b'{}',json=lambda:{'total':2000})
+  with patch.object(m.requests,'request',return_value=response)as request,patch.object(m.time,'sleep'):
+   self.assertEqual(c.call('/adv/v1/budget/deposit','POST',{'sum':2000,'type':1,'return':True},{'id':42139012},'deposit2000'),{'total':2000})
+  request.assert_called_once();self.assertEqual(c.state['steps']['deposit2000']['status'],'accepted');self.assertEqual(c.state['prior_rejections']['deposit2000'][0]['http_status'],429)
+ def test_uncertain_fallback_cannot_be_retried(self):
+  c=object.__new__(m.Client);c.item={'campaign_id':42139012};c.state={'steps':{'deposit2000':{'status':'uncertain'}},'fallback_minimum_rejection_verified':True};c.guard=Mock()
+  with patch.object(m.requests,'request',side_effect=AssertionError('No blind repeat')):
+   with self.assertRaises(RuntimeError):c.call('/adv/v1/budget/deposit','POST',{'sum':2000,'type':1,'return':True},{'id':42139012},'deposit2000')
  def test_cache_preserves_original_source_time_and_rejects_stale_or_wrong_sku(self):
   now=datetime.datetime.now(datetime.timezone.utc);observed=(now-datetime.timedelta(minutes=20)).isoformat()
   item={'cabinet':'token_2','skus':[{'nm':1,'article':'A'}]}
