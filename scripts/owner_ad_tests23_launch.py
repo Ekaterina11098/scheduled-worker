@@ -25,6 +25,19 @@ def parse_bids(value,item):
   out[n['nm_id']]=bs[0]['value']
  if set(out)!={r['nm']for r in item['skus']}:raise ValueError('Minimum bid coverage incomplete')
  return out
+def stock_cache(db,item,now=None):
+ now=now or datetime.datetime.now(datetime.timezone.utc);found=[]
+ prior=db.get(ROOT+':launch:'+item['cabinet'])or{}
+ if prior.get('stock_readback')and prior.get('stock_verified_at'):found.append((prior['stock_verified_at'],prior['stock_readback'],'earlier_verified_WB_read'))
+ pre=db.get(ROOT+':preflight:'+item['cabinet'])or{};stage=pre.get('stages',{}).get('funnel',{})
+ if stage.get('status')=='complete'and stage.get('observed_at'):
+  found.append((stage['observed_at'],{str(r['product']['nmId']):r['product']for r in stage['data']['data']['products']},'saved_WB_preflight'))
+ wanted={r['nm']:r['article']for r in item['skus']}
+ for observed,raw,source in sorted(found,reverse=True,key=lambda x:x[0]):
+  if not 0<=(now-datetime.datetime.fromisoformat(observed)).total_seconds()<=90*60:continue
+  selected={int(n):p for n,p in raw.items()if int(n)in wanted}
+  if set(selected)==set(wanted)and all(p.get('vendorCode')==wanted[n]and p.get('subjectId')==50 and p.get('stocks',{}).get('wb',0)>=3 and p.get('feedbackRating',0)>=4.5 for n,p in selected.items()):return selected,observed,source
+ return None
 class Rejected(RuntimeError):
  def __init__(self,status,detail):self.status=status;self.detail=detail;super().__init__('WB rejected HTTP '+str(status))
 def minimum_rejection(exc):
@@ -107,13 +120,19 @@ class Client:
   # Use the scarce full-configuration read after the idempotent bid update,
   # before any funding, rather than spending it twice on the same draft.
   self.wb.identity()
-  if self.budget()!=0:raise ValueError('Draft already has funds; no duplicate deposit')
-  self.state.update(initial_budget_verified=0,initial_budget_verified_at=stamp());self.save()
+  prior_budget=self.state.get('initial_budget_verified_at')
+  reusable=prior_budget and self.state.get('initial_budget_verified')==0 and 0<=(datetime.datetime.now(datetime.timezone.utc)-datetime.datetime.fromisoformat(prior_budget)).total_seconds()<30*60
+  if not reusable:
+   if self.budget()!=0:raise ValueError('Draft already has funds; no duplicate deposit')
+   self.state.update(initial_budget_verified=0,initial_budget_verified_at=stamp());self.save()
   wanted={r['nm']:r['article']for r in self.item['skus']}
-  source=self.wb.read('seller-analytics-api.wildberries.ru','/api/analytics/v3/sales-funnel/products','POST',body={'selectedPeriod':{'start':'2026-11-09','end':'2026-11-22'},'pastPeriod':{'start':'2026-10-26','end':'2026-11-08'},'nmIds':sorted(wanted),'skipDeletedNm':False,'limit':1000,'offset':0})
-  products={r['product']['nmId']:r['product']for r in source['data']['products']}
+  cached=stock_cache(self.db,self.item)
+  if cached:products,observed,stock_source=cached
+  else:
+   source=self.wb.read('seller-analytics-api.wildberries.ru','/api/analytics/v3/sales-funnel/products','POST',body={'selectedPeriod':{'start':'2026-11-09','end':'2026-11-22'},'pastPeriod':{'start':'2026-10-26','end':'2026-11-08'},'nmIds':sorted(wanted),'skipDeletedNm':False,'limit':1000,'offset':0})
+   products={r['product']['nmId']:r['product']for r in source['data']['products']};observed=stamp();stock_source='live_WB_read'
   if set(products)!=set(wanted)or any(p.get('vendorCode')!=wanted[n]or p.get('subjectId')!=50 or p.get('stocks',{}).get('wb',0)<1 or p.get('feedbackRating',0)<4.5 for n,p in products.items()):raise ValueError('Fresh SKU identity, available WB stock or rating changed; no funding')
-  self.state.update(stock_readback={str(n):p for n,p in products.items()},stock_verified_at=stamp());self.save()
+  self.state.update(stock_readback={str(n):p for n,p in products.items()},stock_observed_at=observed,stock_source=stock_source,stock_validated_at=stamp());self.save()
   value=self.call('/api/advert/v1/bids/min','POST',{'advert_id':self.item['campaign_id'],'nm_ids':sorted(r['nm']for r in self.item['skus']),'payment_type':'cpc','placement_types':['search']})
   bids=parse_bids(value,self.item);self.state['minimum_bids']={str(k):v for k,v in bids.items()};self.save()
   body={'bids':[{'advert_id':self.item['campaign_id'],'nm_bids':[{'nm_id':n,'bid_kopecks':v,'placement':'search'}for n,v in sorted(bids.items())]}]}
@@ -155,7 +174,11 @@ def run():
   if prior.get('steps')!={}or prior.get('authorization_sha256')!=digest(auth):raise PermissionError('Prior attempt must have zero write calls and identical approval')
   superseded=db.get(ROOT+':launch_v2:'+item['cabinet'])or{}
   if superseded.get('steps')!={}or superseded.get('authorization_sha256')!=digest(auth):raise PermissionError('Superseded waiting attempt must have zero writes')
-  key=ROOT+':launch_v3:'+item['cabinet'];state=dict(status='preparing',authorization_sha256=digest(auth),steps={},started_at=stamp(),model_calls=0,previous_failed_before_writes=ROOT+':launch:'+item['cabinet'])
+  read_failure=db.get(ROOT+':launch_v3:'+item['cabinet'])or{}
+  if read_failure.get('steps')!={}or read_failure.get('authorization_sha256')!=digest(auth)or read_failure.get('status')!='attention':raise PermissionError('Previous read-only failure not confirmed')
+  key=ROOT+':launch_v4:'+item['cabinet'];state=dict(status='preparing',authorization_sha256=digest(auth),steps={},started_at=stamp(),model_calls=0,previous_failed_before_writes=ROOT+':launch_v3:'+item['cabinet'])
+  if read_failure.get('initial_budget_verified')==0 and read_failure.get('initial_budget_verified_at'):
+   state.update(initial_budget_verified=0,initial_budget_verified_at=read_failure['initial_budget_verified_at'])
   if not db.put(key,state,once=True):raise RuntimeError('Launch receipt already exists; inspect it before any continuation')
   clients.append(Client(db,auth,item,state,key))
  try:
@@ -166,5 +189,5 @@ def run():
   for c in clients:
    if c.state.get('status')!='active_verified':c.state.update(status='attention',error=str(exc)if isinstance(exc,(RuntimeError,ValueError,PermissionError))else type(exc).__name__);c.save()
   raise
- for c in clients:print(json.dumps({'cabinet':c.item['cabinet'],'campaign_id':c.item['campaign_id'],'status':c.state['status'],'selected_count':len(c.item['skus']),'budget':c.state['budget'],'currency':c.item['currency'],'auto_topup':False,'model_calls':0}),flush=True)
+ for c in clients:print(json.dumps({'cabinet':c.item['cabinet'],'campaign_id':c.item['campaign_id'],'status':c.state['status'],'selected_count':len(c.item['skus']),'auto_topup':False,'model_calls':0}),flush=True)
 if __name__=='__main__':run()

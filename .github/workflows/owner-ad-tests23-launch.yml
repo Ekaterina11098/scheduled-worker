@@ -59,3 +59,5 @@ jobs:
           WB_TOKEN_2: ${{ secrets.WB_TOKEN_2 }}
           OPENAI_API_KEY: ""
         run: python -u scripts/owner_ad_tests23_launch.py
+
+# Reuse recent, dated WB stock and proven zero budgets after a write-free read failure.

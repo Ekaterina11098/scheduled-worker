@@ -41,6 +41,17 @@ class Funds(unittest.TestCase):
   with self.assertRaises(ValueError):c.fund()
   self.assertFalse(any(x.kwargs.get('step')for x in c.call.call_args_list))
 class Boundaries(unittest.TestCase):
+ def test_cache_preserves_original_source_time_and_rejects_stale_or_wrong_sku(self):
+  now=datetime.datetime.now(datetime.timezone.utc);observed=(now-datetime.timedelta(minutes=20)).isoformat()
+  item={'cabinet':'token_2','skus':[{'nm':1,'article':'A'}]}
+  product=dict(nmId=1,vendorCode='A',subjectId=50,stocks={'wb':5},feedbackRating=5)
+  values={m.ROOT+':launch:token_2':dict(stock_readback={'1':product},stock_verified_at=observed)}
+  db=Mock();db.get.side_effect=lambda k:copy.deepcopy(values.get(k))
+  got=m.stock_cache(db,item,now);self.assertEqual(got[1],observed)
+  values[m.ROOT+':launch:token_2']['stock_verified_at']=(now-datetime.timedelta(minutes=91)).isoformat()
+  self.assertIsNone(m.stock_cache(db,item,now))
+  values[m.ROOT+':launch:token_2']['stock_verified_at']=observed;product['vendorCode']='wrong'
+  self.assertIsNone(m.stock_cache(db,item,now))
  def test_durable_journal_compares_json_wire_representation(self):
   c=object.__new__(m.Client);c.state={'stock':{123:{'wb':5}}};c.key='private-key'
   class DB:
