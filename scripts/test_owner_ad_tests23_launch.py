@@ -6,17 +6,17 @@ if 'requests'not in sys.modules:
 import owner_ad_tests23_launch as m
 class Funds(unittest.TestCase):
  def worker(self,budgets,error=None,wallet=5000):
-  c=object.__new__(m.Client);c.item=dict(campaign_id=42139004,currency='RUB');c.state={'steps':{}};c.save=Mock();c.budget=Mock(side_effect=budgets)
+  c=object.__new__(m.Client);c.item=dict(campaign_id=42139004,currency='RUB');c.state={'steps':{},'initial_budget_verified':0,'settings_verified':True};c.save=Mock();c.budget=Mock(side_effect=budgets)
   def call(path,method='GET',body=None,params=None,step=None):
    if path=='/adv/v1/balance':return dict(currency='RUB',net=wallet)
    if step=='deposit1000'and error:raise error
-   return {}
+   return {'total':body['sum']}
   c.call=Mock(side_effect=call);return c
  def test_success_1000_never_adds_2000(self):
-  c=self.worker([0,1000]);c.fund();self.assertEqual(c.state['budget'],1000)
+  c=self.worker([]);c.fund();self.assertEqual(c.state['budget'],1000);c.budget.assert_not_called()
   self.assertEqual([x.kwargs.get('step')for x in c.call.call_args_list if x.kwargs.get('step')],['deposit1000'])
  def test_2000_replaces_explicitly_rejected_1000_after_proving_zero_balance(self):
-  c=self.worker([0,0,2000],m.Rejected(400,{'message':'minimum deposit is 2000'}));c.fund()
+  c=self.worker([],m.Rejected(400,{'message':'minimum deposit is 2000'}));c.fund()
   self.assertEqual(c.state['budget'],2000);self.assertTrue(c.state['fallback_minimum_rejection_verified'])
   self.assertEqual([x.args[2]['sum']for x in c.call.call_args_list if x.kwargs.get('step')],[1000,2000])
  def test_unrelated_400_and_rate_limit_never_raise_budget(self):
@@ -28,8 +28,12 @@ class Funds(unittest.TestCase):
   c=self.worker([0],RuntimeError('uncertain'))
   with self.assertRaises(RuntimeError):c.fund()
   self.assertFalse(c.state.get('fallback_minimum_rejection_verified'))
- def test_partial_or_nonzero_first_transfer_prevents_another_deposit(self):
-  c=self.worker([0,1000],m.Rejected(400,{'message':'minimum budget'}))
+ def test_nonzero_initial_budget_prevents_deposit(self):
+  c=self.worker([]);c.state['initial_budget_verified']=1000
+  with self.assertRaises(ValueError):c.fund()
+  self.assertFalse(c.state.get('fallback_minimum_rejection_verified'))
+ def test_unexpected_successful_total_stops_without_additional_funding(self):
+  c=self.worker([]);c.call.side_effect=lambda path,*a,**kw:dict(currency='RUB',net=5000)if path=='/adv/v1/balance'else{'total':3000}
   with self.assertRaises(RuntimeError):c.fund()
   self.assertFalse(c.state.get('fallback_minimum_rejection_verified'))
  def test_insufficient_wallet_does_not_charge_card_or_try_larger_amount(self):

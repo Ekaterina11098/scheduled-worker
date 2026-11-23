@@ -3,15 +3,39 @@ on:
   push:
     branches: [main]
     paths: ['.github/workflows/owner-ad-tests23-launch.yml']
-permissions: {contents: read}
+permissions:
+  contents: read
+  actions: write
 concurrency:
-  group: owner-ad-tests23-financial-launch
+  group: owner-ad-tests23-corrected-financial-launch
   cancel-in-progress: false
 jobs:
   launch:
     runs-on: ubuntu-latest
     timeout-minutes: 32
     steps:
+      - name: Stop only the superseded waiting pre-write launch runner
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import os,json,time,urllib.request,urllib.error
+          url='https://api.github.com/repos/Ekaterina11098/scheduled-worker/actions/runs/45126109419'
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'}
+          def read():
+              with urllib.request.urlopen(urllib.request.Request(url,headers=headers)) as f:return json.load(f)
+          r=read()
+          if r['head_sha']!='35373305326969082e36f53b008c13d94a087939' or r['name']!='Launch exact owner IP OOO tests 1000 fallback 2000 Nov23':raise RuntimeError('Previous runner scope changed')
+          if r['status']!='completed':
+              try:
+                  with urllib.request.urlopen(urllib.request.Request(url+'/cancel',headers=headers,method='POST')) as f:pass
+              except urllib.error.HTTPError as e:
+                  if e.code!=409:raise
+              for _ in range(25):
+                  time.sleep(2)
+                  if read()['status']=='completed':break
+              else:raise RuntimeError('Previous runner not stopped; no concurrent financial launch')
+          print('Superseded waiting runner stopped')
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -35,5 +59,3 @@ jobs:
           WB_TOKEN_2: ${{ secrets.WB_TOKEN_2 }}
           OPENAI_API_KEY: ""
         run: python -u scripts/owner_ad_tests23_launch.py
-
-# Resume only the verified failed pre-write attempt; separate one-time financial journal.

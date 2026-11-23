@@ -108,12 +108,12 @@ class Client:
   # before any funding, rather than spending it twice on the same draft.
   self.wb.identity()
   if self.budget()!=0:raise ValueError('Draft already has funds; no duplicate deposit')
+  self.state.update(initial_budget_verified=0,initial_budget_verified_at=stamp());self.save()
   wanted={r['nm']:r['article']for r in self.item['skus']}
   source=self.wb.read('seller-analytics-api.wildberries.ru','/api/analytics/v3/sales-funnel/products','POST',body={'selectedPeriod':{'start':'2026-11-09','end':'2026-11-22'},'pastPeriod':{'start':'2026-10-26','end':'2026-11-08'},'nmIds':sorted(wanted),'skipDeletedNm':False,'limit':1000,'offset':0})
   products={r['product']['nmId']:r['product']for r in source['data']['products']}
   if set(products)!=set(wanted)or any(p.get('vendorCode')!=wanted[n]or p.get('subjectId')!=50 or p.get('stocks',{}).get('wb',0)<1 or p.get('feedbackRating',0)<4.5 for n,p in products.items()):raise ValueError('Fresh SKU identity, available WB stock or rating changed; no funding')
   self.state.update(stock_readback={str(n):p for n,p in products.items()},stock_verified_at=stamp());self.save()
-  if self.budget()!=0:raise ValueError('Draft already has funds; no duplicate deposit')
   value=self.call('/api/advert/v1/bids/min','POST',{'advert_id':self.item['campaign_id'],'nm_ids':sorted(r['nm']for r in self.item['skus']),'payment_type':'cpc','placement_types':['search']})
   bids=parse_bids(value,self.item);self.state['minimum_bids']={str(k):v for k,v in bids.items()};self.save()
   body={'bids':[{'advert_id':self.item['campaign_id'],'nm_bids':[{'nm_id':n,'bid_kopecks':v,'placement':'search'}for n,v in sorted(bids.items())]}]}
@@ -123,18 +123,22 @@ class Client:
  def fund(self):
   wallet=self.call('/adv/v1/balance')
   if wallet.get('currency')!=self.item['currency']or wallet.get('net',0)<1000:raise ValueError('Insufficient native WB balance; no card charge')
-  if self.budget()!=0:raise ValueError('Not an empty draft; no deposit')
+  if self.state.get('initial_budget_verified')!=0 or not self.state.get('settings_verified'):raise ValueError('Not a verified empty draft; no deposit')
   amount=1000
-  try:self.call('/adv/v1/budget/deposit','POST',{'sum':1000,'type':1,'return':True},{'id':self.item['campaign_id']},step='deposit1000')
+  try:receipt=self.call('/adv/v1/budget/deposit','POST',{'sum':1000,'type':1,'return':True},{'id':self.item['campaign_id']},step='deposit1000')
   except Rejected as exc:
    if not minimum_rejection(exc):raise
-   if self.budget()!=0:raise RuntimeError('First deposit not proven rejected; no fallback')
+   # A definitive HTTP400 minimum-amount rejection transferred no funds.
+   # Never apply this branch to a timeout, 429, 5xx, or ambiguous success.
    if wallet.get('net',0)<2000:raise ValueError('Insufficient WB balance for approved fallback')
    self.state['fallback_minimum_rejection_verified']=True;self.save();amount=2000
-   self.call('/adv/v1/budget/deposit','POST',{'sum':2000,'type':1,'return':True},{'id':self.item['campaign_id']},step='deposit2000')
-  actual=self.budget()
+   receipt=self.call('/adv/v1/budget/deposit','POST',{'sum':2000,'type':1,'return':True},{'id':self.item['campaign_id']},step='deposit2000')
+  # The documented return=true response is an authoritative updated budget,
+  # avoiding another quota-heavy budget read for the same transaction.
+  actual=receipt.get('total')if isinstance(receipt,dict)else None
+  if type(actual)is not int:actual=self.budget()
   if actual!=amount:raise RuntimeError('Funding readback differs; no activation')
-  self.state.update(funding_verified=True,budget=amount,funding_verified_at=stamp());self.save()
+  self.state.update(funding_verified=True,budget=amount,funding_readback=receipt,funding_verified_at=stamp());self.save()
  def start(self):
   self.call('/adv/v0/start',params={'id':self.item['campaign_id']},step='start')
   inventory=self.call('/adv/v1/promotion/count')
@@ -149,7 +153,9 @@ def run():
   if draft.get('campaign_id')!=item['campaign_id']or draft.get('steps',{}).get('create',{}).get('status')!='accepted':raise PermissionError('Accepted owned draft missing')
   prior=db.get(ROOT+':launch:'+item['cabinet'])or{}
   if prior.get('steps')!={}or prior.get('authorization_sha256')!=digest(auth):raise PermissionError('Prior attempt must have zero write calls and identical approval')
-  key=ROOT+':launch_v2:'+item['cabinet'];state=dict(status='preparing',authorization_sha256=digest(auth),steps={},started_at=stamp(),model_calls=0,previous_failed_before_writes=ROOT+':launch:'+item['cabinet'])
+  superseded=db.get(ROOT+':launch_v2:'+item['cabinet'])or{}
+  if superseded.get('steps')!={}or superseded.get('authorization_sha256')!=digest(auth):raise PermissionError('Superseded waiting attempt must have zero writes')
+  key=ROOT+':launch_v3:'+item['cabinet'];state=dict(status='preparing',authorization_sha256=digest(auth),steps={},started_at=stamp(),model_calls=0,previous_failed_before_writes=ROOT+':launch:'+item['cabinet'])
   if not db.put(key,state,once=True):raise RuntimeError('Launch receipt already exists; inspect it before any continuation')
   clients.append(Client(db,auth,item,state,key))
  try:
