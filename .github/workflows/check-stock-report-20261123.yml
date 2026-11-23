@@ -1,0 +1,55 @@
+name: Verify warehouse report
+on:
+  push:
+    branches: [ops/wb-check-zont-123-20261123]
+    paths: [.github/workflows/check-stock-report-20261123.yml]
+permissions: {}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - shell: python
+        env:
+          MS: ${{ secrets.MOYSKLAD_API_TOKEN }}
+        run: |
+          import urllib.request, urllib.parse, os, json, gzip, base64, subprocess
+          from pathlib import Path
+          from concurrent.futures import ThreadPoolExecutor
+          base='https://api.moysklad.ru/api/remap/1.2'
+          token=os.environ['MS']
+          keys='3-furpanama-coffee 79-zont-yellow 528-noelbag-ginger 91-zont-yellow 141-pamelabag-brown 28-fabiabag-black 530-noelbag-oliva 20-furbigscarf-khaki 63-zont-lemon-tiffany 1-furpanama-grey 448-angelabag-lbrown 553-ariadnabag-coffee 76-zont-red 46-zont-green 4-furpanama-white 123-zont-pink 531-noelbag-grey 585-reginabag-coffee 575-angelabag-black 56-noelbag-cream 54-noelbag-ginger 446-angelabag-ginger 580-angelabag-green 579-angelabag-burgundy 681-calmirabag-chocolate 38-gretabag-green 622-angelabag-cream 542-celineabag-darkbrown 548-gloriabag-brown 267-amirabag-beige 638-freyabag-beige 590-pamelabag-brown 623-angelabag-brown 80-arenasbag-black 549-gloriabag-darkbrown 665-mirabag-cream 57-noelbag-burgundy'.split()
+          def get(path, **params):
+              req=urllib.request.Request(base+path+'?'+urllib.parse.urlencode(params),headers={'Authorization':'Bearer '+token,'Accept-Encoding':'gzip'})
+              with urllib.request.urlopen(req,timeout=30) as f:
+                  raw=f.read()
+                  return json.loads(gzip.decompress(raw) if f.headers.get('Content-Encoding')=='gzip' else raw)
+          def allrows(path, **params):
+              offset=0
+              while True:
+                  data=get(path,limit=1000,offset=offset,**params)
+                  rows=data.get('rows',[])
+                  yield from rows
+                  if not data.get('meta',{}).get('nextHref') or not rows: break
+                  offset+=len(rows)
+          try:
+              stores={x['id']:x['name'] for x in allrows('/entity/store')}
+              target={x.lower():[] for x in keys}
+              for x in allrows('/report/stock/all',filter='stockMode=all'):
+                  article=str(x.get('article','')).strip().lower()
+                  if article in target:
+                      target[article].append([x['meta']['href'].split('?')[0].rsplit('/',1)[-1],x.get('stock'),x.get('reserve'),x.get('quantity')])
+              ids={r[0]:k for k,rr in target.items() for r in rr}
+              bystore={}
+              if ids:
+                  for x in get('/report/stock/bystore/current',assortmentId=','.join(ids),storeId=next(k for k,v in stores.items() if v=='МСК'),stockType='stock'):
+                      k=ids.get(x.get('assortmentId'))
+                      if k: bystore.setdefault(k,[]).append([stores.get(x.get('storeId'),'?'),x.get('stock')])
+              result={'rows':{k:[[r[1],r[2],r[3]] for r in rr] for k,rr in target.items()},'stores':bystore}
+          except Exception as e:
+              result={'error':str(type(e).__name__),'code':getattr(e,'code',None)}
+          Path('/tmp/stock_pub.pem').write_text("-----BEGIN PUBLIC KEY-----\r\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA6qqxdhFzZ8DguEH28C05\r\nbHPNQOQMGy+i3rRSMJ3BgnSVNtY+TIU2cvEBZ3rMRSxShzaZpLBnagQ/0ySO/82L\r\nCxGcg/sLOSoDD9f0H+D0TdlAvkRn61y2ADBRc+CODMUttKzPfYG/Ot36zSpCpYJ7\r\nOqUxF3TiSANIsaF6wo/Qfsv3lXk7WYIEenN9/h0EK+6bAQYYqOKKT5zsvjL9mlVj\r\nyOWLtk+mK3UQbsaoBlFoi1HKQhPVBcO1GdHOyCEv5dhTSHUccTtXNweYhzyGSzeY\r\nZvDuzR52qWuW9rK9YkqdBuENx0ect1rIbqDzjU59syBI5SaVDmCOKRtBGwy7CTvB\r\nyQIDAQAB\r\n-----END PUBLIC KEY-----")
+          raw=gzip.compress(json.dumps(result,ensure_ascii=False).encode())
+          for i in range(0,len(raw),180):
+              cipher=subprocess.check_output(['openssl','pkeyutl','-encrypt','-pubin','-inkey','/tmp/stock_pub.pem','-pkeyopt','rsa_padding_mode:oaep','-pkeyopt','rsa_oaep_md:sha256'],input=raw[i:i+180])
+              print('MS_ENCRYPTED',base64.b64encode(cipher).decode())
