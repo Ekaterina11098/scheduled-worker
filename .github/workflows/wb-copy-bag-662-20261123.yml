@@ -7,14 +7,13 @@ permissions: {}
 concurrency: wb-copy-bag-662
 jobs:
   copy:
-    if: github.run_attempt == 1 && github.event.head_commit.message == 'Restore three source characteristics on Wildberries bag 662'
+    if: github.run_attempt == 1 && github.event.head_commit.message == 'Check brand mentions in bag 662 description'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
       - shell: python
         env:
           CHINA: ${{ secrets.WB_TOKEN_3 }}
-          IP: ${{ secrets.WB_TOKEN_2 }}
         run: |
           import json, os, re, time
           from urllib.error import HTTPError
@@ -47,101 +46,26 @@ jobs:
                   seen.add(marker)
                   cursor.update(updatedAt=marker[0], nmID=marker[1])
 
+          import unicodedata
+
           china = os.environ['CHINA']
-          source_tokens = set(filter(None, [os.environ['IP']])) - {china}
-          if not china or len(source_tokens) != 1:
-              raise SystemExit('The China and uniquely identified IP credentials are required')
-          source_token = source_tokens.pop()
-          matches = [c for c in cards('ru', source_token, '662')
-                     if re.match(r'^662(?:$|[-_ /])', c['vendorCode'], re.I)
-                     and 'сумк' in c['subjectName'].lower()]
-          if not matches:
-              matches = [c for c in cards('ru', source_token, None)
-                         if re.match(r'^662(?:$|[-_ /])', c['vendorCode'], re.I)
-                         and 'сумк' in c['subjectName'].lower()]
-          exact = [c for c in matches if c['vendorCode'] == '662']
-          if len(exact or matches) != 1:
-              print('Source candidates:', json.dumps([c['vendorCode'] for c in matches], ensure_ascii=False))
-              raise SystemExit('Source card is missing or ambiguous')
-          source = (exact or matches)[0]
-          code = source['vendorCode']
-          fields = ('vendorCode', 'title', 'description', 'brand', 'dimensions', 'characteristics')
-          variant = {field: source[field] for field in fields if field in source}
-          if 'dimensions' in variant:
-              variant['dimensions'] = {k: v for k, v in variant['dimensions'].items() if k != 'isValid'}
-          variant['sizes'] = [{key: size[key] for key in ('techSize', 'wbSize', 'skus') if key in size}
-                              for size in source['sizes']]
-          barcodes = sorted(sku for size in variant['sizes'] for sku in size['skus'])
-          if not barcodes:
-              raise SystemExit('Source has no barcodes')
-
-          def matching_destination():
-              return [c for c in cards('cn', china, code) if c['vendorCode'].casefold() == code.casefold()]
-
-          def matches_source(card):
-              compare = lambda items: {item['id']: item['value'] for item in items}
-              return (card['subjectID'] == source['subjectID'] and
-                      all(card.get(k) == source[k] for k in ('title', 'description', 'brand') if k in source) and
-                      all(card['dimensions'].get(k) == v for k, v in source.get('dimensions', {}).items()
-                          if k != 'isValid') and
-                      compare(card.get('characteristics', [])) == compare(source.get('characteristics', [])) and
-                      sorted((s.get('techSize', ''), s.get('wbSize', ''), sorted(s['skus'])) for s in card['sizes']) ==
-                      sorted((s.get('techSize', ''), s.get('wbSize', ''), sorted(s['skus'])) for s in variant['sizes']) and
-                      not card.get('photos') and not card.get('video'))
-
-          received = matching_destination()
-          if not received:
-              received = [c for c in cards('cn', china, None) if c['vendorCode'].casefold() == code.casefold()]
-          print('Source vendor code:', code)
-          if len(received) != 1:
-              raise SystemExit(f'Expected one destination card, got {len(received)}')
-          card = received[0]
-          print('Vendor code:', code, 'Wildberries ID:', card['nmID'])
-          print('Category matches:', card['subjectID'] == source['subjectID'])
-          for field in ('title', 'description', 'brand'):
-              print(field, 'matches:', card.get(field, '') == source.get(field, ''))
-          dims = lambda c: {k:v for k,v in c.get('dimensions', {}).items() if k != 'isValid'}
-          print('Dimensions:', dims(source), dims(card))
-          def attrs(c):
-              return {a['id']: a['value'] for a in c.get('characteristics', [])}
-          original, copied = attrs(source), attrs(card)
-          print('Source characteristics:', len(original), 'destination:', len(copied))
-          for key in sorted(original.keys() | copied.keys()):
-              if original.get(key) != copied.get(key):
-                  def norm(value):
-                      return sorted(map(str, value)) if isinstance(value, list) else value
-                  print('Characteristic difference:', key, 'order only:', norm(original.get(key)) == norm(copied.get(key)),
-                        'source present:', key in original, 'destination present:', key in copied)
-          def sizes(c):
-              return [(s.get('techSize', ''), s.get('wbSize', ''), sorted(s['skus'])) for s in c['sizes']]
-          print('Sizes (source, destination):', sizes(source), sizes(card))
-          print('Photos:', len(card.get('photos') or []), 'video:', bool(card.get('video')))
-          missing = original.keys() - copied.keys()
-          if missing != {15001135, 15001137, 15001138} or card['nmID'] != 2342818446 or code != '662-CelineaBag-blue':
-              raise SystemExit('Unexpected destination or field differences')
-          if any(copied[key] != original.get(key) for key in copied) or sizes(source) != sizes(card):
-              raise SystemExit('Existing field values differ')
-          for item in source['characteristics']:
-              if item['id'] in missing:
-                  print('Missing source field:', item['id'], item.get('name'), 'value:', item['value'])
-          path = f"/content/v2/object/charcs/{source['subjectID']}?locale=ru"
-          req = Request('https://content-api.wildberries.cn' + path, headers={'Authorization': china})
-          with urlopen(req, timeout=30) as response:
-              schema = json.load(response)['data']
-          print('Available missing fields:', [(a['charcID'], a.get('name')) for a in schema if a['charcID'] in missing])
-          variant['nmID'] = card['nmID']
-          variant['sizes'] = [{k:s[k] for k in ('chrtID', 'techSize', 'wbSize', 'skus') if k in s} for s in card['sizes']]
-          variant['characteristics'] = [{k:a[k] for k in ('id', 'value')} for a in source['characteristics']]
-          result = api('cn', china, '/content/v2/cards/update', [variant])
-          print('Update accepted:', not result.get('error'))
-          if result.get('error'):
-              raise SystemExit('Wildberries rejected the update')
-          for attempt in range(8):
-              time.sleep(15)
-              current = [c for c in matching_destination() if c['nmID'] == card['nmID']]
-              if current and attrs(current[0]) == original:
-                  assert matches_source(current[0]), 'Other fields changed'
-                  print('All source fields verified on Wildberries ID:', card['nmID'])
-                  break
-          else:
-              raise SystemExit('Wildberries did not return all source characteristics after update')
+          code = '662-CelineaBag-blue'
+          def select(items):
+              return [c for c in items if c['nmID'] == 2342818446 and c['vendorCode'] == code]
+          found = select(cards('cn', china, code))
+          if not found:
+              found = select(cards('cn', china, None))
+          if len(found) != 1:
+              raise SystemExit('Expected one destination card')
+          card = found[0]
+          normalize = lambda value: unicodedata.normalize('NFKC', value).casefold()
+          brand = card.get('brand', '').strip()
+          description = card.get('description', '')
+          if not brand:
+              raise SystemExit('Brand field empty')
+          pattern = r'[\s\W_]*'.join(re.escape(c) for c in normalize(brand) if c.isalnum())
+          hits = list(re.finditer(r'(?<!\w)' + pattern + r'(?!\w)', normalize(description)))
+          print('Checked card:', card['nmID'], 'brand:', brand, 'description length:', len(description))
+          print('Brand mentions:', len(hits))
+          for hit in hits:
+              print('Matched text:', hit.group())
