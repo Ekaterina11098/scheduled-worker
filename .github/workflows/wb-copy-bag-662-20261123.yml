@@ -7,15 +7,14 @@ permissions: {}
 concurrency: wb-copy-bag-662
 jobs:
   copy:
-    if: github.run_attempt == 1 && github.event.head_commit.message == 'Copy one Wildberries bag card 662 without media'
+    if: github.run_attempt == 1 && github.event.head_commit.message == 'Copy Wildberries bag 662 from the IP catalog'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
       - shell: python
         env:
           CHINA: ${{ secrets.WB_TOKEN_3 }}
-          IP: ${{ secrets.WB_TOKEN }}
-          IP1: ${{ secrets.WB_TOKEN_1 }}
+          IP: ${{ secrets.WB_TOKEN_2 }}
         run: |
           import json, os, re, time
           from urllib.error import HTTPError
@@ -37,7 +36,7 @@ jobs:
               result = []
               while True:
                   data = api(region, token, '/content/v2/get/cards/list',
-                             {'settings': {'cursor': cursor, 'filter': {'withPhoto': -1, 'textSearch': search}}})
+                             {'settings': {'cursor': cursor, 'filter': {'withPhoto': -1, **({'textSearch': search} if search else {})}}})
                   result.extend(data['cards'])
                   page = data['cursor']
                   if page['total'] < cursor['limit']:
@@ -49,13 +48,17 @@ jobs:
                   cursor.update(updatedAt=marker[0], nmID=marker[1])
 
           china = os.environ['CHINA']
-          source_tokens = set(filter(None, [os.environ['IP'], os.environ['IP1']])) - {china}
+          source_tokens = set(filter(None, [os.environ['IP']])) - {china}
           if not china or len(source_tokens) != 1:
               raise SystemExit('The China and uniquely identified IP credentials are required')
           source_token = source_tokens.pop()
           matches = [c for c in cards('ru', source_token, '662')
                      if re.match(r'^662(?:$|[-_ /])', c['vendorCode'], re.I)
                      and 'сумк' in c['subjectName'].lower()]
+          if not matches:
+              matches = [c for c in cards('ru', source_token, None)
+                         if re.match(r'^662(?:$|[-_ /])', c['vendorCode'], re.I)
+                         and 'сумк' in c['subjectName'].lower()]
           exact = [c for c in matches if c['vendorCode'] == '662']
           if len(exact or matches) != 1:
               print('Source candidates:', json.dumps([c['vendorCode'] for c in matches], ensure_ascii=False))
@@ -64,6 +67,8 @@ jobs:
           code = source['vendorCode']
           fields = ('vendorCode', 'title', 'description', 'brand', 'dimensions', 'characteristics')
           variant = {field: source[field] for field in fields if field in source}
+          if 'dimensions' in variant:
+              variant['dimensions'] = {k: v for k, v in variant['dimensions'].items() if k != 'isValid'}
           variant['sizes'] = [{key: size[key] for key in ('techSize', 'wbSize', 'skus') if key in size}
                               for size in source['sizes']]
           barcodes = sorted(sku for size in variant['sizes'] for sku in size['skus'])
