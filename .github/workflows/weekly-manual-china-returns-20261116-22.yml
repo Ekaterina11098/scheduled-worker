@@ -1,0 +1,30 @@
+name: Complete authorized reviewed workbook returns
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/weekly-manual-china-returns-20261116-22.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: weekly-report-accounting-ms
+  cancel-in-progress: false
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+          filter: blob:none
+      - name: Validate return worker syntax
+        run: python -m py_compile scripts/weekly_manual_returns_only.py
+      - name: Complete private authorized returns
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WEEKLY_MANUAL_ROOT: 'weekly_report_review:china:20261116_20261122:'
+        run: python scripts/weekly_manual_returns_only.py
