@@ -28,3 +28,5 @@ jobs:
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           WEEKLY_MANUAL_ROOT: 'weekly_report_review:china:20261116_20261122:'
         run: python scripts/weekly_manual_returns_only.py
+
+# Reconciled read-only stop; stable assortment template mapping.
