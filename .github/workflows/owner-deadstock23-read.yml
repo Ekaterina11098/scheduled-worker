@@ -65,3 +65,5 @@ jobs:
 # Keyword-compatible transport guard. Prior failed checks made no WB calls.
 
 # Incremental read of prior-click window only; completed stages retained.
+
+# Resume after interrupted script upload; no prior data reads.
