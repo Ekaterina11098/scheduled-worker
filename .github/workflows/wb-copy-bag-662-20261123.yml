@@ -1,13 +1,13 @@
-name: Copy Wildberries bag card 662
+name: Copy Wildberries bag card 018
 on:
   push:
     branches: [ops/wb-copy-bag-662-20261123]
     paths: [.github/workflows/wb-copy-bag-662-20261123.yml]
 permissions: {}
-concurrency: wb-copy-bag-662
+concurrency: wb-copy-bag-018
 jobs:
   copy:
-    if: github.run_attempt == 1 && github.event.head_commit.message == 'Create China bag 662 without brand or description'
+    if: github.run_attempt == 1 && github.event.head_commit.message == 'Create China bag 018 without brand or description'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -52,14 +52,14 @@ jobs:
           if not china or len(source_tokens) != 1:
               raise SystemExit('The China and uniquely identified IP credentials are required')
           source_token = source_tokens.pop()
-          matches = [c for c in cards('ru', source_token, '662')
-                     if re.match(r'^662(?:$|[-_ /])', c['vendorCode'], re.I)
+          matches = [c for c in cards('ru', source_token, '018')
+                     if re.match(r'^018(?:$|[-_ /])', c['vendorCode'], re.I)
                      and 'сумк' in c['subjectName'].lower()]
           if not matches:
               matches = [c for c in cards('ru', source_token, None)
-                         if re.match(r'^662(?:$|[-_ /])', c['vendorCode'], re.I)
+                         if re.match(r'^018(?:$|[-_ /])', c['vendorCode'], re.I)
                          and 'сумк' in c['subjectName'].lower()]
-          exact = [c for c in matches if c['vendorCode'] == '662']
+          exact = [c for c in matches if c['vendorCode'] == '018']
           if len(exact or matches) != 1:
               print('Source candidates:', json.dumps([c['vendorCode'] for c in matches], ensure_ascii=False))
               raise SystemExit('Source card is missing or ambiguous')
@@ -90,8 +90,7 @@ jobs:
                       sorted((s.get('techSize', ''), s.get('wbSize', ''), sorted(s['skus'])) for s in variant['sizes']) and
                       not card.get('photos') and not card.get('video'))
 
-          if code != '662-CelineaBag-blue' or barcodes != ['2048823949456']:
-              raise SystemExit('Unexpected source article or barcode')
+          print('Source article:', code, 'source barcodes:', barcodes, flush=True)
           existing = matching_destination()
           if not existing:
               catalog = cards('cn', china, None)
@@ -106,18 +105,14 @@ jobs:
               card = existing[0]
               if sorted(b for s in card['sizes'] for b in s['skus']) != barcodes or card.get('photos'):
                   raise SystemExit('Existing card has unexpected barcode or media')
-              payload = dict(variant, nmID=card['nmID'], brand='', description='')
-              payload['sizes'] = [{k:s[k] for k in ('chrtID', 'techSize', 'wbSize', 'skus') if k in s}
-                                  for s in card['sizes']]
-              response = api('cn', china, '/content/v2/cards/update', [payload])
-              print('Updated existing card:', card['nmID'], flush=True)
+              raise SystemExit('Existing card requires review before replacement')
           elif not existing:
               cursor = {'limit': 100}
               while True:
                   data = api('cn', china, '/content/v2/get/cards/trash',
                              {'settings': {'cursor': cursor}})
                   trash = data.get('cards', [])
-                  if any(c['vendorCode'].casefold() == code.casefold() or c['nmID'] == 2342818446 for c in trash):
+                  if any(c['vendorCode'].casefold() == code.casefold() for c in trash):
                       raise SystemExit('Prior card is in trash')
                   if len(trash) < cursor['limit']:
                       break
