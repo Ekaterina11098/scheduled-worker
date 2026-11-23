@@ -49,7 +49,7 @@ def main():
    assert len(tp)==template['positions'].get('meta',{}).get('size',len(tp))
    ps=[]
    for r in items:
-    matches=[p for p in tp if art(p)==r['article'] and p['quantity']>=r['quantity']];assert matches
+    matches=[p for p in tp if norm(p['assortment'])==norm(products[r['article']]) and p['quantity']>=r['quantity']];assert matches,'Return template lacks requested assortment'
     vats={(p.get('vat',0),p.get('vatEnabled',template.get('vatEnabled',False))) for p in matches};assert len(vats)==1
     vat,enabled=next(iter(vats));ps.append({'quantity':r['quantity'],'price':0,'discount':0,'vat':vat,'vatEnabled':enabled,'assortment':m.meta(products[r['article']])})
    permission()
@@ -74,6 +74,7 @@ def main():
 try:
  main();print('Requested workbook return phase completed; results retained privately.')
 except Exception as exc:
- try:db.put(ROOT+'manual_returns_error:v1',{'at':m.now(),'error_type':type(exc).__name__,'error':str(exc)[:1200],'run_id':os.environ.get('GITHUB_RUN_ID')})
+ import traceback
+ try:db.put(ROOT+'manual_returns_error:v1',{'at':m.now(),'error_type':type(exc).__name__,'error':str(exc)[:1200],'trace':[{'line':x.lineno,'function':x.name} for x in traceback.extract_tb(exc.__traceback__)],'run_id':os.environ.get('GITHUB_RUN_ID')})
  except Exception:pass
  print('Requested workbook return phase stopped; private diagnostic saved.');raise SystemExit(1)
