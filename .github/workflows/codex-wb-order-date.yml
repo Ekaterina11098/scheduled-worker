@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - name: Query WB Order Feed
+      - name: Query WB Statistics
         env:
           WB_STATISTICS_TOKEN: ${{ secrets.WB_TOKEN_3 }}
         run: |
@@ -27,42 +27,37 @@ jobs:
           python - <<'PY'
           import datetime, hashlib, json, os, subprocess, time, urllib.error, urllib.parse, urllib.request
 
-          target = "69d00d2f25194351126cd3916b676f32b67085e85f5a5288c4dafba4ff9768df"
+          target = "a6cbeeab6336a14fadfc5eaa8539d62dca03ff6d8ebeec315e4f1dbaa92aba20"
           token = os.environ.get("WB_STATISTICS_TOKEN")
           if not token:
               raise SystemExit("WB token is unavailable")
           moscow = datetime.timezone(datetime.timedelta(hours=3))
-          now = datetime.datetime.now(moscow)
-          start = now - datetime.timedelta(days=30)
-          body = {"selectedPeriod": {"start": start.isoformat(), "end": now.isoformat()},
-                  "pagination": {"offset": 0, "limit": 5000}}
-          date = None
-          for page in range(6):
-              req = urllib.request.Request("https://seller-analytics-api.wildberries.cn/api/analytics/v1/order-feed",
-                  data=json.dumps(body).encode(), headers={"Authorization": token, "Content-Type": "application/json"})
+          sources = {
+              "statistics": ("https://statistics-api.wildberries.cn/api/v1/supplier/orders?dateFrom=2026-11-13&flag=0", None),
+              "feed": ("https://seller-analytics-api.wildberries.cn/api/analytics/v1/order-feed",
+                       {"selectedPeriod": {"start": "2026-11-12T00:00:00+03:00", "end": "2026-11-23T00:00:00+03:00"},
+                        "nmIds": [453951161], "pagination": {"offset": 0, "limit": 5000}}),
+          }
+          import base64
+          for source, (url, body) in sources.items():
+              req = urllib.request.Request(url, data=json.dumps(body).encode() if body else None,
+                      headers={"Authorization": token, "Content-Type": "application/json"})
               try:
                   with urllib.request.urlopen(req, timeout=90) as response:
-                      data = json.load(response)["data"]
+                      data = json.load(response)
               except urllib.error.HTTPError as exc:
-                  raise SystemExit(f"WB Order Feed returned HTTP {exc.code}")
-              rows = data["orders"]
-              for row in rows:
-                  srid = row.get("srid", "").replace(chr(92), "")
-                  if hashlib.sha256(srid.encode()).hexdigest() == target:
-                      date = row["createdAt"]
-                      break
-              if date or len(rows) < 5000:
-                  break
-              if page == 5:
-                  raise SystemExit("WB Order Feed pagination did not finish")
-              body["pagination"]["snapshotTime"] = data["snapshotTime"]
-              body["pagination"]["offset"] += len(rows)
-              time.sleep(61)
-          encrypted = subprocess.check_output(
-              ["openssl", "pkeyutl", "-encrypt", "-pubin", "-inkey", "/tmp/order-public.pem",
-               "-pkeyopt", "rsa_padding_mode:oaep"],
-              input=json.dumps({"date": date}).encode(),
-          )
-          import base64
-          print("WB_LOOKUP_RESULT=" + base64.b64encode(encrypted).decode())
+                  print(f"{source} HTTP {exc.code}")
+                  continue
+              rows = data["data"]["orders"] if body else data
+              matches = [row for row in rows if hashlib.sha256(row.get("srid", "").replace(chr(92), "").encode()).hexdigest() == target]
+              print(f"{source} matches: {len(matches)}")
+              for row in matches:
+                  for name, value in row.items():
+                      if name == "srid":
+                          continue
+                      encrypted = subprocess.check_output(
+                          ["openssl", "pkeyutl", "-encrypt", "-pubin", "-inkey", "/tmp/order-public.pem",
+                           "-pkeyopt", "rsa_padding_mode:oaep"],
+                          input=json.dumps([name, value], ensure_ascii=False).encode())
+                      print("WB_LOOKUP_RESULT=" + base64.b64encode(encrypted).decode())
           PY
