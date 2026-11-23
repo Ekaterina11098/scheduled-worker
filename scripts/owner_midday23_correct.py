@@ -13,10 +13,11 @@ def main():
  io=AdvertisingIO();old=io.get(ROOT)
  if old:
   if old.get('status')=='edited':print('Already edited');return
-  raise RuntimeError('Existing correction claim; inspect no blind retry')
- assert io.create(ROOT,dict(status='preparing',wb_writes=0))
+  assert old.get('status')=='preparing' and not old.get('parts'),'Existing edit claim needs inspection; no replay'
+ if not old:assert io.create(ROOT,dict(status='preparing',wb_writes=0))
  orig=requests.sessions.Session.request
- def guard(s,m,url,*args,**kw):
+ def guard(s,method,url,*args,**kw):
+  m=method
   u=urlparse(url);ok=(u.hostname==urlparse(os.environ['SUPABASE_URL']).hostname and m.upper()in('GET','POST','PATCH')and u.path.startswith('/rest/v1/'))or(u.hostname=='api.telegram.org'and m.upper()=='POST'and u.path.rsplit('/',1)[-1]in('getMe','editMessageMedia'))
   assert ok,'Report edit only; no WB access';return orig(s,m,url,*args,**kw)
  requests.sessions.Session.request=guard
