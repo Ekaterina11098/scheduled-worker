@@ -1,0 +1,37 @@
+name: Launch exact owner IP OOO tests 1000 fallback 2000 Nov23
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/owner-ad-tests23-launch.yml']
+permissions: {contents: read}
+concurrency:
+  group: owner-ad-tests23-financial-launch
+  cancel-in-progress: false
+jobs:
+  launch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 32
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/owner_ad_tests23.py
+            /scripts/owner_ad_tests23_launch.py
+            /scripts/test_owner_ad_tests23_launch.py
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5
+      - name: Synthetic funding boundaries without credentials
+        run: PYTHONPATH=scripts python -m unittest discover -s scripts -p test_owner_ad_tests23_launch.py
+      - name: Honor provider retry, verify exact drafts, fund once and verify activation
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_1: ${{ secrets.WB_TOKEN_1 }}
+          WB_TOKEN_2: ${{ secrets.WB_TOKEN_2 }}
+          OPENAI_API_KEY: ""
+        run: python -u scripts/owner_ad_tests23_launch.py

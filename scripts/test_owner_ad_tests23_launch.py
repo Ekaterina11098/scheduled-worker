@@ -1,0 +1,52 @@
+import copy,datetime,sys,types,unittest
+from unittest.mock import Mock,patch
+if 'requests'not in sys.modules:
+ try:import requests
+ except ImportError:sys.modules['requests']=types.SimpleNamespace(request=Mock(),RequestException=RuntimeError)
+import owner_ad_tests23_launch as m
+class Funds(unittest.TestCase):
+ def worker(self,budgets,error=None,wallet=5000):
+  c=object.__new__(m.Client);c.item=dict(campaign_id=42139004,currency='RUB');c.state={'steps':{}};c.save=Mock();c.budget=Mock(side_effect=budgets)
+  def call(path,method='GET',body=None,params=None,step=None):
+   if path=='/adv/v1/balance':return dict(currency='RUB',net=wallet)
+   if step=='deposit1000'and error:raise error
+   return {}
+  c.call=Mock(side_effect=call);return c
+ def test_success_1000_never_adds_2000(self):
+  c=self.worker([0,1000]);c.fund();self.assertEqual(c.state['budget'],1000)
+  self.assertEqual([x.kwargs.get('step')for x in c.call.call_args_list if x.kwargs.get('step')],['deposit1000'])
+ def test_2000_replaces_explicitly_rejected_1000_after_proving_zero_balance(self):
+  c=self.worker([0,0,2000],m.Rejected(400,{'message':'minimum deposit is 2000'}));c.fund()
+  self.assertEqual(c.state['budget'],2000);self.assertTrue(c.state['fallback_minimum_rejection_verified'])
+  self.assertEqual([x.args[2]['sum']for x in c.call.call_args_list if x.kwargs.get('step')],[1000,2000])
+ def test_unrelated_400_and_rate_limit_never_raise_budget(self):
+  for e in [m.Rejected(400,{'message':'wrong currency'}),m.Rejected(429,{'message':'Too many requests'})]:
+   c=self.worker([0],e)
+   with self.assertRaises(m.Rejected):c.fund()
+   self.assertFalse(c.state.get('fallback_minimum_rejection_verified'))
+ def test_unknown_outcome_never_causes_fallback(self):
+  c=self.worker([0],RuntimeError('uncertain'))
+  with self.assertRaises(RuntimeError):c.fund()
+  self.assertFalse(c.state.get('fallback_minimum_rejection_verified'))
+ def test_partial_or_nonzero_first_transfer_prevents_another_deposit(self):
+  c=self.worker([0,1000],m.Rejected(400,{'message':'minimum budget'}))
+  with self.assertRaises(RuntimeError):c.fund()
+  self.assertFalse(c.state.get('fallback_minimum_rejection_verified'))
+ def test_insufficient_wallet_does_not_charge_card_or_try_larger_amount(self):
+  c=self.worker([],wallet=999)
+  with self.assertRaises(ValueError):c.fund()
+  self.assertFalse(any(x.kwargs.get('step')for x in c.call.call_args_list))
+class Boundaries(unittest.TestCase):
+ def test_minimum_bid_currency_and_coverage(self):
+  item={'currency':'KGS','skus':[{'nm':1}]};v={'bids':[{'nm_id':1,'bids':[{'type':'search','currency':'RUB','value':325}]}]}
+  with self.assertRaises(ValueError):m.parse_bids(v,item)
+  v['bids'][0]['bids'][0]['currency']='KGS';self.assertEqual(m.parse_bids(v,item),{1:325})
+  with self.assertRaises(ValueError):m.parse_bids({'bids':v['bids']*2},item)
+ def test_existing_campaign_or_unverified_start_is_forbidden(self):
+  c=object.__new__(m.Client);c.item={'campaign_id':42139004};c.state={}
+  with self.assertRaises(PermissionError):c.check_request('/adv/v0/start','GET',None,{'id':42139004},'start')
+  c.state={'funding_verified':True,'settings_verified':True}
+  with self.assertRaises(PermissionError):c.check_request('/adv/v0/start','GET',None,{'id':36514081},'start')
+  with self.assertRaises(PermissionError):c.check_request('/adv/v2/seacat/save-ad','POST',{},None,'create')
+  with self.assertRaises(PermissionError):c.check_request('/adv/v1/budget/deposit','POST',{'sum':2000,'type':1,'return':True},{'id':42139004},'deposit2000')
+if __name__=='__main__':unittest.main()
