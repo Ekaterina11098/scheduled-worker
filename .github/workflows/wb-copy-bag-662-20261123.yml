@@ -7,7 +7,7 @@ permissions: {}
 concurrency: wb-copy-bag-662
 jobs:
   copy:
-    if: github.run_attempt == 1 && github.event.head_commit.message == 'Reconcile Wildberries bag 662 against full catalog'
+    if: github.run_attempt == 1 && github.event.head_commit.message == 'Restore three source characteristics on Wildberries bag 662'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -116,3 +116,32 @@ jobs:
               return [(s.get('techSize', ''), s.get('wbSize', ''), sorted(s['skus'])) for s in c['sizes']]
           print('Sizes (source, destination):', sizes(source), sizes(card))
           print('Photos:', len(card.get('photos') or []), 'video:', bool(card.get('video')))
+          missing = original.keys() - copied.keys()
+          if missing != {15001135, 15001137, 15001138} or card['nmID'] != 2342818446 or code != '662-CelineaBag-blue':
+              raise SystemExit('Unexpected destination or field differences')
+          if any(copied[key] != original.get(key) for key in copied) or sizes(source) != sizes(card):
+              raise SystemExit('Existing field values differ')
+          for item in source['characteristics']:
+              if item['id'] in missing:
+                  print('Missing source field:', item['id'], item.get('name'), 'value:', item['value'])
+          path = f"/content/v2/object/charcs/{source['subjectID']}?locale=ru"
+          req = Request('https://content-api.wildberries.cn' + path, headers={'Authorization': china})
+          with urlopen(req, timeout=30) as response:
+              schema = json.load(response)['data']
+          print('Available missing fields:', [(a['charcID'], a.get('name')) for a in schema if a['charcID'] in missing])
+          variant['nmID'] = card['nmID']
+          variant['sizes'] = [{k:s[k] for k in ('chrtID', 'techSize', 'wbSize', 'skus') if k in s} for s in card['sizes']]
+          variant['characteristics'] = [{k:a[k] for k in ('id', 'value')} for a in source['characteristics']]
+          result = api('cn', china, '/content/v2/cards/update', [variant])
+          print('Update accepted:', not result.get('error'))
+          if result.get('error'):
+              raise SystemExit('Wildberries rejected the update')
+          for attempt in range(8):
+              time.sleep(15)
+              current = [c for c in matching_destination() if c['nmID'] == card['nmID']]
+              if current and attrs(current[0]) == original:
+                  assert matches_source(current[0]), 'Other fields changed'
+                  print('All source fields verified on Wildberries ID:', card['nmID'])
+                  break
+          else:
+              raise SystemExit('Wildberries did not return all source characteristics after update')
