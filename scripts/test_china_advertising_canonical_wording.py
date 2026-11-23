@@ -48,4 +48,11 @@ class CurrentStateIdentity(unittest.TestCase):
  def test_same_verified_bid_still_rejects_conflicting_action(self):
   io=IO();self.evaluate(io,bundle(dict(kind='ad_set_bid',old_minor=32,target_minor=34)),32)
   with self.assertRaisesRegex(ValueError,'conflicting recommendation'):self.evaluate(io,bundle(),32)
+class UnresolvedToday(unittest.TestCase):
+ def test_same_day_uncertain_bid_blocks_new_proposal_without_claiming_execution(self):
+  from china_advertising_decision_contract import unresolved_bid_today
+  source=dict(executions=[dict(payload=dict(items=[dict(status='uncertain',submitted_at='2026-11-23T05:44:00+00:00',request=dict(path='/api/advert/v1/bids',body=dict(bids=[dict(advert_id=40933588,nm_bids=[dict(nm_id=1473244345,bid_kopecks=34,placement='recommendations')])])))]))])
+  self.assertEqual(1,len(unresolved_bid_today(source,40933588,1473244345,'2026-11-23')))
+  self.assertEqual([],unresolved_bid_today(source,40933588,1473244345,'2026-11-24'))
+  self.assertEqual([],unresolved_bid_today(source,40933588,99,'2026-11-23'))
 if __name__=='__main__':unittest.main()
