@@ -95,4 +95,24 @@ def run():
   try:d.prepare()
   except Exception as e:state.update(status='attention',error=str(e)if isinstance(e,(RuntimeError,ValueError,PermissionError))else type(e).__name__);d.save()
   print(json.dumps({'cabinet':item['cabinet'],'status':state['status'],'money_transferred':0,'model_calls':0}))
-if __name__=='__main__':run()
+def quote_existing():
+ if os.environ.get('GITHUB_REPOSITORY')!=REPO or os.environ.get('GITHUB_REF')!='refs/heads/main':raise PermissionError('Public main only')
+ db=State();plan=db.get(ROOT+':manifest')or{}
+ for item in plan['items']:
+  validate(plan,item,db.get(ROOT+':preflight:'+item['cabinet'])or{})
+  key=ROOT+':draft:'+item['cabinet'];state=db.get(key)or{}
+  if state.get('manifest_sha256')!=digest(plan)or state.get('steps',{}).get('create',{}).get('status')!='accepted' or type(state.get('campaign_id'))is not int:raise PermissionError('No exact accepted draft receipt')
+  d=Draft(db,item,state,key);d.wb.identity();cid=state['campaign_id']
+  for name,path,method,body in [
+   ('budget_quote','/api/advert/v2/budget','POST',{'advertIds':[cid]}),
+   ('minimum_bids','/api/advert/v1/bids/min','POST',{'advert_id':cid,'nm_ids':sorted(r['nm']for r in item['skus']),'payment_type':'cpc','placement_types':['search']}),
+   ('config','/api/advert/v1/config','GET',None)]:
+   if name in state:continue
+   try:state[name]=d.call(path,method,body)
+   except Exception as e:state.setdefault('quote_errors',{})[name]=str(e)if isinstance(e,(RuntimeError,ValueError,PermissionError))else type(e).__name__
+   d.save()
+  print(json.dumps({'cabinet':item['cabinet'],'status':'read_quotes_retained','money_transferred':0,'model_calls':0}))
+if __name__=='__main__':
+ import argparse
+ p=argparse.ArgumentParser();p.add_argument('--quote-existing',action='store_true');args=p.parse_args()
+ quote_existing()if args.quote_existing else run()
