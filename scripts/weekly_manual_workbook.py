@@ -116,6 +116,19 @@ def main():
         for entry in existing['documents']:
             d=doc(entry['type'],entry['id']);assert d.get('applicable') and d.get('sum')==0
         progress('previous_completion_reconfirmed');return
+    prior_returns=db.get(ROOT+'return_documents:v1') or {}
+    if prior_returns.get('status')=='complete':
+        assert prior_returns.get('source_sha256')==plan['sha256']
+        permitted={x['id']:x for x in prior_returns['documents']}
+        unexplained=[]
+        for entry in prep['duplicates']:
+            if entry['type']=='salesreturn' and entry['id'] in permitted and entry.get('externalCode','').startswith(prefix+'return-'):
+                d=doc('salesreturn',entry['id']);ps=positions('salesreturn',entry['id'])
+                expected=permitted[entry['id']]
+                assert d.get('applicable') and d['sum']==0 and all(p['price']==0 for p in ps)
+                assert [article(p) for p in ps]==expected['articles'] and sum(p['quantity'] for p in ps)==expected['quantity']
+            else:unexplained.append(entry)
+        prep['verified_prior_returns']=prior_returns['documents'];prep['duplicates']=unexplained
     assert not prep['duplicates'], 'Existing documents require reconciliation; no new writes'
     assert not existing or not existing.get('pending_write'), 'Uncertain previous write requires reconciliation'
     saveprep()
@@ -156,6 +169,7 @@ def main():
         detail=doc('demand',d['id']);used=collections.Counter()
         for ref in detail.get('returns',[]):
             r=t.request(m.MS,norm(ref)[len(m.MS):])
+            if r.get('externalCode')==prefix+'return-'+d['id']:continue
             used.update(counts(positions('salesreturn',r['id'])))
         for a in candidates:
             if cap[a]-used[a]>=plan['returns'][a]:
@@ -230,7 +244,9 @@ def main():
         # Recheck capacity immediately before creating each return.
         cap=counts(positions('demand',ident));used=collections.Counter()
         for ref in basis.get('returns',[]):
-            r=t.request(m.MS,norm(ref)[len(m.MS):]);used.update(counts(positions('salesreturn',r['id'])))
+            r=t.request(m.MS,norm(ref)[len(m.MS):])
+            if r.get('externalCode')==prefix+'return-'+ident:continue
+            used.update(counts(positions('salesreturn',r['id'])))
         for r in items:assert cap.get(r['article'],0)-used[r['article']]>=r['quantity']
         template=t.request(m.MS,'entity/salesreturn/new','PUT',{'demand':m.meta(basis)})
         tp=template['positions']['rows'];assert len(tp)==template['positions'].get('meta',{}).get('size',len(tp))
