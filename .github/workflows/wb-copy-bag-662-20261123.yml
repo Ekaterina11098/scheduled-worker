@@ -7,7 +7,7 @@ permissions: {}
 concurrency: wb-copy-bag-662
 jobs:
   copy:
-    if: github.run_attempt == 1 && github.event.head_commit.message == 'Verify copied Wildberries bag 662 fields'
+    if: github.run_attempt == 1 && github.event.head_commit.message == 'Reconcile Wildberries bag 662 against full catalog'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -90,6 +90,9 @@ jobs:
                       not card.get('photos') and not card.get('video'))
 
           received = matching_destination()
+          if not received:
+              received = [c for c in cards('cn', china, None) if c['vendorCode'].casefold() == code.casefold()]
+          print('Source vendor code:', code)
           if len(received) != 1:
               raise SystemExit(f'Expected one destination card, got {len(received)}')
           card = received[0]
