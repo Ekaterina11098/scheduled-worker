@@ -37,6 +37,12 @@ class Funds(unittest.TestCase):
   with self.assertRaises(ValueError):c.fund()
   self.assertFalse(any(x.kwargs.get('step')for x in c.call.call_args_list))
 class Boundaries(unittest.TestCase):
+ def test_durable_journal_compares_json_wire_representation(self):
+  c=object.__new__(m.Client);c.state={'stock':{123:{'wb':5}}};c.key='private-key'
+  class DB:
+   def put(self,k,v):self.saved=m.json.loads(m.json.dumps(v))
+   def get(self,k):return self.saved
+  c.db=DB();c.save();self.assertEqual(c.db.get(c.key),{'stock':{'123':{'wb':5}}})
  def test_minimum_bid_currency_and_coverage(self):
   item={'currency':'KGS','skus':[{'nm':1}]};v={'bids':[{'nm_id':1,'bids':[{'type':'search','currency':'RUB','value':325}]}]}
   with self.assertRaises(ValueError):m.parse_bids(v,item)

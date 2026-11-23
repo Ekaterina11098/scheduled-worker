@@ -34,7 +34,7 @@ class Client:
  def __init__(self,db,auth,item,state,key):self.db=db;self.auth=auth;self.item=item;self.state=state;self.key=key;self.wb=ReadWB(db,item['cabinet']);self.deadline=time.time()+24*60
  def save(self):
   self.db.put(self.key,self.state)
-  if self.db.get(self.key)!=self.state:raise RuntimeError('Financial journal not durable')
+  if self.db.get(self.key)!=json.loads(json.dumps(self.state)):raise RuntimeError('Financial journal not durable')
  def guard(self):
   validate_authorization(self.auth)
   if self.db.get(ROOT+':launch_authorization')!=self.auth:raise PermissionError('Authorization changed')
@@ -112,7 +112,7 @@ class Client:
   source=self.wb.read('seller-analytics-api.wildberries.ru','/api/analytics/v3/sales-funnel/products','POST',body={'selectedPeriod':{'start':'2026-11-09','end':'2026-11-22'},'pastPeriod':{'start':'2026-10-26','end':'2026-11-08'},'nmIds':sorted(wanted),'skipDeletedNm':False,'limit':1000,'offset':0})
   products={r['product']['nmId']:r['product']for r in source['data']['products']}
   if set(products)!=set(wanted)or any(p.get('vendorCode')!=wanted[n]or p.get('subjectId')!=50 or p.get('stocks',{}).get('wb',0)<1 or p.get('feedbackRating',0)<4.5 for n,p in products.items()):raise ValueError('Fresh SKU identity, available WB stock or rating changed; no funding')
-  self.state.update(stock_readback=products,stock_verified_at=stamp());self.save()
+  self.state.update(stock_readback={str(n):p for n,p in products.items()},stock_verified_at=stamp());self.save()
   if self.budget()!=0:raise ValueError('Draft already has funds; no duplicate deposit')
   value=self.call('/api/advert/v1/bids/min','POST',{'advert_id':self.item['campaign_id'],'nm_ids':sorted(r['nm']for r in self.item['skus']),'payment_type':'cpc','placement_types':['search']})
   bids=parse_bids(value,self.item);self.state['minimum_bids']={str(k):v for k,v in bids.items()};self.save()
@@ -147,7 +147,9 @@ def run():
  for item in auth['items']:
   draft=db.get(ROOT+':draft:'+item['cabinet'])or{}
   if draft.get('campaign_id')!=item['campaign_id']or draft.get('steps',{}).get('create',{}).get('status')!='accepted':raise PermissionError('Accepted owned draft missing')
-  key=ROOT+':launch:'+item['cabinet'];state=dict(status='preparing',authorization_sha256=digest(auth),steps={},started_at=stamp(),model_calls=0)
+  prior=db.get(ROOT+':launch:'+item['cabinet'])or{}
+  if prior.get('steps')!={}or prior.get('authorization_sha256')!=digest(auth):raise PermissionError('Prior attempt must have zero write calls and identical approval')
+  key=ROOT+':launch_v2:'+item['cabinet'];state=dict(status='preparing',authorization_sha256=digest(auth),steps={},started_at=stamp(),model_calls=0,previous_failed_before_writes=ROOT+':launch:'+item['cabinet'])
   if not db.put(key,state,once=True):raise RuntimeError('Launch receipt already exists; inspect it before any continuation')
   clients.append(Client(db,auth,item,state,key))
  try:
