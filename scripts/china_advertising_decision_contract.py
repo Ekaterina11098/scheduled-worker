@@ -118,6 +118,26 @@ def apply_owner_unchanged(bundle):
    row.update(action=None,decision='Ничего не менять.',reason='owner_instruction_2026-11-21')
  return out
 
+def unresolved_bid_today(source,cid,nm,day):
+ """An accepted but unreconciled bid cannot justify another bid on the same day."""
+ matches=[]
+ def walk(value):
+  if isinstance(value,list):
+   for item in value:walk(item)
+  elif isinstance(value,dict):
+   req=value.get('request')or{}
+   if value.get('status')in ('submitting','accepted','uncertain') and req.get('path')=='/api/advert/v1/bids':
+    at=value.get('submitted_at')or value.get('verified_at')
+    try:today=datetime.fromisoformat(at.replace('Z','+00:00')).astimezone(MSK).date().isoformat()==day
+    except (AttributeError,ValueError,TypeError):today=False
+    if today:
+     for batch in (req.get('body')or{}).get('bids',[]):
+      for bid in batch.get('nm_bids',[]):
+       if batch.get('advert_id')==cid and bid.get('nm_id')==nm:matches.append(dict(at=at,target_minor=bid.get('bid_kopecks'),placement=bid.get('placement'),status=value['status']))
+   for key in ('items','groups','campaigns','payload'):walk(value.get(key))
+ for record in source.get('executions',[]):walk(record.get('payload',record))
+ return matches
+
 def finalize(io,bundle,source,minima):
  """Shared entry point for morning, midday and a cached analyst preview; no API calls."""
  from china_advertising_economic_review import apply
@@ -128,6 +148,12 @@ def finalize(io,bundle,source,minima):
  for cp in out['campaigns']:
   cp['focus']=[additions.get((cp['id'],r['nm']),r)for r in cp.get('focus',[])]
   cp['attention']=[r for r in cp['focus']if r.get('action')]
+ out=apply_owner_unchanged(attach(out,source))
+ for cp in out['campaigns']:
+  for row in cp.get('focus',[]):
+   pending=unresolved_bid_today(source,cp['id'],row['nm'],out['day'])
+   if pending and row.get('action'):
+    row.update(action=None,pending_first_day=True,unresolved_bid_write=pending,decision='Сегодня ставка уже отправлена на изменение; повторных действий до сверки и полного дня нет.',reason='Незавершённая квитанция изменения ставки не разрешает повторное повышение.')
  out=apply_owner_unchanged(attach(out,source))
  rows=[];ledger_key='china_agent:advertising_decisions:v1:'+REVISION+':'+out['day']
  prior=(io.get(ledger_key)or{})if io is not None else {};ledger=copy.deepcopy(prior)
