@@ -1,0 +1,69 @@
+name: WB China order date lookup
+on:
+  push:
+    branches: [codex/wb-order-date-20261123]
+    paths: [.github/workflows/codex-wb-order-date.yml]
+permissions: {}
+jobs:
+  lookup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Query WB Statistics
+        env:
+          WB_STATISTICS_TOKEN: ${{ secrets.WB_TOKEN_3 }}
+        run: |
+          cat > /tmp/order-public.pem <<'PEM'
+          -----BEGIN PUBLIC KEY-----
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxz95lveamU/8XANXA5ux
+          dtUmO4ePAzb1E5uesviTNOsdgO+smtK1mSC+X3m2xD9B+9SPzS8cx4ycAKi79DEl
+          AV6v/W6j1lCNtAnpILq7RD4Dev0ODBAn9Rk+VDvFFy9j+7M9RkcFE5X3ZWUuOpQJ
+          c7n6UZRao/oxzBUoRvD5v+Gvn+KO5/eMa9/HlIwXUGykm6fTZzYCtXVPU3y/kcdY
+          rIVTPyJFZLOl0rhYWz4lLswtVDhXgp7eHMjwPEUshq4o74B3LSfg13mopUn/22Y/
+          2McGDsHTlfGAdJX6eyGR8WXgWsZ3xBwbYeomVJLRgEsT6hKzfI80pkArPVhGVREf
+          SQIDAQAB
+          -----END PUBLIC KEY-----
+          PEM
+          python - <<'PY'
+          import datetime, hashlib, json, os, subprocess, time, urllib.error, urllib.parse, urllib.request
+
+          target = "69d00d2f25194351126cd3916b676f32b67085e85f5a5288c4dafba4ff9768df"
+          token = os.environ.get("WB_STATISTICS_TOKEN")
+          if not token:
+              raise SystemExit("WB token is unavailable")
+          moscow = datetime.timezone(datetime.timedelta(hours=3))
+          cursor = (datetime.datetime.now(moscow) - datetime.timedelta(days=90)).date().isoformat()
+          date = None
+          for page in range(16):
+              query = urllib.parse.urlencode({"dateFrom": cursor, "flag": 0})
+              req = urllib.request.Request("https://statistics-api.wildberries.cn/api/v1/supplier/orders?" + query,
+                                           headers={"Authorization": token})
+              try:
+                  with urllib.request.urlopen(req, timeout=90) as response:
+                      rows = json.load(response)
+              except urllib.error.HTTPError as exc:
+                  raise SystemExit(f"WB Statistics returned HTTP {exc.code}")
+              if not rows:
+                  break
+              for row in rows:
+                  srid = row.get("srid", "").replace(chr(92), "")
+                  if hashlib.sha256(srid.encode()).hexdigest() == target:
+                      date = row["date"]
+                      break
+              if date:
+                  break
+              next_cursor = rows[-1]["lastChangeDate"]
+              if len(rows) < 80000:
+                  break
+              if next_cursor <= cursor or page == 15:
+                  raise SystemExit("WB pagination did not finish")
+              cursor = next_cursor
+              time.sleep(61)
+          encrypted = subprocess.check_output(
+              ["openssl", "pkeyutl", "-encrypt", "-pubin", "-inkey", "/tmp/order-public.pem",
+               "-pkeyopt", "rsa_padding_mode:oaep"],
+              input=json.dumps({"date": date}).encode(),
+          )
+          import base64
+          print("WB_LOOKUP_RESULT=" + base64.b64encode(encrypted).decode())
+          PY
