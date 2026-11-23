@@ -70,7 +70,11 @@ def main():
    if e['type']=='customerorder' and any('reserve' in x for x in ps):p['reserve']=g['reserve']
    body.append(p)
   baseline[e['id']]={'document':d,'positions':ps};bodies[e['id']]=body
- state={'status':'prepared','at':m.now(),'source_sha256':plan['sha256'],'expected_units':req['expected_units'],'expected_positions':len(order_articles),'before_positions':{e['type']:len(baseline[e['id']]['positions']) for e in targets},'old_wholesale_rub':report['wholesale_rub'],'documents':[],'snapshots':baseline,'return_snapshots':return_snapshots}
+ def compact_position(p):
+  out={k:p[k] for k in ('id','quantity','price','discount','vat','vatEnabled','reserve','pack','things','trackingCodes','customsDeclaration') if k in p}
+  out['assortment']=m.meta(p['assortment']);return out
+ compact={uid:{'document':v['document'],'positions':[compact_position(p) for p in v['positions']]} for uid,v in baseline.items()}
+ state={'status':'prepared','at':m.now(),'source_sha256':plan['sha256'],'expected_units':req['expected_units'],'expected_positions':len(order_articles),'before_positions':{e['type']:len(baseline[e['id']]['positions']) for e in targets},'old_wholesale_rub':report['wholesale_rub'],'documents':[],'snapshots':compact,'return_snapshots':{uid:{'document':v['document'],'positions':[compact_position(p) for p in v['positions']]} for uid,v in return_snapshots.items()}}
  db.put(ROOT+'merge_result:v1',state)
  def save():db.put(ROOT+'merge_result:v1',state)
  progress('checking_stock_before_merge')
@@ -132,6 +136,8 @@ def main():
  req.update(status='complete',completed_at=m.now());db.put(ROOT+'merge_request:v1',req)
  owner=db.get(ROOT+'request:v1');owner['row_order_policy']='first appearance in owner workbook; repeated products consolidated';db.put(ROOT+'request:v1',owner)
  state.update(status='complete',completed_at=m.now(),checks=checks,wholesale_rub=str(total),returns_rub=str(return_rub),net_rub=str(total-return_rub),pending_write=None,returns_unchanged=True,quantities_unchanged=True,source_order_preserved=True);save();progress('complete')
+ error=db.get(ROOT+'merge_error:v1')
+ if error:error.update(resolved=True,resolved_at=m.now(),resolution='Compact pre-change snapshots saved and consolidation verified');db.put(ROOT+'merge_error:v1',error)
 try:
  main();print('Authorized position consolidation verified; private results saved.')
 except Exception as exc:
