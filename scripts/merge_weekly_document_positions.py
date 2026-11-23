@@ -70,7 +70,7 @@ def main():
    if e['type']=='customerorder' and any('reserve' in x for x in ps):p['reserve']=g['reserve']
    body.append(p)
   baseline[e['id']]={'document':d,'positions':ps};bodies[e['id']]=body
- state={'status':'prepared','at':m.now(),'source_sha256':plan['sha256'],'expected_units':req['expected_units'],'expected_positions':len(order_articles),'before_positions':{e['type']:len(baseline[e['id']]['positions']) for e in targets},'documents':[],'snapshots':baseline,'return_snapshots':return_snapshots}
+ state={'status':'prepared','at':m.now(),'source_sha256':plan['sha256'],'expected_units':req['expected_units'],'expected_positions':len(order_articles),'before_positions':{e['type']:len(baseline[e['id']]['positions']) for e in targets},'old_wholesale_rub':report['wholesale_rub'],'documents':[],'snapshots':baseline,'return_snapshots':return_snapshots}
  db.put(ROOT+'merge_result:v1',state)
  def save():db.put(ROOT+'merge_result:v1',state)
  progress('checking_stock_before_merge')
@@ -131,7 +131,7 @@ def main():
  db.put(ROOT+'documents:v1',report)
  req.update(status='complete',completed_at=m.now());db.put(ROOT+'merge_request:v1',req)
  owner=db.get(ROOT+'request:v1');owner['row_order_policy']='first appearance in owner workbook; repeated products consolidated';db.put(ROOT+'request:v1',owner)
- state.update(status='complete',completed_at=m.now(),checks=checks,wholesale_rub=str(total),returns_rub=str(return_rub),net_rub=str(total-return_rub),old_wholesale_rub=report.get('wholesale_rub'),pending_write=None,returns_unchanged=True,quantities_unchanged=True,source_order_preserved=True);save();progress('complete')
+ state.update(status='complete',completed_at=m.now(),checks=checks,wholesale_rub=str(total),returns_rub=str(return_rub),net_rub=str(total-return_rub),pending_write=None,returns_unchanged=True,quantities_unchanged=True,source_order_preserved=True);save();progress('complete')
 try:
  main();print('Authorized position consolidation verified; private results saved.')
 except Exception as exc:
