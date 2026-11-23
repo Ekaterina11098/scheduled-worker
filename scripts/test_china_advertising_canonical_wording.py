@@ -34,4 +34,18 @@ class CanonicalWording(unittest.TestCase):
  def test_new_facts_can_change_recommendation(self):
   io=IO();self.run_final(io,bundle());b=bundle(dict(kind='ad_exclude_sku'));b['campaigns'][0]['focus'][0]['current_bid_minor']=28
   self.assertEqual('ad_exclude_sku',self.run_final(io,b)['campaigns'][0]['attention'][0]['action']['kind'])
+class CurrentStateIdentity(unittest.TestCase):
+ def evaluate(self,io,b,bid):
+  source=dict(batches={'0':dict(campaigns=dict(adverts=[dict(id=10,status=9,settings=dict(placements=dict(recommendations=True,search=False)),nm_settings=[dict(nm_id=1,bids_kopecks=dict(recommendations=bid,search=0))])]))})
+  modules={'china_advertising_economic_review':types.SimpleNamespace(apply=lambda b,s,m:copy.deepcopy(b)),'china_advertising_directions':types.SimpleNamespace(attach=lambda b,s:b)}
+  with patch.dict(sys.modules,modules):return finalize(io,b,source,{})
+ def test_verified_bid_change_invalidates_old_recommendation_identity(self):
+  io=IO();first=bundle(dict(kind='ad_set_bid',old_minor=32,target_minor=34));a=self.evaluate(io,first,32)
+  next_=bundle();next_['campaigns'][0]['focus'][0]['decision']='Already changed; wait for first full day'
+  b=self.evaluate(io,next_,34)
+  self.assertNotEqual(a['decision_contract']['rows'][0]['facts_sha256'],b['decision_contract']['rows'][0]['facts_sha256'])
+  self.assertIsNone(b['decision_contract']['rows'][0]['action'])
+ def test_same_verified_bid_still_rejects_conflicting_action(self):
+  io=IO();self.evaluate(io,bundle(dict(kind='ad_set_bid',old_minor=32,target_minor=34)),32)
+  with self.assertRaisesRegex(ValueError,'conflicting recommendation'):self.evaluate(io,bundle(),32)
 if __name__=='__main__':unittest.main()
