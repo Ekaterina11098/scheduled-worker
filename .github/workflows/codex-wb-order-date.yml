@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - name: Query WB Statistics
+      - name: Query WB Order Feed
         env:
           WB_STATISTICS_TOKEN: ${{ secrets.WB_TOKEN_3 }}
         run: |
@@ -32,32 +32,31 @@ jobs:
           if not token:
               raise SystemExit("WB token is unavailable")
           moscow = datetime.timezone(datetime.timedelta(hours=3))
-          cursor = (datetime.datetime.now(moscow) - datetime.timedelta(days=90)).date().isoformat()
+          now = datetime.datetime.now(moscow)
+          start = now - datetime.timedelta(days=30)
+          body = {"selectedPeriod": {"start": start.isoformat(), "end": now.isoformat()},
+                  "pagination": {"offset": 0, "limit": 5000}}
           date = None
-          for page in range(16):
-              query = urllib.parse.urlencode({"dateFrom": cursor, "flag": 0})
-              req = urllib.request.Request("https://statistics-api.wildberries.cn/api/v1/supplier/orders?" + query,
-                                           headers={"Authorization": token})
+          for page in range(6):
+              req = urllib.request.Request("https://seller-analytics-api.wildberries.cn/api/analytics/v1/order-feed",
+                  data=json.dumps(body).encode(), headers={"Authorization": token, "Content-Type": "application/json"})
               try:
                   with urllib.request.urlopen(req, timeout=90) as response:
-                      rows = json.load(response)
+                      data = json.load(response)["data"]
               except urllib.error.HTTPError as exc:
-                  raise SystemExit(f"WB Statistics returned HTTP {exc.code}")
-              if not rows:
-                  break
+                  raise SystemExit(f"WB Order Feed returned HTTP {exc.code}")
+              rows = data["orders"]
               for row in rows:
                   srid = row.get("srid", "").replace(chr(92), "")
                   if hashlib.sha256(srid.encode()).hexdigest() == target:
-                      date = row["date"]
+                      date = row["createdAt"]
                       break
-              if date:
+              if date or len(rows) < 5000:
                   break
-              next_cursor = rows[-1]["lastChangeDate"]
-              if len(rows) < 80000:
-                  break
-              if next_cursor <= cursor or page == 15:
-                  raise SystemExit("WB pagination did not finish")
-              cursor = next_cursor
+              if page == 5:
+                  raise SystemExit("WB Order Feed pagination did not finish")
+              body["pagination"]["snapshotTime"] = data["snapshotTime"]
+              body["pagination"]["offset"] += len(rows)
               time.sleep(61)
           encrypted = subprocess.check_output(
               ["openssl", "pkeyutl", "-encrypt", "-pubin", "-inkey", "/tmp/order-public.pem",
