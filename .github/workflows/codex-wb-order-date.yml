@@ -52,10 +52,10 @@ jobs:
                   print("WB_LOOKUP_RESULT=" + base64.b64encode(blob).decode())
           def same(row):
               return any(hashlib.sha256(str(row.get(field, "")).encode()).hexdigest() == target
-                         for field in ("rid", "srid"))
+                         for field in ("rid", "srid")) or hashlib.sha256(str(row.get("id", "")).encode()).hexdigest() == "8bb9f3c33659a454df541181f5e62923ae76c0c64d94961eec7a9c0c29a2219b"
           match = None
           try:
-              period = {"dateFrom": int(datetime.datetime(2026, 11, 16, tzinfo=moscow).timestamp()),
+              period = {"dateFrom": int(datetime.datetime(2026, 10, 26, tzinfo=moscow).timestamp()),
                         "dateTo": int(datetime.datetime(2026, 11, 23, tzinfo=moscow).timestamp()),
                         "limit": 1000, "next": 0}
               for page in range(30):
