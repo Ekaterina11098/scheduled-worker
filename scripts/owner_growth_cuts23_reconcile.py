@@ -5,6 +5,7 @@ from owner_growth_cuts23 import ROOT,norm
 def main():
  io=AdvertisingIO();e=io.get(ROOT+':execution');assert e and e['wb_writes']==4
  rounds=[]
+ if not io.get(ROOT+':reconciliation'):assert io.create(ROOT+':reconciliation',dict(status='reading',rounds=[],wb_writes=0))
  for i in range(3):
   snapshot={}
   for cid in (40933588,41270309,41325622,41332083,42088552):
