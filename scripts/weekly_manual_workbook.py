@@ -252,7 +252,7 @@ def main():
         tp=template['positions']['rows'];assert len(tp)==template['positions'].get('meta',{}).get('size',len(tp))
         rps=[]
         for r in items:
-            matches=[p for p in tp if article(p)==r['article'] and p['quantity']>=r['quantity']]
+            matches=[p for p in tp if norm(p['assortment'])==norm(products[r['article']]) and p['quantity']>=r['quantity']]
             assert matches and len({(p.get('vat',0),p.get('vatEnabled',template.get('vatEnabled',False))) for p in matches})==1
             p=matches[0];rps.append({**makepos(r),'vat':p.get('vat',0),'vatEnabled':p.get('vatEnabled',template.get('vatEnabled',False))})
         body={**common,'vatEnabled':template.get('vatEnabled',False),'vatIncluded':template.get('vatIncluded',True),'description':'рыжие возвраты из '+plan['comment'],'demand':m.meta(basis),'positions':rps}
