@@ -1,0 +1,67 @@
+name: Owner deadstock economics funnel read
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/owner-deadstock23-read.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: china-owner-deadstock23-read
+  cancel-in-progress: false
+jobs:
+  prepare:
+    if: github.run_attempt == 1
+    concurrency:
+      group: china-owner-deadstock23-read-data
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/
+            /.github/
+            /*request*.json
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: a7efd98c6ef7e54f415471abcb694c748c2b4f6d
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          path: source
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /analytics/
+            /business_agents/
+            /advertising_agent/
+            /china_agent/
+            /tests/
+            /*.py
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5 pillow==11.3.0 python-dotenv simplejson==4.2.0 openai==3.42.1
+      - name: Read exact deadstock scope only; no mutations
+        env:
+          CHINA_AD_PREPARE_ONLY: 'false'
+          CHINA_TELEGRAM_BOT_TOKEN: '' # constructor only; no Telegram credentials or calls
+          OWNER_RECOVERY_CONTINUE: 'true' # existing zero-write or exact checkpoint only
+          OPENAI_API_KEY: "" # Owner: no paid model API
+          MPSTATS_API_TOKEN: ${{ secrets.MPSTATS_API_TOKEN }}
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+        run: PYTHONPATH=scripts:source python scripts/owner_deadstock23_read.py
+
+# Checkpoint row created before collection; no paid model calls or WB writes.
+
+# Keyword-compatible transport guard. Prior failed checks made no WB calls.
+
+# Incremental read of prior-click window only; completed stages retained.
