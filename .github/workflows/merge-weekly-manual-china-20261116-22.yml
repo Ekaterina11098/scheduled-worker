@@ -28,3 +28,5 @@ jobs:
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           WEEKLY_MANUAL_ROOT: 'weekly_report_review:china:20261116_20261122:'
         run: python scripts/merge_weekly_document_positions.py
+
+# Continue after diagnosed snapshot persistence failure; no prior accounting mutation.
