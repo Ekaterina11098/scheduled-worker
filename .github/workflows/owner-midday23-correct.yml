@@ -65,3 +65,5 @@ jobs:
           REPORT_ACTION: ${{ steps.request.outputs.action }}
         run: |
           PYTHONPATH=../scripts:. python ../scripts/owner_midday23_correct.py
+
+# Preflight guard repaired; no prior Telegram edits submitted.
