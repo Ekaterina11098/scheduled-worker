@@ -7,7 +7,7 @@ permissions: {}
 concurrency: wb-copy-bag-662
 jobs:
   copy:
-    if: github.run_attempt == 1 && github.event.head_commit.message == 'Locate and clear brand and description on bag 662'
+    if: github.run_attempt == 1 && github.event.head_commit.message == 'Diagnose China bag 662 catalog visibility'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -50,61 +50,16 @@ jobs:
 
           china = os.environ['CHINA']
           code = '662-CelineaBag-blue'
-          def select(items):
-              return [c for c in items if c['nmID'] == 2342818446 and c['vendorCode'].casefold() == code.casefold()]
-          def locate():
-              for search in (code, '2342818446', '662', None):
-                  found = select(cards('cn', china, search))
-                  if found:
-                      return found
-              return []
-          for attempt in range(5):
-              found = locate()
-              if found:
-                  break
-              time.sleep(6)
-          if len(found) != 1:
-              raise SystemExit('Expected one destination card')
-          card = found[0]
-          def preserved(c):
-              return (c['title'], c['subjectID'],
-                      {k:v for k,v in c['dimensions'].items() if k != 'isValid'},
-                      {a['id']:a['value'] for a in c['characteristics']},
-                      [(s['chrtID'], s.get('techSize', ''), s.get('wbSize', ''), s['skus']) for s in c['sizes']],
-                      c.get('photos') or [], c.get('video') or '')
-          def cleared(c):
-              return (c.get('brand', '').strip().casefold() in ('', 'без бренда') and
-                      not c.get('description', '').strip())
-          if cleared(card):
-              print('Brand and description already empty:', card['nmID'])
-              raise SystemExit(0)
-          payload = {k:card[k] for k in ('nmID', 'vendorCode', 'title')}
-          payload.update(brand='', description='')
-          payload['dimensions'] = {k:v for k,v in card['dimensions'].items() if k != 'isValid'}
-          payload['characteristics'] = [{k:a[k] for k in ('id', 'value')} for a in card['characteristics']]
-          payload['sizes'] = [{k:s[k] for k in ('chrtID', 'techSize', 'wbSize', 'skus') if k in s}
-                              for s in card['sizes']]
-          result = api('cn', china, '/content/v2/cards/update', [payload])
-          if result.get('error'):
-              print('Wildberries update error:', result.get('errorText'))
-              raise SystemExit(1)
-          print('Wildberries accepted update')
-          for attempt in range(14):
-              time.sleep(12)
-              current = select(cards('cn', china, code)) or select(cards('cn', china, '2342818446'))
-              if current and cleared(current[0]):
-                  if preserved(current[0]) != preserved(card):
-                      raise SystemExit('Another field changed')
-                  print('Verified:', card['nmID'], 'brand:', repr(current[0].get('brand', '')),
-                        'description length:', len(current[0].get('description', '')),
-                        'characteristics:', len(current[0]['characteristics']),
-                        'barcodes:', [s['skus'] for s in current[0]['sizes']],
-                        'photos:', len(current[0].get('photos') or []))
-                  break
-          else:
-              if not current:
-                  current = select(cards('cn', china, None))
-              if current:
-                  print('Final brand:', repr(current[0].get('brand', '')),
-                        'description length:', len(current[0].get('description', '')))
-              raise SystemExit('Update not verified')
+          def candidates(items):
+              return [(c['nmID'], c['vendorCode']) for c in items
+                      if c['nmID'] == 2342818446 or c['vendorCode'].casefold() == code.casefold()]
+          for search in (code, '2342818446', '2048823949456', None):
+              items = cards('cn', china, search)
+              print('Active search:', search, 'read:', len(items), 'matching:', candidates(items), flush=True)
+          for search in (code, '2342818446'):
+              try:
+                  data = api('cn', china, '/content/v2/get/cards/trash',
+                             {'settings': {'cursor': {'limit': 100}, 'filter': {'textSearch': search}}})
+                  print('Trash search:', search, 'matching:', candidates(data.get('cards', [])), flush=True)
+              except RuntimeError as exc:
+                  print(str(exc))
