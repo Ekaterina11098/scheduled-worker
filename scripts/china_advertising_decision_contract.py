@@ -131,6 +131,7 @@ def finalize(io,bundle,source,minima):
  out=apply_owner_unchanged(attach(out,source))
  rows=[];ledger_key='china_agent:advertising_decisions:v1:'+REVISION+':'+out['day']
  prior=(io.get(ledger_key)or{})if io is not None else {};ledger=copy.deepcopy(prior)
+ actual_states={c['id']:c for batch in source.get('batches',{}).values() for c in batch.get('campaigns',{}).get('adverts',[])}
  for cp in out['campaigns']:
   if cp.get('owner_unchanged'):continue
   for r in cp.get('focus',[]):
@@ -139,6 +140,10 @@ def finalize(io,bundle,source,minima):
    # Timestamp refresh alone must not create a new economic decision identity.
    e=r.get('economics',{})
    facts=dict(cid=cp['id'],nm=r['nm'],window=window,cumulative=r.get('completed_exposure_guard'),status=cp.get('status'),blocker=r.get('data_blocker'),pending=r.get('pending_first_day'),current_bid=r.get('current_bid_minor'),minimum=r.get('minimum_bid_minor'),economics={k:e.get(k)for k in ('seller_price_cny','stock_free','published_stock','own_cogs_rub','buyout','sample_size','logistics_cny','commission_pct','expected_margin_before_ads_cny')})
+   actual=actual_states.get(cp['id'])
+   if actual is not None:
+    matching=[n for n in actual.get('nm_settings',[]) if n.get('nm_id')==r['nm']]
+    facts['verified_current_sku_state']=dict(present=len(matching)==1,bids=matching[0].get('bids_kopecks',{}) if len(matching)==1 else None,placements=actual.get('settings',{}).get('placements'),status=actual.get('status'))
    policy=((r.get('action')or{}).get('growth_evidence')or{}).get('budget_policy_revision')
    if policy:facts['growth_budget_policy_revision']=policy
    hh=hashlib.sha256(json.dumps(facts,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
