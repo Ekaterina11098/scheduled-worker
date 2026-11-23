@@ -7,13 +7,14 @@ permissions: {}
 concurrency: wb-copy-bag-662
 jobs:
   copy:
-    if: github.run_attempt == 1 && github.event.head_commit.message == 'Diagnose China bag 662 catalog visibility'
+    if: github.run_attempt == 1 && github.event.head_commit.message == 'Create China bag 662 without brand or description'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
       - shell: python
         env:
           CHINA: ${{ secrets.WB_TOKEN_3 }}
+          IP: ${{ secrets.WB_TOKEN_2 }}
         run: |
           import json, os, re, time
           from urllib.error import HTTPError
@@ -46,20 +47,108 @@ jobs:
                   seen.add(marker)
                   cursor.update(updatedAt=marker[0], nmID=marker[1])
 
-          import unicodedata
-
           china = os.environ['CHINA']
-          code = '662-CelineaBag-blue'
-          def candidates(items):
-              return [(c['nmID'], c['vendorCode']) for c in items
-                      if c['nmID'] == 2342818446 or c['vendorCode'].casefold() == code.casefold()]
-          for search in (code, '2342818446', '2048823949456', None):
-              items = cards('cn', china, search)
-              print('Active search:', search, 'read:', len(items), 'matching:', candidates(items), flush=True)
-          for search in (code, '2342818446'):
-              try:
+          source_tokens = set(filter(None, [os.environ['IP']])) - {china}
+          if not china or len(source_tokens) != 1:
+              raise SystemExit('The China and uniquely identified IP credentials are required')
+          source_token = source_tokens.pop()
+          matches = [c for c in cards('ru', source_token, '662')
+                     if re.match(r'^662(?:$|[-_ /])', c['vendorCode'], re.I)
+                     and 'сумк' in c['subjectName'].lower()]
+          if not matches:
+              matches = [c for c in cards('ru', source_token, None)
+                         if re.match(r'^662(?:$|[-_ /])', c['vendorCode'], re.I)
+                         and 'сумк' in c['subjectName'].lower()]
+          exact = [c for c in matches if c['vendorCode'] == '662']
+          if len(exact or matches) != 1:
+              print('Source candidates:', json.dumps([c['vendorCode'] for c in matches], ensure_ascii=False))
+              raise SystemExit('Source card is missing or ambiguous')
+          source = (exact or matches)[0]
+          code = source['vendorCode']
+          fields = ('vendorCode', 'title', 'dimensions', 'characteristics')
+          variant = {field: source[field] for field in fields if field in source}
+          if 'dimensions' in variant:
+              variant['dimensions'] = {k: v for k, v in variant['dimensions'].items() if k != 'isValid'}
+          variant['sizes'] = [{key: size[key] for key in ('techSize', 'wbSize', 'skus') if key in size}
+                              for size in source['sizes']]
+          barcodes = sorted(sku for size in variant['sizes'] for sku in size['skus'])
+          if not barcodes:
+              raise SystemExit('Source has no barcodes')
+
+          def matching_destination():
+              return [c for c in cards('cn', china, code) if c['vendorCode'].casefold() == code.casefold()]
+
+          def matches_source(card):
+              compare = lambda items: {item['id']: item['value'] for item in items}
+              return (card['subjectID'] == source['subjectID'] and
+                      card.get('title') == source.get('title') and
+                      not card.get('description', '').strip() and
+                      card.get('brand', '').strip().casefold() in ('', 'без бренда') and
+                      all(card['dimensions'].get(k) == v for k, v in source.get('dimensions', {}).items()
+                          if k != 'isValid') and
+                      sorted((s.get('techSize', ''), s.get('wbSize', ''), sorted(s['skus'])) for s in card['sizes']) ==
+                      sorted((s.get('techSize', ''), s.get('wbSize', ''), sorted(s['skus'])) for s in variant['sizes']) and
+                      not card.get('photos') and not card.get('video'))
+
+          if code != '662-CelineaBag-blue' or barcodes != ['2048823949456']:
+              raise SystemExit('Unexpected source article or barcode')
+          existing = matching_destination()
+          if not existing:
+              catalog = cards('cn', china, None)
+              existing = [c for c in catalog if c['vendorCode'].casefold() == code.casefold()]
+              for item in catalog:
+                  if item['vendorCode'].casefold() != code.casefold() and any(
+                          barcode in s['skus'] for s in item['sizes'] for barcode in barcodes):
+                      raise SystemExit('Another China card has the source barcode')
+          if len(existing) > 1:
+              raise SystemExit('Duplicate cards present')
+          if existing and not matches_source(existing[0]):
+              card = existing[0]
+              if sorted(b for s in card['sizes'] for b in s['skus']) != barcodes or card.get('photos'):
+                  raise SystemExit('Existing card has unexpected barcode or media')
+              payload = dict(variant, nmID=card['nmID'], brand='', description='')
+              payload['sizes'] = [{k:s[k] for k in ('chrtID', 'techSize', 'wbSize', 'skus') if k in s}
+                                  for s in card['sizes']]
+              response = api('cn', china, '/content/v2/cards/update', [payload])
+              print('Updated existing card:', card['nmID'], flush=True)
+          elif not existing:
+              cursor = {'limit': 100}
+              while True:
                   data = api('cn', china, '/content/v2/get/cards/trash',
-                             {'settings': {'cursor': {'limit': 100}, 'filter': {'textSearch': search}}})
-                  print('Trash search:', search, 'matching:', candidates(data.get('cards', [])), flush=True)
-              except RuntimeError as exc:
-                  print(str(exc))
+                             {'settings': {'cursor': cursor}})
+                  trash = data.get('cards', [])
+                  if any(c['vendorCode'].casefold() == code.casefold() or c['nmID'] == 2342818446 for c in trash):
+                      raise SystemExit('Prior card is in trash')
+                  if len(trash) < cursor['limit']:
+                      break
+                  new_cursor = {k:v for k,v in data['cursor'].items() if k in ('nmID','trashedAt')}
+                  if not new_cursor or all(cursor.get(k) == v for k,v in new_cursor.items()):
+                      raise SystemExit('Cannot verify trash pagination')
+                  cursor.update(new_cursor)
+              response = api('cn', china, '/content/v2/cards/upload',
+                             [{'subjectID': source['subjectID'], 'variants': [variant]}])
+              print('Submitted one new card', flush=True)
+          else:
+              response = {}
+          if response.get('error'):
+              print('WB error:', str(response.get('errorText', ''))[:500], flush=True)
+              raise SystemExit(1)
+          original = {a['id']:a['value'] for a in source['characteristics']}
+          for attempt in range(18):
+              present = matching_destination()
+              if len(present) == 1 and matches_source(present[0]):
+                  new = present[0]
+                  actual = {a['id']:a['value'] for a in new['characteristics']}
+                  print('Verified ID:', new['nmID'], 'vendor code:', code, 'barcodes:', barcodes,
+                        'brand:', repr(new.get('brand', '')), 'description length:', len(new.get('description', '')),
+                        'photos:', len(new.get('photos') or []), flush=True)
+                  print('Matching characteristics:', sum(actual.get(k) == v for k,v in original.items()),
+                        'out of:', len(original), 'missing:', [k for k in original if k not in actual],
+                        'different:', [k for k in original if k in actual and original[k] != actual[k]], flush=True)
+                  break
+              if len(present) == 1:
+                  print('Observed card:', present[0]['nmID'], 'brand:', repr(present[0].get('brand', '')),
+                        'description length:', len(present[0].get('description', '')), flush=True)
+              time.sleep(12)
+          else:
+              raise SystemExit('Card with requested fields not yet verified')
