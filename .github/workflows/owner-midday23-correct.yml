@@ -1,0 +1,67 @@
+name: Owner correct midday23 existing PNGs
+on:
+  push:
+    paths: ['.github/workflows/owner-midday23-correct.yml']
+permissions:
+  contents: read
+concurrency:
+  group: china-price-reports
+  cancel-in-progress: false
+jobs:
+  report:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    concurrency:
+      group: china-price-report-data
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/
+            /.github/
+            /*request*.json
+      - uses: actions/checkout@v4
+        if: success()
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: a7efd98c6ef7e54f415471abcb694c748c2b4f6d
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          path: source
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /analytics/
+            /business_agents/
+            /advertising_agent/
+            /china_agent/
+            /tests/
+            /*.py
+      - uses: actions/setup-python@v5
+        if: success()
+        with:
+          python-version: '3.12'
+      - name: Install pinned transport and existing worker dependencies
+        if: success()
+        run: pip install requests==2.32.5 python-dotenv aiogram apscheduler pillow simplejson==4.2.0 openai==3.42.1 > "$RUNNER_TEMP/install.log" 2>&1
+      - name: Deliver exact China morning report
+        if: success()
+        working-directory: source
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          MPSTATS_API_TOKEN: ${{ secrets.MPSTATS_API_TOKEN }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          CHINA_TELEGRAM_BOT_TOKEN: ${{ secrets.CHINA_TELEGRAM_BOT_TOKEN }}
+          OPENAI_API_KEY: ""
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          PYTHONPATH: ../scripts:.
+          REPORT_ACTION: ${{ steps.request.outputs.action }}
+        run: |
+          PYTHONPATH=../scripts:. python ../scripts/owner_midday23_correct.py
