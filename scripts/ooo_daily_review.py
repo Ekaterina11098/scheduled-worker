@@ -30,7 +30,7 @@ def review(a,e,day):
  yesterday=(datetime.date.fromisoformat(day)-datetime.timedelta(days=1)).isoformat()
  period=[(datetime.date.fromisoformat(day)-datetime.timedelta(days=i)).isoformat()for i in (3,2,1)]
  dates={str(c['advertId']):{d['date'][:10]for d in c['days']}for c in e['sources']['advertising14']['data']}
- missing={cid:[d for d in period if d not in dates.get(cid,set())]for cid in a['configurations']};missing={k:v for k,v in missing.items()if v}
+ missing={cid:[d for d in period if d>=cfg.get('timestamps',{}).get('created','')[:10] and d not in dates.get(cid,set())]for cid,cfg in a['configurations'].items()};missing={k:v for k,v in missing.items()if v}
  actions=[];checks=[];funding=[];funding_checks=[]
  for r in a['rows']:
   own=(r['funnel14']or{}).get('statistic',{}).get('selected',{})
@@ -53,4 +53,3 @@ def review(a,e,day):
   if check['decision']=='propose_topup':funding.append({'cid':int(cid),'amount_kgs':check['amount_kgs']})
  assert len(checks)==351
  return {'status':'reviewed_proposals_only','actions':actions,'funding':funding,'budgets':a['budgets'],'internal_analysis':{'catalogue':351,'sku_checks':checks,'funding_checks':funding_checks,'missing_required_day':missing,'sources_at':a['sources_at'],'historical_coverage':e.get('advertising_coverage'),'rules':'No zero fill. DRR native campaign first; no averages. No automatic pause/exclusion from no orders. Bid reductions only unambiguous serving placement above cached minimum. No raise/add without robust placement evidence. Active and paused campaigns both evaluated with recorded reasons; paused proposals require recent delivery and composition economics review, never authorize resume. Funding only actual one-day cash shortfall with native day/3d DRR<=5 and positive dated RUB-before-ad stock scenario; minimum1200 not authorization. No actual profit or FX conversion claimed. Recent minimum-bid changes never reissued.','economics':'RUB scenario before advertising only, mature cohort date explicit, no confirmed KGS/RUB FX or actual profit claim. Associated orders not proof of direct SKU efficacy.','wb_writes':0,'model_calls':0}}
-
