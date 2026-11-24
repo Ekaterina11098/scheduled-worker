@@ -36,8 +36,12 @@ def main():
   return dict(rows=[dict(nm_id=g['nmID'],article=g['vendorCode'])for g in goods],observed_at=now())
  stage('catalogue',prices)
  def stock():
-  reader=Reader();store=select_store(reader.pages('/entity/store',{}),'msk');assert store['id']=='3c67619d-f25d-11ee-0a80-0c6f000a027a'
-  rows=reader.pages('/report/stock/all',{'filter':'store='+store['meta']['href']+';stockMode=positive;quantityMode=all'})
+  def traced_get(*args,**kwargs):
+   response=requests.get(*args,**kwargs)
+   if response.status_code>=400:v['stock_error_detail']=response.text[:1200]
+   return response
+  reader=Reader(get=traced_get);store=select_store(reader.pages('/entity/store',{}),'msk');assert store['id']=='3c67619d-f25d-11ee-0a80-0c6f000a027a'
+  rows=reader.pages('/report/stock/all',{'filter':'store='+store['meta']['href']+';stockMode=all;quantityMode=all'})
   out=[]
   for r in rows:
    if not r.get('article'):continue
