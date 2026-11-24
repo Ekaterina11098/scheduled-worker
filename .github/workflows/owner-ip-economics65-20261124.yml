@@ -1,0 +1,78 @@
+name: Owner IP economics evidence only
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/owner-ip-economics65-20261124.yml']
+permissions: {contents: read}
+concurrency: {group: mpstats-owner-economics65, cancel-in-progress: false}
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: main
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          path: private-source
+          persist-credentials: false
+          sparse-checkout: analytics
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5 > /dev/null 2>&1
+      - shell: python
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          MPSTATS_API_TOKEN: ${{ secrets.MPSTATS_API_TOKEN }}
+        run: |
+          import os,sys,json,time,datetime,requests
+          sys.path.insert(0,'private-source')
+          from analytics.mpstats_probe import discover,unpack_tool,complete_products,ProbeError
+          ROOT='ip_agent:economics65:2026-11-24'
+          u=os.environ['SUPABASE_URL'].rstrip('/')+'/rest/v1/'
+          h={'apikey':os.environ['SUPABASE_SECRET_KEY'],'Authorization':'Bearer '+os.environ['SUPABASE_SECRET_KEY']}
+          def rows(table,params):
+           r=requests.get(u+table,headers=h,params=params,timeout=60);r.raise_for_status();return r.json()
+          def get(k):
+           a=rows('telegram_api_cache',{'cache_key':'eq.'+k,'select':'payload'});return a[0]['payload']if a else None
+          def save(k,v):
+           r=requests.post(u+'telegram_api_cache',headers=dict(h,Prefer='resolution=merge-duplicates'),params={'on_conflict':'cache_key'},json={'cache_key':k,'payload':v,'updated_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'expires_at':'2027-11-24T00:00:00Z'},timeout=60);r.raise_for_status()
+          scope=get(ROOT+':scope');assert scope and scope['wb_writes']==False
+          names=set(scope['skus']);start=scope['from'];end=scope['to']
+          state={'status':'running','wb_writes':0,'telegram_calls':0,'model_calls':0,'reads':[]}
+          def extra(call,checks,known):
+           def tool(n,a):return unpack_tool(call('tools/call',{'name':n,'arguments':a}))
+           cabinets=checks['lk_wb_cabinets'];initial=[x['id']for x in cabinets if x.get('selected')]
+           assert len(initial)<=1
+           assert any(x.get('id')==10012969 and x.get('name')=='VESCHI' and x.get('valid')is True for x in cabinets)
+           try:
+            tool('lk_wb_cabinets',{'action':'select','id':10012969})
+            assert [x['id']for x in tool('lk_wb_cabinets',{'action':'list'})if x.get('selected')]==[10012969]
+            requests_=[('products','lk_wb_products',{'date_from':start,'date_to':end,'start_row':0,'end_row':1500}),('weekly','lk_wb_reports_weekly',{'date_from':start,'date_to':end,'period_type':'30days','self_redemption':False})]
+            cats=rows('analytics_snapshots',{'source':'eq.mpstats_campaign_catalog','cabinet':'eq.token_2','select':'payload','order':'id.desc','limit':2})
+            catalog=[x for c in cats for p in c['payload']for x in p.get('rows',[])]
+            cids={int(x['id'])for x in catalog if int(x.get('wb_id',0))in [42139004,39410834,39483230,39634287,37363108,37757330,37155100,41519685]}
+            for cid in sorted(cids):requests_.append(('ad_'+str(cid),'wbbidder_campaign_stats',{'campaign_id':cid,'report':'products','d1':start,'d2':end}))
+            for label,n,a in requests_:
+             if get(ROOT+':'+label):continue
+             try:
+              v=tool(n,a)
+              if n=='lk_wb_products':v=complete_products(tool,a,v)
+              save(ROOT+':'+label,{'status':'received','tool':n,'arguments':a,'data':v,'observed_at':datetime.datetime.now(datetime.timezone.utc).isoformat()})
+              state['reads'].append(label);save(ROOT+':status',state)
+             except ProbeError as e:
+              save(ROOT+':'+label+':error',{'status':e.status,'retry_after':e.retry_after,'detail':e.detail})
+              if e.retry_after:raise
+            return {'completed':state['reads']}
+           finally:tool('lk_wb_cabinets',{'action':'select','id':initial[0]}if initial else {'action':'reset'})
+          try:
+           save(ROOT+':status',state)
+           catalog=rows('analytics_snapshots',{'source':'eq.mpstats_connection','select':'payload','order':'id.desc','limit':1})[0]['payload'][0]['tools']
+           d=discover(os.environ['MPSTATS_API_TOKEN'],read_checks=True,extra_reader=extra,catalog=catalog)
+           save(ROOT+':discovery',d)
+           state['status']='complete'if d.get('connected')else d.get('status');save(ROOT+':status',state)
+          except Exception as e:state.update(status='error',error=type(e).__name__);save(ROOT+':status',state);raise SystemExit(1)
+          print('Read-only evidence stored privately.')
+          
