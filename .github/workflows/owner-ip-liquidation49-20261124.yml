@@ -1,8 +1,6 @@
 name: Owner IP liquidation49 launch
 on:
-  push:
-    branches: [main]
-    paths: [.github/workflows/owner-ip-liquidation49-20261124.yml]
+  workflow_dispatch:
 permissions: {contents: read}
 concurrency:
   group: ip-owner-wb-advertising-writes
