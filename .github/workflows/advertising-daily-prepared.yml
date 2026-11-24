@@ -35,6 +35,18 @@ jobs:
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           persist-credentials: false
           path: private-source
+      - name: Apply isolated IP rules review
+        uses: actions/checkout@v4
+        with:
+          ref: 8b925020156e32bd289b6c0e83306ab7a72748e1
+          path: ip-rules-patch
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /ip_report_analysis.py
+            /test_ip_report_analysis.py
+      - name: Install reviewed rules module
+        run: cp ip-rules-patch/ip_report_analysis.py ip-rules-patch/test_ip_report_analysis.py .
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - run: pip install requests==2.32.5 cryptography==46.0.2 Pillow==12.3.0 > "$RUNNER_TEMP/dependencies.log" 2>&1
@@ -55,7 +67,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           ADVERTISING_TELEGRAM_BOT_TOKEN: ${{ secrets.ADVERTISING_TELEGRAM_BOT_TOKEN }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_API_KEY: ""
         run: |
           if [ "$IP_REPORT_VERIFY_ONLY" = "true" ]; then
             python -c 'import json;from ip_report_freeze import credentials,main;credentials();r=main();print(json.dumps({k:r.get(k) for k in ("status","period","model_calls","charged_micro_usd","source_calls","wb_writes","telegram_calls")}))'
