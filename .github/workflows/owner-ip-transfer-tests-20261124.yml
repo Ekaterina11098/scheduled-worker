@@ -1,0 +1,22 @@
+name: All-IP transfer safety tests
+on:
+  push:
+    paths: ['.github/workflows/owner-ip-transfer-tests-20261124.yml']
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: 187369dbd57db0ea988b7cb06259a97aee39f76e
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests==2.32.5 python-dotenv==1.1.1 aiogram==3.22.0 simplejson==4.2.0 'psycopg[binary]==3.2.9' cryptography
+      - run: python -m unittest test_stock_owner_ip_transfer test_stock_owner_table_apply test_stock_china_cancellation_release test_stock_belt_common_pool
