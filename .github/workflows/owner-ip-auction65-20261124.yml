@@ -1,8 +1,6 @@
 name: Owner IP bounded auction reads
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/owner-ip-auction65-20261124.yml']
+  workflow_dispatch:
 permissions: {contents: read}
 concurrency: {group: owner-ip-auction65, cancel-in-progress: false}
 jobs:
