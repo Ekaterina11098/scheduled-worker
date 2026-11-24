@@ -11,7 +11,7 @@ jobs:
   launch:
     if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-ip-liquidation49] Launch exact approved test'
     runs-on: ubuntu-latest
-    timeout-minutes: 165
+    timeout-minutes: 245
     steps:
       - uses: actions/checkout@v4
         with:
