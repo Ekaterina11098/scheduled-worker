@@ -5,15 +5,16 @@ from china_codex_cloud import DB
 
 def main():
  day='2026-11-24' # Exact requested dated evidence; never collect another day implicitly.
- original='ooo_agent:morning:'+day+':evidence'
- target='ooo_agent:campaign_review:'+day+':evidence'
+ original='ooo_agent:campaign_review:'+day+':evidence'
+ target='ooo_agent:campaign_review:'+day+':latest'
  db=DB();e=db.get(original)or{}
  if e.get('status')!='finished':raise RuntimeError('Completed dated morning evidence required')
  t=json.loads((Path(__file__).parent/'ooo_report_templates.json').read_text())
  c=t['collector'].replace("KEY='ooo_agent:morning:2026-11-12:evidence'",'KEY='+repr(target))
  # Reuse dated catalogue, stock, buyouts/funnel and fullstats; read ONLY missing settings/budgets.
- c=c.replace(";db.once(KEY,state)",";state['sources']=json.loads(json.dumps(db.get("+repr(original)+")[\"sources\"]));state['sources'].pop('configurations',None);state['sources'].pop('budgets',None);db.once(KEY,state)")
+ c=c.replace(";db.once(KEY,state)",";state['sources']=json.loads(json.dumps(db.get("+repr(original)+")[\"sources\"]));db.once(KEY,state)")
  c=c.replace(" def read(label,fn):\n  try:"," def read(label,fn):\n  if state['sources'].get(label,{}).get('status')=='complete':return\n  try:")
+ c=c.replace("  state.update(status='finished'", "  read('focused_latest',lambda:raw('advert-api.wildberries.ru','/adv/v3/fullstats',params={'ids':'39605581,42139012','beginDate':'2026-11-24','endDate':'2026-11-24'}))\n  read('focused_funnel',lambda:raw('seller-analytics-api.wildberries.ru','/api/analytics/v3/sales-funnel/products','POST',body={'selectedPeriod':{'start':'2026-11-10','end':'2026-11-24'},'pastPeriod':{'start':'2026-10-26','end':'2026-11-09'},'nmIds':[851230666,1140798740,863222656,851285393,863207382,1124312584,1124312592,1124312594,1124312599],'skipDeletedNm':False,'limit':1000,'offset':0}))\n  state.update(status='finished'")
  with tempfile.TemporaryDirectory()as temp:
   path=Path(temp)/'read.py';path.write_text(c,encoding='utf-8');runpy.run_path(str(path),run_name='__main__')
  result=db.get(target)or{}
