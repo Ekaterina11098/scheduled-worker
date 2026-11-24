@@ -78,3 +78,5 @@ jobs:
 # Compare financial counters independently of omitted archive coverage rows.
 
 # Resume only inspected preflight without any previous WB mutation.
+
+# Resume only missing price/published stages, saved funnel and stock retained.
