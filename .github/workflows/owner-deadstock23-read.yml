@@ -61,7 +61,7 @@ jobs:
         run: |
           cp scripts/china_buyer_price_forecast.py source/china_agent/buyer_price_forecast.py
           cp scripts/china_price_brief.py source/china_agent/price_brief.py
-          PYTHONPATH=scripts:source python scripts/owner_stock_without_ads24_reconcile.py
+          PYTHONPATH=scripts:source python scripts/owner_revive_bags_gt50_24.py
 
 # Checkpoint row created before collection; no paid model calls or WB writes.
 
