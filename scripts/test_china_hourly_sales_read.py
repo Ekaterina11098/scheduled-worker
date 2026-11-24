@@ -21,6 +21,25 @@ with patch.dict(sys.modules, {'china_cloud_cost_control': helper,
     spec.loader.exec_module(m)
 
 class CollectorTest(unittest.TestCase):
+    def test_catalogue_identity_and_currency_remain_required(self):
+        row=dict(nmID=123,vendorCode='bag',currencyIsoCode4217='CNY')
+        self.assertEqual(m.catalogue_ids(dict(cabinet='token_3',rows=[row])),{123})
+        for bad in ({'rows':[row]},dict(cabinet='token_2',rows=[row]),
+                    dict(cabinet='token_3',rows=[row|dict(currencyIsoCode4217='RUB')]),
+                    dict(cabinet='token_3',rows=[row,row]),dict(cabinet='token_3',rows=[])):
+            with self.assertRaises(ValueError):m.catalogue_ids(bad)
+    def test_missing_archived_stats_are_unknown_but_do_not_block_live_collection(self):
+        cs={'1':dict(status=9),'2':dict(status=7)}
+        got=m.stats_coverage([1,2],cs,[dict(advertId=1)])
+        self.assertEqual(got['status'],'complete')
+        self.assertEqual(got['omitted_archived_ids'],[2])
+        self.assertFalse(got['historical_coverage_complete'])
+        self.assertEqual(got['missing_ids'],[2])
+    def test_missing_live_stats_still_block_completion(self):
+        self.assertEqual(m.stats_coverage([1],{'1':dict(status=11)},[])['status'],'partial')
+    def test_duplicate_or_unrequested_stats_are_rejected(self):
+        for rows in ([dict(advertId=1),dict(advertId=1)],[dict(advertId=2)]):
+            with self.assertRaises(ValueError):m.stats_coverage([1],{'1':dict(status=9)},rows)
     def cache(self):
         class C:
             def __init__(self):self.rows={};self.version=0;self.race=False
