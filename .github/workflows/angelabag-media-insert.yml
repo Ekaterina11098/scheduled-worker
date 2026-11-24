@@ -46,7 +46,7 @@ jobs:
 
           ROOT = "angelabag_media_insert7:v1:"
           PRECHECK = "angelabag_media_insert7:v2:read_only:20261124"
-          RESULT = ROOT + "write_result:20261124:r3"
+          RESULT = ROOT + "write_result:20261124:r4"
           INPUT = ROOT + "approved_input:20261124"
           PILOT = 1473244338
           EXCLUDED = 1473244337
@@ -101,7 +101,7 @@ jobs:
 
 
           def core(card):
-              return {k: v for k, v in card.items() if k not in ("photos", "video", "updatedAt")}
+              return {k: v for k, v in card.items() if k not in ("photos", "video", "updatedAt", "characteristics")}
 
 
           def read_card(client, nm, article):
@@ -187,9 +187,12 @@ jobs:
               if card.get("video"):
                   return "skipped_video"
               urls = media_urls(card)
+              if nm == PILOT and len(urls) != 14:
+                  raise Stop(f"pilot_photo_count_{len(urls)}_expected_14")
               if len(urls) < 6:
                   return "skipped_photo_count"
-              old = [image(blob) for blob in photos(client, urls, fresh=True)]
+              original_bytes = photos(client, urls, fresh=True)
+              old = [image(blob) for blob in original_bytes]
               duplicates = matches(slides, old)
               if duplicates == [[6], [7], [8], [9]]:
                   return "already_at_positions"
@@ -202,6 +205,8 @@ jobs:
                   return "skipped_video"
               if current.get("photos") != card.get("photos") or core(current) != core(card):
                   raise Stop("card_changed_before_write")
+              if [sha(blob) for blob in photos(client, media_urls(current), fresh=True)] != [sha(blob) for blob in original_bytes]:
+                  raise Stop("photo_content_or_order_changed_before_write")
               record["status"] = "write_pending_readback"
               save(client, report)
               try:
