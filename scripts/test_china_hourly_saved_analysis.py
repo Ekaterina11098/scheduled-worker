@@ -48,6 +48,13 @@ class SavedAnalysis(unittest.TestCase):
     def test_wrong_cabinet_is_rejected(self):
         self.s['cabinet']='token_2'
         with self.assertRaises(ValueError):m.run(self.c)
+    def test_missing_ad_rows_do_not_suppress_valid_orders_and_are_not_zero(self):
+        self.s['status']='partial';self.s['advertising'].update(status='partial',missing_live_ids=[9])
+        got=m.run(self.c)
+        self.assertEqual(got['status'],'partial')
+        self.assertEqual(got['advertising']['status'],'partial')
+        self.assertEqual(got['advertising_coverage']['missing_live_ids'],[9])
+        self.assertEqual(got['orders']['0']['count'],1)
     def test_duplicate_order_and_totals_mismatch_rejected(self):
         self.s['orders']['0']['totals']['count']=2
         with self.assertRaises(ValueError):m.run(self.c)
