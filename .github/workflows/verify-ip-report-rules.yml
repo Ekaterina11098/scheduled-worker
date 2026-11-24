@@ -52,3 +52,5 @@ jobs:
             echo "Saved-data verification failed; private log was not published."
             exit 1
           fi
+
+# Saved-only verification revision 3: delegate read-only registration.

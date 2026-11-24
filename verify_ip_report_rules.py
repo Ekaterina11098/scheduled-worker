@@ -19,6 +19,7 @@ class SavedOnly:
   if not(key.startswith(ROOT_RULES)or(key.startswith('advertising:ip:report-analysis:v1:')and key.endswith(':preview'))):
    raise AssertionError('Unexpected verification write')
   return original.cache_set(key,value,**kwargs)
+ def registration(self):return original.registration()
  def db(self,method,*args,**kwargs):
   if method!='GET':raise AssertionError('Verification reads sources only')
   return original.db(method,*args,**kwargs)
