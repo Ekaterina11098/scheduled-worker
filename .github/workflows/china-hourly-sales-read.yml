@@ -18,6 +18,8 @@ concurrency:
   cancel-in-progress: false
 jobs:
   read:
+    outputs:
+      source_ready: ${{ steps.collect.outputs.source_ready }}
     if: ${{ github.event_name != 'push' || github.event.head_commit.message == 'Connect China hourly read-only API collection' || github.event.head_commit.message == 'Repair China hourly read-only collection with deduplicated fallback' }}
     runs-on: ubuntu-latest
     timeout-minutes: 9
@@ -42,6 +44,7 @@ jobs:
       - name: Verify independent recovery clock and duplicate prevention
         run: node --test scripts/test_china_hourly_clock.mjs
       - name: Collect private dated API snapshots; no marketplace writes or Telegram
+        id: collect
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
@@ -50,6 +53,7 @@ jobs:
 
   analyze:
     needs: read
+    if: ${{ needs.read.outputs.source_ready == 'true' }}
     # Owner25Nov: saved evidence diagnostics only; no model, WB or Telegram access.
     runs-on: ubuntu-latest
     timeout-minutes: 3
