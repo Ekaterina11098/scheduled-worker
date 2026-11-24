@@ -15,10 +15,10 @@ jobs:
         run: |
           python - <<'PY'
           import os,json,urllib.request
-          base='https://api.github.com/repos/Ekaterina11098/scheduled-worker/actions/runs/45458560224'
+          base='https://api.github.com/repos/Ekaterina11098/scheduled-worker/actions/runs/45458724812'
           headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'}
           r=json.load(urllib.request.urlopen(urllib.request.Request(base,headers=headers)))
-          assert r['name']=='Stock daily 05:00 and 20:00 MSK'
+          assert r['name']=='Complete authorized24Nov evening stock update'
           if r['status'] not in ('completed',):
               urllib.request.urlopen(urllib.request.Request(base+'/cancel',data=b'',headers=headers,method='POST')).read()
           print(json.dumps({'run':r['id'],'status_before':r['status'],'action':'retire_superseded_version'}))
