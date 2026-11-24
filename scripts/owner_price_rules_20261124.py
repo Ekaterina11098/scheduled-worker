@@ -80,9 +80,10 @@ def main():
                         x['status']=('applied' if x['rate'] else 'no_price_verified' if x['missing_price'] else 'excluded_verified') if ok else 'failed'
                         if x['rate']:io.put('china_agent:price_write_lock:v1:'+str(x['nmID']),dict(execution=ekey,status='done' if ok else 'uncertain',upload_id=e['upload_id']))
                     e.update(status='done',completed_at=stamp(),summary={s:sum(x['status']==s for x in e['items']) for s in ('applied','excluded_verified','no_price_verified','failed')});io.put(ekey,e)
-                    io.put('china_agent:prices:v1',dict(rows=list(fresh.values()),observed_at=stamp(),source='wb_api_verified_owner_price_rules'))
+                    io.put('china_agent:prices:v1',dict(cabinet='token_3',rows=list(fresh.values()),observed_at=stamp(),source='wb_api_verified_owner_price_rules',execution_key=ekey))
                     print(json.dumps(e['summary']));return
             except Exception:e['last_check']='Readback pending'
             io.put(ekey,e);time.sleep(10)
         raise RuntimeError('WB upload remains pending; do not resubmit')
 if __name__=='__main__':main()
+
