@@ -77,3 +77,5 @@ jobs:
 
 
 # Use direct stock/reserve reads and existing verified completed-day sales reference only.
+
+# Fixed FBS transfer reads no WB FBO report and does not calculate new demand.
