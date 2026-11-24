@@ -15,7 +15,7 @@ jobs:
         run: |
           python - <<'PY'
           import os,json,urllib.request
-          base='https://api.github.com/repos/Ekaterina11098/scheduled-worker/actions/runs/45458724812'
+          base='https://api.github.com/repos/Ekaterina11098/scheduled-worker/actions/runs/45459607520'
           headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'}
           r=json.load(urllib.request.urlopen(urllib.request.Request(base,headers=headers)))
           assert r['name']=='Complete authorized24Nov evening stock update'
