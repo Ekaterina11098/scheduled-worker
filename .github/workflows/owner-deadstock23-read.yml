@@ -50,7 +50,7 @@ jobs:
       - name: Read-only MSK price and stable-order review
         env:
           CHINA_AD_PREPARE_ONLY: 'false'
-          CHINA_TELEGRAM_BOT_TOKEN: '' # owner inventory read only; no Telegram calls
+          CHINA_TELEGRAM_BOT_TOKEN: ${{ secrets.CHINA_TELEGRAM_BOT_TOKEN }} # authorized edit of existing report only
           OWNER_RECOVERY_CONTINUE: 'true' # existing zero-write or exact checkpoint only
           OPENAI_API_KEY: "" # Owner: no paid model API
           MPSTATS_API_TOKEN: ${{ secrets.MPSTATS_API_TOKEN }}
@@ -61,7 +61,7 @@ jobs:
         run: |
           cp scripts/china_buyer_price_forecast.py source/china_agent/buyer_price_forecast.py
           cp scripts/china_price_brief.py source/china_agent/price_brief.py
-          PYTHONPATH=scripts:source python scripts/owner_revive24_apply.py
+          PYTHONPATH=scripts:source python scripts/owner_archive_rows24_correct.py
 
 # Checkpoint row created before collection; no paid model calls or WB writes.
 
