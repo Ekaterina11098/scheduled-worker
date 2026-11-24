@@ -1,0 +1,99 @@
+name: One-off China Jam CSV API availability check
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/china-jam-csv-probe-20261124.yml']
+permissions: {}
+concurrency:
+  group: china-jam-csv-probe-20261124
+  cancel-in-progress: false
+jobs:
+  probe:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5 > "$RUNNER_TEMP/dependencies.log" 2>&1
+      - name: Check extended report API; private receipt only, no marketplace mutations
+        env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        shell: python
+        run: |
+          import os,json,time,uuid,io,csv,zipfile,base64,hashlib,requests
+          from datetime import datetime,timezone
+          ROOT='china_agent:jam_csv_probe:20261124:v1'
+          SB=os.environ['SUPABASE_URL'].rstrip('/')
+          KEY=os.environ['SUPABASE_SECRET_KEY'].strip()
+          SH={'apikey':KEY,'Content-Type':'application/json'}
+          if not KEY.startswith('sb_secret_'):SH['Authorization']='Bearer '+KEY
+          WH={'Authorization':os.environ['WB_TOKEN_3'].strip()}
+          HOST='https://seller-analytics-api.wildberries.ru'
+          def stamp():return datetime.now(timezone.utc).isoformat()
+          def get(k):
+           r=requests.get(SB+'/rest/v1/telegram_api_cache',headers=SH,params={'cache_key':'eq.'+k,'select':'payload','limit':1},timeout=40);r.raise_for_status()
+           a=r.json();return a[0]['payload']if a else None
+          def put(k,p,once=False):
+           r=requests.post(SB+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**SH,'Prefer':'resolution='+('ignore'if once else'merge')+'-duplicates,return=representation'},json={'cache_key':k,'payload':p,'updated_at':stamp(),'expires_at':'2027-11-24T00:00:00Z'},timeout=40);r.raise_for_status()
+           return len(r.json())==1
+          if get(ROOT):raise SystemExit('Existing diagnostic retained; no replay')
+          s=dict(status='checking',observed_at=stamp(),run_id=os.environ.get('GITHUB_RUN_ID'),wb_writes=0,telegram_calls=0,model_calls=0,report_create_calls=0)
+          assert put(ROOT,s,True)
+          def save():put(ROOT,s)
+          def body(r):
+           try:return r.json()
+           except ValueError:return {'text':r.text[:2000]}
+          try:
+           r=requests.get(HOST+'/api/v2/nm-report/downloads',headers=WH,timeout=(10,50))
+           s['list_http_status']=r.status_code;s['list_response']=body(r);save()
+           if r.status_code!=200:
+            s['status']='access_denied'if r.status_code in(401,402,403)else'list_unavailable';save();print(json.dumps({k:s[k]for k in('status','list_http_status','wb_writes','telegram_calls','model_calls')}));raise SystemExit(0)
+           scope=get('china_agent:owner_deadstock:2026-11-23:v1:scope')
+           ids=sorted({i['nm_id']for i in scope['items']})
+           assert ids and all(type(n)is int and n>0 for n in ids)
+           rid=str(uuid.uuid4())
+           request=dict(id=rid,reportType='DETAIL_HISTORY_REPORT',userReportName='Read-only API diagnostic',params=dict(nmIDs=ids,subjectIds=[],brandNames=[],tagIds=[],startDate='2026-11-21',endDate='2026-11-24',timezone='Europe/Moscow',aggregationLevel='day',skipDeletedNm=False))
+           s.update(status='create_outcome_unconfirmed',report_id=rid,request=request,report_create_calls=1);save()
+           r=requests.post(HOST+'/api/v2/nm-report/downloads',headers=WH,json=request,timeout=(10,60))
+           s['create_http_status']=r.status_code;s['create_response']=body(r)
+           if r.status_code!=200:s['status']='create_rejected';save();raise SystemExit(0)
+           s['status']='generating';save()
+           for attempt in range(12):
+            time.sleep(25)
+            r=requests.get(HOST+'/api/v2/nm-report/downloads',headers=WH,params={'filter[downloadIds]':rid},timeout=(10,50))
+            s['poll_http_status']=r.status_code
+            if r.status_code!=200:s.update(status='status_unavailable',poll_response=body(r));save();break
+            j=r.json();rows=j.get('data')or[];match=[x for x in rows if x.get('id')==rid]
+            s['report_state']=match[0]if match else None;save()
+            if not match:continue
+            status=match[0].get('status')
+            if status=='FAILED':s['status']='generation_failed';save();break
+            if status!='SUCCESS':continue
+            time.sleep(21)
+            r=requests.get(HOST+'/api/v2/nm-report/downloads/file/'+rid,headers=WH,timeout=(10,90))
+            s['file_http_status']=r.status_code
+            if r.status_code!=200:s.update(status='file_unavailable',file_response=body(r));save();break
+            raw=r.content
+            with zipfile.ZipFile(io.BytesIO(raw))as z:
+             assert z.testzip()is None
+             records=[]
+             for name in z.namelist():
+              if not name.lower().endswith('.csv'):continue
+              b=z.read(name)
+              try:t=b.decode('utf-8-sig')
+              except UnicodeDecodeError:t=b.decode('cp1251')
+              first=t.splitlines()[0];sep=';'if first.count(';')>first.count(',')else','
+              data=list(csv.reader(io.StringIO(t),delimiter=sep));headers=data[0]if data else[]
+              normalized=[h.lower()for h in headers]
+              records.append(dict(name=name,headers=headers,rows=max(0,len(data)-1),
+               impressions_fields=[h for h,l in zip(headers,normalized)if any(x in l for x in('показы','impression','showcount','viewcount'))],
+               ctr_fields=[h for h,l in zip(headers,normalized)if'ctr'in l or'кликабельност'in l]))
+             assert records
+            put(ROOT+':archive',dict(report_id=rid,sha256=hashlib.sha256(raw).hexdigest(),size=len(raw),zip_base64=base64.b64encode(raw).decode()))
+            s.update(status='downloaded_verified',files=records,archive_sha256=hashlib.sha256(raw).hexdigest(),archive_bytes=len(raw));save();break
+           print(json.dumps({k:s.get(k)for k in('status','list_http_status','create_http_status','file_http_status','wb_writes','telegram_calls','model_calls')}))
+          except Exception as e:
+           s.update(status='diagnostic_error',error_type=type(e).__name__);save();raise SystemExit('Private diagnostic error; inspect stored receipt')
