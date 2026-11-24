@@ -40,7 +40,12 @@ with runtime_db() as lock:
     sales=json.loads(reference[0])['source']['sales']
     ip_catalog=g.get_real_wb_cards_and_scores(g.cabinet_tokens()[1])
     scope={g.norm(c.get('vendorCode')) for c in ip_catalog if g.norm(c.get('vendorCode'))}
-    source=service.capture(g,scope,sales)
+    original_fbo=g.load_cabinet_fbo
+    g.load_cabinet_fbo=lambda token,cards:None
+    try:source=service.capture(g,scope,sales)
+    finally:g.load_cabinet_fbo=original_fbo
+    source['owner_fbs_transfer_only']=True
+    source['fbo_not_read_reason']='FBS transfer preserves total exposure and does not calculate demand or alter FBO'
     if source.get('orders_complete') is not True:raise Stopped('Full fresh demand data not available')
     if source.get('unposted_orders',{}).get('complete') is not True:raise Stopped('Common reserve proof missing')
     cards=service.restored_cards(source)
