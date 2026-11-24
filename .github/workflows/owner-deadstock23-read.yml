@@ -13,7 +13,7 @@ jobs:
   prepare:
     if: github.run_attempt == 1
     concurrency:
-      group: china-confirmed-wb-price-writes
+      group: china-dialog-data
       cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -61,7 +61,8 @@ jobs:
         run: |
           cp scripts/china_buyer_price_forecast.py source/china_agent/buyer_price_forecast.py
           cp scripts/china_price_brief.py source/china_agent/price_brief.py
-          PYTHONPATH=scripts:source python scripts/owner_archive_rows24_correct.py
+          PYTHONPATH=scripts:source python -m unittest discover -s scripts -p test_china_addition_reprice.py -v
+          PYTHONPATH=scripts:source python scripts/owner_addition53_recover24.py
 
 # Checkpoint row created before collection; no paid model calls or WB writes.
 
