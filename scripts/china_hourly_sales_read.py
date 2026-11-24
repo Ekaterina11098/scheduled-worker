@@ -188,6 +188,12 @@ def collect_funnel(c, cut, nm_ids):
 
 
 def run():
+    def ready_output(ready):
+        path = os.environ.get('GITHUB_OUTPUT')
+        if path:
+            with open(path, 'a', encoding='utf-8') as output:
+                output.write('source_ready=' + str(ready).lower() + '\n')
+    ready_output(False)
     if os.environ.get('GITHUB_REPOSITORY') != 'Ekaterina11098/scheduled-worker':
         raise RuntimeError('Public owner runner only')
     c = Cache()
@@ -199,6 +205,7 @@ def run():
     base_key=slot_key(cut);source,previous=saved_slot(c,cut)
     if complete_slot(previous):
         publish_latest(c,source,previous)
+        ready_output(True)
         print('Complete hourly slot already exists; no API reads repeated')
         return
     run_id=os.environ.get('GITHUB_RUN_ID') or clock.strftime('%Y%m%dT%H%M%S')
@@ -317,6 +324,7 @@ def run():
     if c.get(key) != e:
         raise RuntimeError('Frozen snapshot readback mismatch')
     publish_latest(c,key,e)
+    ready_output(complete_slot(e))
     # The menu uses completed days; this optional cache is independent of the hourly report.
     if (c.get('china_agent:main_menu:v1:policy')or{}).get('enabled') is True:
         try:
