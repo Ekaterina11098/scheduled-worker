@@ -1,8 +1,6 @@
 name: Owner IP economics evidence only
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/owner-ip-economics65-20261124.yml']
+  workflow_dispatch:
 permissions: {contents: read}
 concurrency: {group: mpstats-owner-economics65, cancel-in-progress: false}
 jobs:
