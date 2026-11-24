@@ -72,3 +72,5 @@ jobs:
 # Resume after interrupted script upload; no prior data reads.
 
 # Resume after transport interruption; immutable stage checkpoints.
+
+# Resume only missing MSK stock stage; campaign and catalogue reads retained.
