@@ -47,6 +47,16 @@ def complete_slot(value):
                      or value.get('general_funnel',{}).get('status')=='complete'))
 
 
+def analysis_ready(value):
+    """Missing ad rows must not suppress complete FBS and funnel diagnostics."""
+    return bool(value and value.get('cabinet') == 'token_3'
+                and value.get('status') in ('partial', 'complete')
+                and all((value.get('orders', {}).get(str(n)) or {}).get('status') == 'complete' for n in (0,1,7))
+                and value.get('budgets', {}).get('status') == 'complete'
+                and value.get('advertising', {}).get('status') in ('partial', 'complete')
+                and (not value.get('funnel_requested') or value.get('general_funnel', {}).get('status') == 'complete'))
+
+
 def claim_slot(c,cut,run_id,clock):
     """CAS recovery only after the 12m lease exceeds the 9m job timeout."""
     key=slot_key(cut)+':lease';old=c.row(key)
@@ -210,6 +220,7 @@ def run():
         return
     run_id=os.environ.get('GITHUB_RUN_ID') or clock.strftime('%Y%m%dT%H%M%S')
     if not claim_slot(c,cut,run_id,clock):
+        ready_output(analysis_ready(previous))
         print('Hourly slot lease active or bounded retries exhausted; no API reads')
         return
     key=base_key if c.get(base_key) is None else base_key+':attempt:'+run_id
@@ -229,13 +240,19 @@ def run():
             raise ValueError('FBS read HTTP ' + str(r.status_code))
         return r.json()
 
+    prior = previous or {}
+    reusable_orders = all((prior.get('orders', {}).get(str(n)) or {}).get('status') == 'complete' for n in (0,1,7))
     try:
-        new = get('/api/v3/orders/new').get('orders')
+        new = [] if reusable_orders else get('/api/v3/orders/new').get('orders')
         if not isinstance(new, list):
             raise ValueError('Malformed new orders response')
     except Exception as ex:
         new = []; e['new_orders_error'] = safe_error(ex)
     for offset in (0, 1, 7):
+        saved = prior.get('orders', {}).get(str(offset), {})
+        if saved.get('status') == 'complete':
+            e['orders'][str(offset)] = saved
+            continue
         end = cut - timedelta(days=offset)
         start = end.replace(hour=0)
         try:
@@ -258,7 +275,9 @@ def run():
             e['last_hour_comparisons'] = {str(x): comparison(e['orders']['0']['last_completed_hour'], e['orders'][str(x)]['last_completed_hour']) for x in (1, 7)}
     if policy.get('funnel_nm_ids'):
         try:
-            e['general_funnel'] = collect_funnel(c, cut, policy['funnel_nm_ids'])
+            saved = prior.get('general_funnel', {})
+            same_scope = {r['nm_id'] for r in saved.get('rows', [])} == set(policy['funnel_nm_ids'])
+            e['general_funnel'] = saved if saved.get('status') == 'complete' and same_scope else collect_funnel(c, cut, policy['funnel_nm_ids'])
         except Exception as ex:
             e['general_funnel'] = dict(status='unavailable', reason=safe_error(ex))
     try:
@@ -283,8 +302,10 @@ def run():
             basis='Current cumulative advertising attribution snapshot, including completed campaigns; overlapping attributed orders not unique; not exact order cutoff')
         try:
             budget_ids = sorted(int(cid) for cid, row in campaigns.items() if row['status'] in (9, 11))
-            budgets = w.req('/api/advert/v2/budget', 'POST', dict(advertIds=budget_ids)).get('adverts', []) if budget_ids else []
-            e['budgets'] = dict(status='complete' if {r['advertId'] for r in budgets} == set(budget_ids) else 'partial',
+            saved = prior.get('budgets', {})
+            reuse = saved.get('status') == 'complete' and {r['advertId'] for r in saved.get('rows', [])} == set(budget_ids)
+            budgets = saved['rows'] if reuse else w.req('/api/advert/v2/budget', 'POST', dict(advertIds=budget_ids)).get('adverts', []) if budget_ids else []
+            e['budgets'] = saved if reuse else dict(status='complete' if {r['advertId'] for r in budgets} == set(budget_ids) else 'partial',
                                 observed_at=stamp(), rows=budgets, requested_ids=budget_ids,
                                 scope='Active and paused only; completed campaign expenses retained in advertising stats')
         except Exception as ex:
@@ -324,7 +345,7 @@ def run():
     if c.get(key) != e:
         raise RuntimeError('Frozen snapshot readback mismatch')
     publish_latest(c,key,e)
-    ready_output(complete_slot(e))
+    ready_output(analysis_ready(e))
     # The menu uses completed days; this optional cache is independent of the hourly report.
     if (c.get('china_agent:main_menu:v1:policy')or{}).get('enabled') is True:
         try:
