@@ -1,0 +1,45 @@
+name: Verify six weekly items
+on:
+  push:
+    branches: [ops/wb-check-zont-123-20261123]
+    paths: [.github/workflows/check-six-nov16-22.yml]
+permissions: {}
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - shell: python
+        env:
+          WB: ${{ secrets.WB_TOKEN_3 }}
+        run: |
+          import urllib.request,os,json,gzip,base64,subprocess
+          from pathlib import Path
+          from concurrent.futures import ThreadPoolExecutor
+          ids=[1473245506,1473244360,1473243445,1473243440,1473243907,1473244989]
+          def report(kind):
+              url='https://statistics-api.wildberries.ru/api/v1/supplier/'+kind+'?dateFrom=2026-11-16T00%3A00%3A00&flag=0'
+              try:
+                  req=urllib.request.Request(url,headers={'Authorization':os.environ['WB']})
+                  with urllib.request.urlopen(req,timeout=40) as f: data=json.load(f)
+                  out={n:[0,0] for n in ids}
+                  for row in data:
+                      n=row.get('nmId')
+                      if n not in out or not '2026-11-16'<=str(row.get('date',''))[:10]<='2026-11-22':continue
+                      if kind=='orders':
+                          out[n][0]+=1
+                          out[n][1]+=bool(row.get('isCancel'))
+                      else:
+                          sid=str(row.get('saleID',''))
+                          if sid.startswith('S'):out[n][0]+=1
+                          if sid.startswith('R'):out[n][1]+=1
+                  return {'total_api_rows':len(data),'items':out}
+              except Exception as e:
+                  return {'error':getattr(e,'code',type(e).__name__)}
+          with ThreadPoolExecutor() as pool:
+              result=dict(zip(['orders','sales'],pool.map(report,['orders','sales'])))
+          Path('/tmp/stock_pub.pem').write_text("-----BEGIN PUBLIC KEY-----\r\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA6qqxdhFzZ8DguEH28C05\r\nbHPNQOQMGy+i3rRSMJ3BgnSVNtY+TIU2cvEBZ3rMRSxShzaZpLBnagQ/0ySO/82L\r\nCxGcg/sLOSoDD9f0H+D0TdlAvkRn61y2ADBRc+CODMUttKzPfYG/Ot36zSpCpYJ7\r\nOqUxF3TiSANIsaF6wo/Qfsv3lXk7WYIEenN9/h0EK+6bAQYYqOKKT5zsvjL9mlVj\r\nyOWLtk+mK3UQbsaoBlFoi1HKQhPVBcO1GdHOyCEv5dhTSHUccTtXNweYhzyGSzeY\r\nZvDuzR52qWuW9rK9YkqdBuENx0ect1rIbqDzjU59syBI5SaVDmCOKRtBGwy7CTvB\r\nyQIDAQAB\r\n-----END PUBLIC KEY-----")
+          raw=gzip.compress(json.dumps(result).encode())
+          for i in range(0,len(raw),180):
+              cipher=subprocess.check_output(['openssl','pkeyutl','-encrypt','-pubin','-inkey','/tmp/stock_pub.pem','-pkeyopt','rsa_padding_mode:oaep','-pkeyopt','rsa_oaep_md:sha256'],input=raw[i:i+180])
+              print('WEEK_ENCRYPTED',base64.b64encode(cipher).decode())
