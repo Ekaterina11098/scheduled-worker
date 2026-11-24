@@ -34,6 +34,7 @@ jobs:
         run: |
           python scripts/test_ooo_report_recovery.py
           python scripts/test_ooo_funding.py
+          python scripts/test_ooo_discovery.py
       - name: Verify current cached report rendering without delivery
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

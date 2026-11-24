@@ -18,6 +18,8 @@ def require_complete_statistics(rows,days,configurations=None):
   campaign=by_id.get(cid,{})
   dated={r.get('date','')[:10]:r for r in campaign.get('days',[])}
   for day in days:
+   created=(configurations or{}).get(str(cid),{}).get('timestamps',{}).get('created','')[:10]
+   if created and day<created:continue # Not created yet is not a missing observation.
    row=dated.get(day)
    if campaign.get('currency')!='KGS'or row is None or any(type(row.get(k))not in(int,float)or row[k]<0 for k in ('sum','sum_price','orders','clicks','views')):
     missing.append([cid,day])
@@ -84,13 +86,14 @@ def worker(slot,day=None,verify=False,prepare_only=False):
    missing=z['internal_analysis']['missing_required_day'];renderer=renderer.replace('Нет полной строки WB у РК 41516903 и 41517233','Пропуски WB: '+(', '.join(missing)if missing else 'нет'))
    execute(renderer,R/'work/render.py');kinds=['advertising','budgets'];files=[R/'outputs'/('VESCHI_OOO_'+k+'_'+day+'_actions_only.png')for k in kinds]
   else:
-   ids=[39605581,39605579,40385586,41515989,41516310,41516903,41517233,41517533,39605582]
+   ids=sorted(map(int,a['configurations']))
    request={'read_only':True,'cabinet':'token_1','day':day,'campaign_ids':ids}
    if not verify and not db.get(root+':request'):db.once(root+':request',request)
    reader=assets['midreader'].replace('2026-11-11',day)
    if not verify:execute(reader,R/'work/readmid.py')
    s=db.get(root+':read')or{}
    if not s.get('data')or not s.get('steps'):raise RuntimeError('Current-day source unavailable')
+   for cid,cfg in s.get('current_statuses',{}).items():a['configurations'].setdefault(cid,cfg)
    quality=require_complete_statistics(s['data'],[day],s.get('current_statuses')or a['configurations'])
    s.update(day=day,observed_at=s['steps']['0']['observed_at'],status='partial',missing_ids=sorted(set(s['steps']['0']['requested_ids'])-{c['advertId']for c in s['data']}))
    (R/'work/ooo_midday11_current.json').write_text(json.dumps(s),encoding='utf-8');(R/'work/ooo_morning11_review.json').write_text(json.dumps({'actions':[],'funding':[]}),encoding='utf-8')
