@@ -34,8 +34,13 @@ with runtime_db() as lock:
     if time.monotonic()-last[0]>=120:verify_runtime_storage(hw,hr,probe);last[0]=time.monotonic()
    g.check_run_budget=budget
    try:
-    preflight(g,shared)
-    source=service.capture(g)
+    preflight(g,shared,orders=False)
+    reference=s.sql('SELECT snapshot FROM stock_runs WHERE id=?',('technical:stock-daily:2026-11-24:0700',)).fetchone();db.commit()
+    if not reference:raise Stopped('Completed sales reference missing')
+    sales=json.loads(reference[0])['source']['sales']
+    ip_catalog=g.get_real_wb_cards_and_scores(g.cabinet_tokens()[1])
+    scope={g.norm(c.get('vendorCode')) for c in ip_catalog if g.norm(c.get('vendorCode'))}
+    source=service.capture(g,scope,sales)
     if source.get('orders_complete') is not True:raise Stopped('Full fresh demand data not available')
     if source.get('unposted_orders',{}).get('complete') is not True:raise Stopped('Common reserve proof missing')
     cards=service.restored_cards(source)
