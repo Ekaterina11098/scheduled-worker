@@ -67,7 +67,7 @@ def main():
  io.put('china_agent:main_menu:v1:report:drr',menu)
  # The empty deleted page has no actions and cannot be used for navigation.
  empty_binding=io.get(BIND+'1149')or{}
- io.put(ROOT+':deleted_page_binding',empty_binding)
+ io.create(ROOT+':deleted_page_binding',empty_binding) # new immutable audit row
  assert io.get(ART)['files'][0]['plan_sha256']==p['plan_sha256']
  assert io.get(DEL)['parts'][0]['receipt']['message_id']==1148
  assert io.get(BUTTON_ROOT+'message:1148')['token']==buttons['token']
