@@ -46,7 +46,7 @@ jobs:
 
           ROOT = "angelabag_media_insert7:v1:"
           PRECHECK = "angelabag_media_insert7:v2:read_only:20261124"
-          RESULT = ROOT + "gallery_audit:20261124"
+          RESULT = ROOT + "gallery_audit:20261124:historical"
           INPUT = ROOT + "approved_input:20261124"
           PILOT = 1473244338
           EXCLUDED = 1473244337
@@ -150,25 +150,61 @@ jobs:
                   material.append(raw)
               return [image(raw) for raw in material]
 
+          def historical_images(client):
+              import json
+              from zipfile import ZipFile
+              archive = client.get("content_photo_bridge:v1:request:3ff851e7-00f3-43ce-a867-14136dcd1432")
+              credentials = json.loads(client.call(client.base + "/rest/v1/rpc/content_photo_drive_credentials", "POST", {}))
+              drive = Delivery(credentials, requests.request)
+              drive.refresh()
+              ident = archive["drive"]["file_id"]
+              meta = drive.metadata(ident)
+              if meta.get("parents") != [FOLDER] or meta.get("mimeType") != "application/zip" or meta.get("trashed"):
+                  raise Stop("archive_identity_failed")
+              with drive.call("GET", API + "/" + ident, params={"alt": "media"}, stream=True) as response:
+                  if response.status_code != 200:
+                      raise Stop("archive_unavailable")
+                  data = bytearray()
+                  for chunk in response.iter_content(65536):
+                      data.extend(chunk)
+                      if len(data) > int(archive["archive_bytes"]):
+                          raise Stop("archive_size_mismatch")
+              if len(data) != int(archive["archive_bytes"]) or sha(data) != archive["archive_sha256"]:
+                  raise Stop("archive_hash_mismatch")
+              with ZipFile(io.BytesIO(data)) as z:
+                  manifest = json.loads(z.read("MANIFEST.json"))
+                  card, = [c for c in manifest["cards"] if c["nmID"] == PILOT and c["article"] == "208-AngelaBag-black"]
+                  entries = card["photos"]
+                  if card["total_photos"] != 14 or [entry["photo"] for entry in entries] != list(range(1, 15)):
+                      raise Stop("historical_gallery_incomplete")
+                  raw = [z.read(entry["file"]) for entry in entries]
+                  if [sha(blob) for blob in raw] != [entry["sha256"] for entry in entries]:
+                      raise Stop("historical_photo_integrity_failed")
+              return raw
+
+
           def main():
               client = Client()
-              report = {"run_id": os.environ["GITHUB_RUN_ID"], "wb_writes": 0}
               try:
+                  historic = historical_images(client)
                   card = read_card(client, PILOT, "208-AngelaBag-black")
-                  live = [image(raw) for raw in photos(client, media_urls(card), fresh=True)]
-                  slides = approved_images(client)
-                  positions = matches(slides, live)
-                  report.update(status="complete", nmID=card["nmID"], vendorCode=card["vendorCode"],
-                                photo_count=len(live), has_video=bool(card.get("video")),
-                                approved_slide_positions=[[i+1 for i in hits] for hits in positions],
-                                unmatched_positions=[i+1 for i in range(len(live))
-                                                     if not any(i in hits for hits in positions)])
-              except Exception as error:
-                  report.update(status="failed", reason=str(error) if isinstance(error, Stop) else type(error).__name__)
+                  live_raw = photos(client, media_urls(card), fresh=True)
+                  live = [image(raw) for raw in live_raw]
+                  report = []
+                  for idx, raw in enumerate(historic, 1):
+                      expected = idx if idx <= 6 else idx + 4
+                      exact = [i+1 for i, current in enumerate(live_raw) if sha(raw) == sha(current)]
+                      archived = image(raw)
+                      similar = [i+1 for i, current in enumerate(live) if difference(archived, current) <= 3]
+                      hits = exact or similar
+                      status = "missing" if not hits else "matched" if hits == [expected] else "position_or_match_mismatch"
+                      report.append({"archive_position": idx, "expected_position": expected,
+                                     "current_positions": hits, "status": status})
                   save(client, report)
-                  raise SystemExit("Read-only gallery audit failed") from None
-              save(client, report)
-              print("Read-only gallery audit complete")
+              except Exception as error:
+                  status = str(error) if isinstance(error, Stop) else type(error).__name__
+                  raise SystemExit("Read-only archive comparison failed: " + status) from None
+              print("Read-only archive comparison complete")
 
 
           if __name__ == "__main__":
