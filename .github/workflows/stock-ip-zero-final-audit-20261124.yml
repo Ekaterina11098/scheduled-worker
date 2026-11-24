@@ -11,7 +11,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: bot-stock
+  group: stock-final-ip-audit-20261124
   cancel-in-progress: false
 jobs:
   stock:
