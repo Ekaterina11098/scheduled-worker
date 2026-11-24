@@ -21,6 +21,33 @@ with patch.dict(sys.modules, {'china_cloud_cost_control': helper,
     spec.loader.exec_module(m)
 
 class CollectorTest(unittest.TestCase):
+    def test_partial_retry_reuses_complete_orders_funnel_and_budgets_without_api_replay(self):
+        now=datetime.now(timezone.utc);cut=now.astimezone(m.MSK).replace(minute=0,second=0,microsecond=0)
+        c=self.cache();c.put(m.POLICY,dict(enabled=True,cabinet='token_3',wb_writes=0,funnel_nm_ids=[5]))
+        c.put('china_agent:prices:v1',dict(cabinet='token_3',rows=[dict(nmID=5,vendorCode='fur',currencyIsoCode4217='CNY')]))
+        original=self.snapshot(cut,'partial')
+        original.update(funnel_requested=True,general_funnel=dict(status='complete',rows=[dict(nm_id=5)],observed_at=now.isoformat()))
+        original['orders']={str(n):dict(status='complete',totals=dict(count=1,amount_cny=10),last_completed_hour=dict(count=1,amount_cny=10)) for n in (0,1,7)}
+        original['budgets']=dict(status='complete',rows=[dict(advertId=1,total=100)],observed_at=now.isoformat())
+        c.put(m.slot_key(cut),original)
+        class W:
+            token='unused'
+            def campaigns(self,ids):return {'1':dict(id=1,status=9,currency='CNY')}
+            def req(self,path,*args):
+                if path=='/adv/v1/promotion/count':return dict(adverts=[dict(status=9,advert_list=[dict(advertId=1)])])
+                if path.startswith('/adv/v3/fullstats'):return [dict(advertId=1,sum=1,sum_price=10,orders=1,clicks=3,views=10)]
+                raise AssertionError('Repeated completed budget read')
+        with (patch.object(m,'Cache',return_value=c),patch.object(m,'ReadOnlyWB',return_value=W()),
+              patch.object(m,'collect_funnel',side_effect=AssertionError('Repeated funnel read')),
+              patch.object(m.requests,'get',create=True,side_effect=AssertionError('Repeated order read')),
+              patch.dict('os.environ',GITHUB_REPOSITORY='Ekaterina11098/scheduled-worker',GITHUB_RUN_ID='repair-test')):
+            m.run()
+        self.assertEqual(c.get(m.slot_key(cut)),original)
+        recovered=c.get(m.slot_key(cut)+':attempt:repair-test')
+        self.assertEqual(recovered['status'],'complete')
+        self.assertEqual(recovered['orders'],original['orders'])
+        self.assertEqual(recovered['general_funnel'],original['general_funnel'])
+        self.assertEqual(recovered['budgets'],original['budgets'])
     def test_catalogue_identity_and_currency_remain_required(self):
         row=dict(nmID=123,vendorCode='bag',currencyIsoCode4217='CNY')
         self.assertEqual(m.catalogue_ids(dict(cabinet='token_3',rows=[row])),{123})
