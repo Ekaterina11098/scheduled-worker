@@ -297,11 +297,9 @@ def validate_addition(io,item,before):
  if before['id']!=cid or before['status']!=9 or before['currency']!='CNY'or before['bid_type']!='manual'or before['settings']['payment_type']!='cpc'or before['settings']['placements'].get(item['placement'])is not True or not before.get('restrictions',{}).get('can_change_nms')or len(before['nm_settings'])>=50:raise ValueError('Addition campaign changed')
  if {n['subject']['id']for n in before['nm_settings']}!={item['subject_id']}:raise ValueError('Addition category changed')
  prices=current_prices(io,[nm]);p=prices['rows'][0];stock=read_stock([item['article']]);pub=published_stock(io,prices,[nm])
- if p['article'].casefold()!=item['article'].casefold()or p['seller_price']!=e['price_cny']or not stock['coverage_complete']or stock['rows'][0]['stock']-stock['rows'][0]['reserve']<=0 or pub['amounts'].get(str(nm),0)<=0:raise ValueError('Addition price/stock unknown or changed')
- st=stock['rows'][0];fx=float(e['fx_rub_per_cny'])
- if not math.isfinite(fx)or fx<=0:raise ValueError('Addition exchange rate unavailable')
- delta=e['buyout']*(st['price']/100-e['own_cogs_rub'])/fx
- if st['price']<=0 or e['expected_margin_before_ads_cny']-delta<=0:raise ValueError('Addition current economics no longer positive')
+ from china_addition_reprice import reconcile
+ p=dict(p,observed_at=prices['observed_at'])
+ current_evidence=reconcile(io,item,p,stock,pub)
  cfg=http(io,'/api/advert/v1/config')
  if cfg['currency']!='CNY'or item['target_minor']%cfg['cpcStep']or item['target_minor']>cfg['cpcMaxBid']:raise ValueError('Addition bid step changed')
  typ='search'if item['placement']=='search'else'recommendation'
@@ -318,6 +316,7 @@ def validate_addition(io,item,before):
  if len(vals)!=1 or vals[0]>item['target_minor']:raise ValueError('Exact addition minimum changed')
  from china_advertising_reserve import require as require_current_reserve
  require_current_reserve(io,item)
+ return current_evidence
 
 def enrich(io,s,bundle):
  from china_advertising_growth import merge
