@@ -1,6 +1,47 @@
 """Deterministic review of every catalogue row; proposals only, no provider calls."""
 import collections,datetime,json
 
+def minimum_bid_exclusions(a,e,day):
+ """Proposals only: sustained failure at the minimum, after the latest known change.
+
+ Never infer a placement from blended traffic. An exclusion covers the whole SKU.
+ Require seven complete returned campaign days, 90 clicks/300 KGS and three
+ recent spending days without direct orders. This is not an automatic WB stop.
+ """
+ end=datetime.date.fromisoformat(day)-datetime.timedelta(days=1)
+ start=end-datetime.timedelta(days=6);last3={str(end-datetime.timedelta(days=i))for i in range(3)}
+ stats=e['sources']['advertising14']['data'];result=[];checks=[]
+ for r in a['rows']:
+  for m in r['members']:
+   if m['status']!=9:continue
+   cfg=a['configurations'][str(m['cid'])]
+   placements=[p for p,on in m['placements'].items()if on]
+   if not placements or any(m['bids'].get(p)!=(270 if m['cid']==39605579 and p=='recommendations'else 325)for p in placements):continue
+   dates=[v[:10]for v in cfg.get('timestamps',{}).values()if isinstance(v,str)and v[:10]<='2099-12-31']
+   dates += [v['at'][:10]for v in a.get('verified_bid_changes',[])if v['cid']==m['cid']and v['nm']==r['nm']]
+   if not dates or max(dates)>=str(start):continue # Change day is mixed; seven FULL days required.
+   campaign=next((c for c in stats if c['advertId']==m['cid']),{})
+   observed={d['date'][:10]for d in campaign.get('days',[])}
+   required={str(start+datetime.timedelta(days=i))for i in range(7)}
+   if not required<=observed:continue
+   totals=collections.Counter();recent={d:collections.Counter()for d in last3}
+   for c in stats:
+    for d in c.get('days',[]):
+     dt=d['date'][:10]
+     if dt not in required:continue
+     for app in d.get('apps',[]):
+      for n in app.get('nms',[]):
+       if n['nmId']!=r['nm']:continue
+       values={k:n.get(k,0)for k in ('sum','sum_price','orders','clicks')}
+       totals.update(values)
+       if dt in recent:recent[dt].update(values)
+   drr=totals['sum']/totals['sum_price']*100 if totals['sum_price']>0 else None
+   sustained=all(v['sum']>0 and v['orders']==0 for v in recent.values())
+   ready=totals['sum']>=300 and totals['clicks']>=90 and sustained and(drr is None or drr>5)
+   checks.append({'cid':m['cid'],'nm':r['nm'],'period':[str(start),str(end)],'all_campaign_totals':dict(totals),'drr':drr,'propose_exclusion':ready})
+   if ready:result.append({'kind':'exclude_sku','cid':m['cid'],'nm':r['nm'],'article':r['article']})
+ return result,checks
+
 def evaluate_funding(cid,cfg,campaign,balance,rows,missing_days):
  """Evaluate active AND paused campaigns; return proposals, never resume permissions."""
  members=[r for r in rows if any(m['cid']==int(cid)for m in r['members'])]
@@ -47,9 +88,14 @@ def review(a,e,day):
    v=(m['ads']or{}).get('three',{});last=(m['ads']or{}).get('day',{})
    if type(bid)is int and bid>minimum and v.get('clicks',0)>=30 and v.get('sum',0)>=100 and v.get('orders',0)==0 and last.get('orders',0)==0 and last.get('sum',0)>0:
     actions.append({'kind':'reduce_bid','cid':m['cid'],'nm':r['nm'],'article':r['article'],'placement':placement,'from_minor':bid,'to_minor':minimum})
+ exclusions,minimum_checks=minimum_bid_exclusions(a,e,day)
+ actions.extend(exclusions)
  for cid,cfg in a['configurations'].items():
   check=evaluate_funding(cid,cfg,a['campaigns'].get(cid,{}),a['budgets'].get(cid),a['rows'],missing.get(cid,[]))
   funding_checks.append(check)
   if check['decision']=='propose_topup':funding.append({'cid':int(cid),'amount_kgs':check['amount_kgs']})
- assert len(checks)==351
+ assert len(checks)==len(a['rows'])
+ # Keep rationale outside PNG; an empty reduction list is not a minimum-bid review.
+ for check in minimum_checks:
+  next(r for r in checks if r['nm']==check['nm']).setdefault('minimum_bid_review',[]).append(check)
  return {'status':'reviewed_proposals_only','actions':actions,'funding':funding,'budgets':a['budgets'],'internal_analysis':{'catalogue':351,'sku_checks':checks,'funding_checks':funding_checks,'missing_required_day':missing,'sources_at':a['sources_at'],'historical_coverage':e.get('advertising_coverage'),'rules':'No zero fill. DRR native campaign first; no averages. No automatic pause/exclusion from no orders. Bid reductions only unambiguous serving placement above cached minimum. No raise/add without robust placement evidence. Active and paused campaigns both evaluated with recorded reasons; paused proposals require recent delivery and composition economics review, never authorize resume. Funding only actual one-day cash shortfall with native day/3d DRR<=5 and positive dated RUB-before-ad stock scenario; minimum1200 not authorization. No actual profit or FX conversion claimed. Recent minimum-bid changes never reissued.','economics':'RUB scenario before advertising only, mature cohort date explicit, no confirmed KGS/RUB FX or actual profit claim. Associated orders not proof of direct SKU efficacy.','wb_writes':0,'model_calls':0}}

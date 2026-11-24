@@ -67,6 +67,13 @@ def worker(slot,day=None,verify=False,prepare_only=False):
   (R/'work/ooo_full_plan_model.json').write_text(json.dumps(model),encoding='utf-8')
   analyzer=dated(assets['analyzer'],'2026-11-11',{'2026-11-11':0,'2026-11-10':-1,'2026-11-08':-3})
   execute(analyzer,R/'work/analyzer.py');a=json.loads((R/'work/ooo_morning11_analysis.json').read_text(encoding='utf-8'))
+  a['verified_bid_changes']=[]
+  approvals=db.api('GET','telegram_api_cache',{'cache_key':'like.ooo_agent:sol_dialog:v1:approved_report:*','payload->>status':'eq.verified','select':'payload','limit':1000})
+  for row in approvals:
+   approval=row['payload'];verified=approval.get('execution',{}).get('verified_at')
+   if verified:
+    for action in approval.get('manifest',{}).get('actions',[]):
+     if action.get('nm')is not None:a['verified_bid_changes'].append({'cid':action['cid'],'nm':action['nm'],'at':verified})
   for cid in a['configurations']:a['campaigns'].setdefault(cid,{p:{}for p in ['day','three','fourteen','today']})
   z=review(a,evidence,day)
   quality=None

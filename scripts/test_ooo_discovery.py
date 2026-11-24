@@ -2,6 +2,7 @@ import ast,json,sys,types,unittest
 from pathlib import Path
 sys.modules.setdefault('china_codex_cloud',types.SimpleNamespace(DB=object,stamp=lambda:None))
 import ooo_daily_reports as report
+from ooo_daily_review import minimum_bid_exclusions
 T=json.loads(Path(__file__).with_name('ooo_report_templates.json').read_text())
 
 class Discovery(unittest.TestCase):
@@ -36,5 +37,22 @@ class Discovery(unittest.TestCase):
    self.assertEqual(ns['names'][42139012],'New campaign')
  def test_every_template_compiles(self):
   for key,value in T.items():compile(value,key,'exec')
+ def minimum_fixture(self):
+  cfg={'status':9,'timestamps':{'created':'2026-11-16T10:00:00+03:00'}}
+  row={'nm':1,'article':'fixture','members':[{'cid':2,'status':9,'placements':{'search':True,'recommendations':True},'bids':{'search':325,'recommendations':325}}]}
+  days=[{'date':'2026-11-'+str(i),'apps':[{'nms':[{'nmId':1,'sum':50,'clicks':16,'orders':0,'sum_price':0}]}]}for i in range(17,24)]
+  return {'rows':[row],'configurations':{'2':cfg}}, {'sources':{'advertising14':{'data':[{'advertId':2,'days':days}]}}}
+ def test_sustained_minimum_bid_loss_is_a_proposal_even_with_two_placements(self):
+  a,e=self.minimum_fixture();actions,_=minimum_bid_exclusions(a,e,'2026-11-24')
+  self.assertEqual(actions,[{'kind':'exclude_sku','cid':2,'nm':1,'article':'fixture'}])
+ def test_recent_verified_change_prevents_premature_exclusion(self):
+  a,e=self.minimum_fixture();a['verified_bid_changes']=[{'cid':2,'nm':1,'at':'2026-11-18T10:00:00+00:00'}]
+  self.assertEqual(minimum_bid_exclusions(a,e,'2026-11-24')[0],[])
+ def test_small_spend_and_missing_day_never_trigger_exclusion(self):
+  a,e=self.minimum_fixture();e['sources']['advertising14']['data'][0]['days'].pop()
+  self.assertEqual(minimum_bid_exclusions(a,e,'2026-11-24')[0],[])
+  a,e=self.minimum_fixture()
+  for d in e['sources']['advertising14']['data'][0]['days']:d['apps'][0]['nms'][0].update(sum=3.25,clicks=1)
+  self.assertEqual(minimum_bid_exclusions(a,e,'2026-11-24')[0],[])
 
 if __name__=='__main__':unittest.main()
