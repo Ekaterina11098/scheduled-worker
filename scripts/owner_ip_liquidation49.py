@@ -2,6 +2,7 @@
 import copy,datetime,hashlib,json,os,time,requests
 from owner_ad_tests23 import State,ReadWB,stamp
 ROOT='ip_agent:liquidation49:2026-11-24:v1'
+EXEC=ROOT+':execution:v2'
 HOST='advert-api.wildberries.ru'
 def projection(c):
  return dict(id=c['id'],status=c['status'],currency=c['currency'],bid_type=c['bid_type'],settings=c['settings'],members={str(n['nm_id']):n['bids_kopecks'] for n in c['nm_settings']})
@@ -16,9 +17,9 @@ def validate(a):
 class Runner:
  def __init__(self):
   self.db=State();self.a=self.db.get(ROOT+':approval');validate(self.a)
-  self.wb=ReadWB(self.db,'token_2');self.wb.identity();self.deadline=time.time()+150*60
+  self.wb=ReadWB(self.db,'token_2');self.wb.identity();self.deadline=time.time()+4*3600
   self.s={'status':'preflight','steps':{},'created':{},'model_calls':0,'telegram_sends':0,'wb_write_attempts':0,'started_at':stamp()}
- def save(self):self.db.put(ROOT+':execution',self.s)
+ def save(self):self.db.put(EXEC,self.s)
  def guard(self):
   validate(self.a)
   if self.db.get(ROOT+':approval')!=self.a:raise PermissionError('Authorization changed')
@@ -69,8 +70,10 @@ class Runner:
   if {r['advertId']for r in rows}!=set(ids)or any(r['currency']!='RUB'or type(r['total'])is not int for r in rows):raise ValueError('Budget coverage/currency')
   return {str(r['advertId']):r['total']for r in rows}
  def run(self):
-  if self.db.get(ROOT+':execution'):raise RuntimeError('Existing execution; inspect receipts instead of replay')
-  if not self.db.put(ROOT+':execution',self.s,once=True):raise RuntimeError('Execution claimed')
+  prior=self.db.get(ROOT+':execution')or{}
+  if prior.get('wb_write_attempts',0)!=0 or prior.get('status')not in('attention',None):raise RuntimeError('Earlier worker still live or wrote; no replay')
+  if self.db.get(EXEC):raise RuntimeError('Existing execution; inspect receipts instead of replay')
+  if not self.db.put(EXEC,self.s,once=True):raise RuntimeError('Execution claimed')
   try:self.execute()
   except Exception as e:self.s.update(status='attention',error=str(e)if isinstance(e,(RuntimeError,PermissionError,ValueError))else type(e).__name__);self.save()
   self.s['finished_at']=stamp();self.save();print(json.dumps({'status':self.s['status'],'writes':self.s['wb_write_attempts'],'telegram_sends':0}),flush=True)
