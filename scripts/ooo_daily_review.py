@@ -9,7 +9,7 @@ def minimum_bid_exclusions(a,e,day):
  recent spending days without direct orders. This is not an automatic WB stop.
  """
  end=datetime.date.fromisoformat(day)-datetime.timedelta(days=1)
- start=end-datetime.timedelta(days=6);last3={str(end-datetime.timedelta(days=i))for i in range(3)}
+ earliest=end-datetime.timedelta(days=13);last3={str(end-datetime.timedelta(days=i))for i in range(3)}
  stats=e['sources']['advertising14']['data'];result=[];checks=[]
  for r in a['rows']:
   for m in r['members']:
@@ -19,12 +19,14 @@ def minimum_bid_exclusions(a,e,day):
    if not placements or any(m['bids'].get(p)!=(270 if m['cid']==39605579 and p=='recommendations'else 325)for p in placements):continue
    dates=[v[:10]for v in cfg.get('timestamps',{}).values()if isinstance(v,str)and v[:10]<='2099-12-31']
    dates += [v['at'][:10]for v in a.get('verified_bid_changes',[])if v['cid']==m['cid']and v['nm']==r['nm']]
-   if not dates or max(dates)>=str(start):continue # Change day is mixed; seven FULL days required.
+   if not dates:continue
+   start=max(earliest,datetime.date.fromisoformat(max(dates))+datetime.timedelta(days=1))
+   if(end-start).days<6:continue # Change day is mixed; seven FULL days required.
    campaign=next((c for c in stats if c['advertId']==m['cid']),{})
    observed={d['date'][:10]for d in campaign.get('days',[])}
-   required={str(start+datetime.timedelta(days=i))for i in range(7)}
+   required={str(start+datetime.timedelta(days=i))for i in range((end-start).days+1)}
    if not required<=observed:continue
-   totals=collections.Counter();recent={d:collections.Counter()for d in last3}
+   totals=collections.Counter();recent={d:collections.Counter()for d in last3};spending_days=set()
    for c in stats:
     for d in c.get('days',[]):
      dt=d['date'][:10]
@@ -33,10 +35,11 @@ def minimum_bid_exclusions(a,e,day):
       for n in app.get('nms',[]):
        if n['nmId']!=r['nm']:continue
        values={k:n.get(k,0)for k in ('sum','sum_price','orders','clicks')}
+       if values['sum']>0:spending_days.add(dt)
        totals.update(values)
        if dt in recent:recent[dt].update(values)
    drr=totals['sum']/totals['sum_price']*100 if totals['sum_price']>0 else None
-   sustained=all(v['sum']>0 and v['orders']==0 for v in recent.values())
+   sustained=len(spending_days)>=3 and all(v['orders']==0 for v in recent.values())and any(v['sum']>0 for v in recent.values())
    ready=totals['sum']>=300 and totals['clicks']>=90 and sustained and(drr is None or drr>5)
    checks.append({'cid':m['cid'],'nm':r['nm'],'period':[str(start),str(end)],'all_campaign_totals':dict(totals),'drr':drr,'propose_exclusion':ready})
    if ready:result.append({'kind':'exclude_sku','cid':m['cid'],'nm':r['nm'],'article':r['article']})
