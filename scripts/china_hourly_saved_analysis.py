@@ -57,6 +57,8 @@ def build(cache, key, source):
                 method='deterministic_saved_evidence', source_key=key,
                 slot_msk=source['slot_msk'], observed_at=source['observed_at'], completed_at=stamp(),
                 cabinet='token_3', orders=orders, sales_comparisons=sales,
+                orders_observed_at={str(n):source['orders'][str(n)].get('observed_at') for n in (0,1,7)},
+                funnel_observed_at=current.get('observed_at'),
                 funnel_current=[dict(nm_id=r['nm_id'], **funnel_metrics(r['selected'])) for r in current.get('rows', [])],
                 funnel_same_clock=funnels, advertising=dict(status=source['advertising']['status'], totals=source['advertising']['totals']),
                 advertising_coverage={k:source['advertising'].get(k) for k in
