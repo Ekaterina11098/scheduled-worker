@@ -74,3 +74,5 @@ jobs:
           CHINA_TELEGRAM_BOT_TOKEN: ""
           OPENAI_API_KEY: ""
         run: python scripts/china_hourly_saved_analysis.py
+
+# Saved-source diagnostics remain independent of missing advertising rows.
