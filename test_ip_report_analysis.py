@@ -2,7 +2,7 @@ import copy,sys,types,unittest
 from unittest.mock import patch
 try:import requests
 except ImportError:sys.modules['requests']=types.SimpleNamespace(post=lambda *a,**kw:None)
-from ip_report_analysis import financial_result,economics,screen,review_report,validate,Halt,ROOT
+from ip_report_analysis import financial_result,economics,screen,review_report,Halt,ROOT
 from test_ip_cloud_dialog import FakeState
 DAY='2026-11-05'
 def fixture():
@@ -37,62 +37,38 @@ class AnalysisTests(unittest.TestCase):
   inp,c,v=fixture();a=c['actions'][0];a['kind']='lower_bid';a['daily']={DAY:dict(spend=10,orders=1,revenue=100), '2026-11-04':dict(spend=1,orders=10,revenue=1000)};result,audit=screen(c,v,inp);self.assertEqual(result,[]);self.assertTrue(audit['rejected'])
  def test_marginal_economics_uses_ip_stress_cost(self):
   inp,c,v=fixture();inp['marginal_models']={'101':dict(cabinet='token_2',currency='RUB',tax_reserve_rate=.15,period_to=DAY,verified=True,expected_margin_before_ads=5,stress_margin_before_ads=5)};a,_=screen(c,v,inp);self.assertEqual(a,[])
- def test_sol_cannot_invent_action(self):
-  r=dict(selected=['invented'],directions={k:'checked'for k in('raise','add','reduce','exclude')},research=[],summary='')
-  with self.assertRaises(Halt):validate(r,{},set())
- def test_cached_review_no_second_model_and_original_action_parameters(self):
-  inp,c,v=fixture();state=FakeState();state.data[ROOT+'policy']['report_review_enabled']=True
+
+ def test_rules_never_call_model_even_with_expired_price_or_uncertain_old_receipt(self):
+  inp,c,v=fixture();state=FakeState()
+  state.data[ROOT+'policy'].update(report_review_enabled=True,advertising_strategy='cost_reduction_only',price_valid_until='2000-01-01')
+  state.data[ROOT+'report-analysis:v4:'+DAY]={'status':'uncertain_no_retry'}
+  writes=[]
+  class Store:
+   def cache_set(self,*a,**kw):writes.append((a,kw))
+  prior=copy.deepcopy(state.data)
+  with patch('ip_report_analysis.State',return_value=state),patch('ip_report_analysis.load_inputs',return_value=inp),patch('requests.post',side_effect=AssertionError('No network/model')),patch('ip_cloud_dialog.Budget.reserve',side_effect=AssertionError('No paid reservation')):
+   a=review_report(Store(),v,c);b=review_report(Store(),v,c)
+  self.assertEqual(state.data,prior);self.assertEqual(a,b);self.assertEqual(a['actions'],[])
+  r=a['sol_analysis'];self.assertEqual(r['status'],'rules_reviewed');self.assertEqual(r['backend'],'rules_no_model');self.assertIsNone(r['model']);self.assertEqual(r['model_calls_this_run'],0);self.assertEqual(r['charged_micro_usd'],0)
+  self.assertNotIn('analysis_notice',a);self.assertTrue(all(x[0][0].startswith(ROOT+'report-rules:v1:')for x in writes))
+  self.assertEqual(c['actions'][0]['kind'],'raise_bid');self.assertEqual(a['review_coverage']['directions']['raise']['ready'],0)
+ def test_only_screened_reductions_keep_exact_parameters_and_current_evidence(self):
+  inp,c,v=fixture();state=FakeState();state.data[ROOT+'policy'].update(report_review_enabled=True,advertising_strategy='cost_reduction_only')
+  decrease=copy.deepcopy(c['actions'][0]);decrease.update(kind='lower_bid',target_bid_minor=280);c['actions'].append(decrease)
+  allowed=dict(decrease,analysis_id='checked-lower',ip_economics={'profit_after_ads':None},analysis_metrics={})
+  audit=dict(economics={'101':{'profit_after_ads':None}},rejected=[{'reason':'insufficient evidence'}],research=[],gaps=['finance unknown'])
   class Store:
    def cache_set(self,*a,**kw):pass
-  calls=[]
-  def model(s,identity,data):calls.append(data);return dict(selected=[data['allowed_actions'][0]['id']],directions={k:'checked'for k in('raise','add','reduce','exclude')},research=[],summary='Saved data reviewed'),dict(model='gpt-6.1-sol',charged_micro_usd=1000,model_calls=1)
-  with patch('ip_report_analysis.State',return_value=state),patch('ip_report_analysis.load_inputs',return_value=inp):
-   a=review_report(Store(),v,c,model);b=review_report(Store(),v,c,model)
-  self.assertEqual(len(calls),1);self.assertEqual(b['sol_analysis']['model_calls_this_run'],0);self.assertEqual(a['actions'][0]['target_bid_minor'],309)
-  self.assertEqual(calls[0]['allowed_actions'][0]['target_bid_rub'],3.09);self.assertEqual(calls[0]['allowed_actions'][0]['bid_currency'],'RUB');self.assertIn('change_basis',calls[0]['allowed_actions'][0]);self.assertNotIn('baseline',calls[0]['allowed_actions'][0]);self.assertNotIn('own',calls[0])
- def test_uncertain_model_is_not_replayed(self):
-  inp,c,v=fixture();state=FakeState();state.data[ROOT+'policy']['report_review_enabled']=True
-  with patch('ip_report_analysis.State',return_value=state),patch('ip_report_analysis.load_inputs',return_value=inp):
-   def fail(*a):raise TimeoutError('unknown')
-   with self.assertRaises(TimeoutError):review_report(None,v,c,fail)
-   with self.assertRaises(Halt):review_report(None,v,c,lambda *a:self.fail('repeated'))
- def test_monthly_stop_keeps_figures_and_no_unreviewed_commands(self):
-  inp,c,v=fixture();state=FakeState();state.data[ROOT+'policy']['report_review_enabled']=True
-  with patch('ip_report_analysis.State',return_value=state),patch('ip_report_analysis.load_inputs',return_value=inp):
-   def stop(*a):raise Halt('Paid budget limit reached')
-   result=review_report(None,v,c,stop)
-   self.assertEqual(result['actions'],[]);self.assertEqual(result['sol_analysis']['model_calls_this_run'],0);self.assertIn('месячный',result['analysis_notice'])
-   result=review_report(None,v,c,lambda *a:self.fail('repeat'))
-   self.assertEqual(result['actions'],[])
- def test_changed_evidence_does_not_expand_prior_sol_selection(self):
-  inp,c,v=fixture();state=FakeState();state.data[ROOT+'policy']['report_review_enabled']=True
-  class Store:
-   def cache_set(self,*a,**kw):pass
-  def model(s,identity,data):return dict(selected=[data['allowed_actions'][0]['id']],directions={k:'checked'for k in('raise','add','reduce','exclude')},research=[],summary='reviewed'),dict(model='gpt-6.1-sol',model_calls=1)
-  with patch('ip_report_analysis.State',return_value=state),patch('ip_report_analysis.load_inputs',return_value=inp):
-   review_report(Store(),v,c,model);c['actions'][0]['target_bid_minor']=308
-   result=review_report(Store(),v,c,lambda *a:self.fail('repeat'))
-   self.assertEqual(result['actions'],[])
- def test_preflight_uses_only_supported_input_parameters(self):
-  from ip_report_analysis import sol_call
-  import os
-  state=FakeState()
-  class Response:
-   status_code=200
-   def __init__(self,v):self.v=v
-   def json(self):return self.v
-  result=dict(selected=[],directions={k:'checked'for k in('raise','add','reduce','exclude')},research=[],summary='ok')
-  with patch.dict(os.environ,{'OPENAI_API_KEY':'offline'}),patch('requests.post',side_effect=[Response({'input_tokens':100}),Response({'status':'completed','id':'offline','usage':{'input_tokens':100,'output_tokens':50},'output':[{'type':'message','content':[{'type':'output_text','text':__import__('json').dumps(result)}]}]})])as post:
-   _,receipt=sol_call(state,DAY,{'saved':True})
-   self.assertEqual(set(post.call_args_list[0].kwargs['json']),{'model','instructions','input','tools'});self.assertEqual(receipt['charged_micro_usd'],700)
- def test_long_explanations_are_bounded_without_relaxing_scope(self):
-  value=dict(selected=['exact'],directions={k:'x'*800 for k in('raise','add','reduce','exclude')},research=[],summary='y'*1400)
-  result=validate(value,{'exact':{}},set());self.assertEqual(len(result['directions']['raise']),500);self.assertEqual(len(result['summary']),1200)
-  value['selected']=['new']
-  with self.assertRaises(Halt):validate(value,{'exact':{}},set())
- def test_global_concurrency_includes_report_and_dialog(self):
-  from ip_cloud_dialog import Budget
-  s=FakeState();b=Budget(s);b.reserve('report:'+DAY)
-  with self.assertRaises(Halt):b.reserve(51)
-  b.settle('report:'+DAY,dict(input_tokens=100,output_tokens=10));b.reserve(51)
+  with patch('ip_report_analysis.State',return_value=state),patch('ip_report_analysis.load_inputs',return_value=inp),patch('ip_report_analysis.screen',return_value=([allowed],audit))as screened:
+   out=review_report(Store(),v,c)
+   self.assertEqual([a['kind']for a in screened.call_args.args[0]['actions']],['lower_bid'])
+   self.assertEqual(out['actions'],[allowed]);self.assertEqual(out['actions'][0]['target_bid_minor'],280);self.assertTrue(out['historical_profit_only']);self.assertEqual(out['ip_economic_review']['gaps'],['finance unknown'])
+   screened.return_value=([],audit);out2=review_report(Store(),v,c)
+   self.assertEqual(out2['actions'],[]);self.assertNotEqual(out['plan_sha256'],out2['plan_sha256'])
+ def test_disabled_or_unapproved_strategy_fails_closed_before_reading_sources(self):
+  inp,c,v=fixture();state=FakeState()
+  with patch('ip_report_analysis.State',return_value=state),patch('ip_report_analysis.load_inputs',side_effect=AssertionError('no read')):
+   with self.assertRaises(Halt):review_report(None,v,c)
+   state.data[ROOT+'policy'].update(report_review_enabled=True,advertising_strategy='unapproved_growth')
+   with self.assertRaises(Halt):review_report(None,v,c)
 if __name__=='__main__':unittest.main()
