@@ -1,0 +1,68 @@
+name: Restore existing Mira review approval buttons
+on:
+  push:
+    paths: ['.github/workflows/mira-buttons-20261124.yml']
+permissions: {contents: read}
+concurrency:
+  group: mira-buttons-20261124
+  cancel-in-progress: false
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: /review-approval-preparation/
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install 'psycopg[binary]==3.2.10'
+      - name: Edit only bound review message
+        env:
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os,sys,json,time,hmac,hashlib,base64
+          import psycopg
+          sys.path.insert(0,'review-approval-preparation')
+          from review_telegram_approval import Approval,Repository
+          from review_approval_bridge import SQLSource
+          from review_telegram_runtime import TelegramTransport
+          from review_approval_process import acquire_ui_lock
+          root=os.environ['SUPABASE_SECRET_KEY'].encode()
+          pw=hmac.new(root,b'veschi:review-approval-login:20261015:v1',hashlib.sha256).hexdigest()
+          with psycopg.connect(host='aws-0-eu-central-1.pooler.supabase.com',port=5432,dbname='postgres',user='review_approval_login_20261015.abxgjoqlddhtcmjcjwxw',password=pw,sslmode='require',autocommit=True,connect_timeout=15) as conn:
+           repo=Repository(conn,postgres=True);source=SQLSource(conn)
+           cfg=source.read('reviews:telegram-approval:config:v1')
+           assert all(cfg.get(k) for k in ('enabled','new_notices_enabled','destination_verified'))
+           secret=base64.b64encode(hmac.new(root,b'veschi:review-approval-ingress:20261015:v1',hashlib.sha256).digest()).decode()
+           app=Approval(repo,secret,cfg['owner_id'],cfg['chat_id'],cfg['bot_id'],enabled=True)
+           app.group=source.read('reviews:content-group:v1') or {}
+           app.chat=app.group_chat()
+           assert app.chat=='-1003932246120'
+           if not acquire_ui_lock(conn,wait_seconds=120):raise RuntimeError('UI busy')
+           try:
+            token='2a022e3d4b370d16473393c7a9b4bfd3'
+            card=repo.get('cards',token)
+            assert card['message_id']==1525 and card['item_id']=='wRoNrEJiQFtSwnOIGfAp' and card['source']['article']=='667-MiraBag-beige'
+            assert card['cabinet']=='token_3' and card['kind']=='feedbacks' and card['status']=='awaiting'
+            draft=source.read(card['binding']['draft_key'])
+            assert draft['version']==card['version'] and draft['variants']==card['texts'] and draft['confirmation_status']=='draft'
+            assert source.matching('token_3','feedbacks',card['item_id'],'reviews:draft:')[0]['version']==card['version']
+            assert conn.execute("select count(*) from review_approval.intents where payload::jsonb->>'ref'=%s",(card['ref'],)).fetchone()[0]==0
+            view=app.view(token,card)
+            assert view['reply_markup']['inline_keyboard']
+            class EditOnly(TelegramTransport):
+             ALLOWED=frozenset(('editMessageText',))
+            response=EditOnly(os.environ['TELEGRAM_BOT_TOKEN']).call('editMessageText',dict(chat_id=app.chat,message_id=1525,text=view['text'],reply_markup=view['reply_markup']))
+            if isinstance(response,dict):
+             assert response['message_id']==1525 and response['reply_markup']==view['reply_markup'] and response['text']==view['text']
+            with repo.transaction():
+             repo.put('events','owner-ui-recovery:mira:20261124:v1',dict(status='confirmed',buttons='confirmed',message_id=1525,card_token=token,checked_at=time.time(),run_id=os.environ.get('GITHUB_RUN_ID'),send_message_calls=0,wb_calls=0))
+            print(json.dumps(dict(status='confirmed',message_id=1525,buttons='confirmed')))
+           finally:conn.execute("SELECT pg_advisory_unlock(hashtextextended('review-approval-process-ui-v1',0))")
+          PY
