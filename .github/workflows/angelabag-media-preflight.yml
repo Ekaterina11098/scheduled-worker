@@ -1,0 +1,147 @@
+name: AngelaBag China media preflight
+on:
+  push:
+    branches: [angelabag-media-preflight-20261124]
+    paths: ['.github/workflows/angelabag-media-preflight.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: angelabag-media-preflight-20261124
+  cancel-in-progress: false
+jobs:
+  read-only:
+    if: github.ref == 'refs/heads/angelabag-media-preflight-20261124'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests==2.32.5
+      - name: Read China cards and return a restricted report
+        env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          python - <<'PY'
+          import datetime as dt
+          import os
+          import time
+          from urllib.parse import urlsplit
+
+          import requests
+
+          CACHE = "https://abxgjoqlddhtcmjcjwxw.supabase.co/rest/v1/telegram_api_cache"
+          REPORT = "angelabag_media_insert7:v2:read_only:20261124"
+          WB = "https://content-api.wildberries.cn/content/v2/get/cards/list"
+
+
+          def catalog(token):
+              cursor = {"limit": 100}
+              seen = set()
+              for _ in range(80):
+                  response = requests.post(
+                      WB, headers={"Authorization": token},
+                      json={"settings": {"sort": {"ascending": True}, "cursor": cursor,
+                                         "filter": {"withPhoto": -1}}},
+                      timeout=60, allow_redirects=False,
+                  )
+                  if response.status_code != 200:
+                      raise RuntimeError(f"catalog_http_{response.status_code}")
+                  result = response.json()
+                  page = result.get("data", result)
+                  cards = page["cards"]
+                  yield from cards
+                  if len(cards) < 100:
+                      return
+                  marker = (page["cursor"]["updatedAt"], page["cursor"]["nmID"])
+                  if marker in seen:
+                      raise RuntimeError("repeated_cursor")
+                  seen.add(marker)
+                  cursor = {"limit": 100, "updatedAt": marker[0], "nmID": marker[1]}
+                  time.sleep(1)
+              raise RuntimeError("pagination_limit")
+
+
+          def video_status(video):
+              if not video:
+                  return "absent"
+              if not isinstance(video, str):
+                  return "invalid_video_field"
+              try:
+                  url = urlsplit(video)
+                  if url.scheme != "https" or not url.hostname or url.username or url.password or url.port or url.fragment:
+                      return "invalid_video_url"
+                  path = url.path.lower()
+                  if path.endswith(".m3u8"):
+                      return "hls_not_uploadable_as_is"
+                  if not path.endswith((".mp4", ".mov")):
+                      return "unsupported_video_link"
+                  host = url.hostname
+                  if host != "video.wbstatic.net" and not host.endswith((".wbbasket.ru", ".wbcontent.net", ".geobasket.ru")):
+                      return "unverified_video_host"
+                  with requests.get(video, headers={"Range": "bytes=0-63"}, stream=True,
+                                    timeout=25, allow_redirects=False) as response:
+                      if response.status_code not in (200, 206):
+                          return "video_download_unavailable"
+                      size = response.headers.get("Content-Length", "") if response.status_code == 200 else response.headers.get("Content-Range", "").rpartition("/")[-1]
+                      header = response.raw.read(64)
+                  if not size.isdecimal() or not 0 < int(size) <= 50_000_000:
+                      return "video_size_unverified_or_over_limit"
+                  return "mov_mp4_candidate" if header[4:8] == b"ftyp" else "video_container_unverified"
+              except (ValueError, requests.RequestException, OSError):
+                  return "video_download_unavailable"
+
+
+          def inspect(card):
+              video = card.get("video")
+              result = video_status(video)
+              path = video.split("?", 1)[0].split("#", 1)[0].lower() if isinstance(video, str) else ""
+              video_format = next((ext.upper() for ext in ("m3u8", "mp4", "mov") if path.endswith("." + ext)),
+                                  "unknown" if video else None)
+              return {
+                  "nmID": card["nmID"],
+                  "vendorCode": card["vendorCode"],
+                  "photo_count": len(card.get("photos") or []),
+                  "has_video": bool(video),
+                  "video_format": video_format,
+                  "availability": result,
+              }
+
+
+          def save_report(report):
+              secret = os.environ["SUPABASE_SECRET_KEY"]
+              headers = {"apikey": secret, "Prefer": "resolution=merge-duplicates"}
+              if not secret.startswith("sb_secret_"):
+                  headers["Authorization"] = "Bearer " + secret
+              now = dt.datetime.now(dt.timezone.utc)
+              body = {"cache_key": REPORT, "payload": report, "updated_at": now.isoformat(),
+                      "expires_at": (now + dt.timedelta(days=7)).isoformat()}
+              response = requests.post(CACHE, params={"on_conflict": "cache_key"}, headers=headers,
+                                       json=body, timeout=30, allow_redirects=False)
+              if response.status_code not in (200, 201, 204):
+                  raise RuntimeError("report_write_failed")
+              check = requests.get(CACHE, params={"cache_key": "eq." + REPORT, "select": "payload"},
+                                   headers=headers, timeout=30, allow_redirects=False)
+              if check.status_code != 200 or check.json() != [{"payload": report}]:
+                  raise RuntimeError("report_readback_failed")
+
+
+          def main():
+              try:
+                  cards = list(catalog(os.environ["WB_TOKEN_3"]))
+                  if len({card["nmID"] for card in cards}) != len(cards):
+                      raise RuntimeError("duplicate_catalog_ids")
+                  targets = [card for card in cards
+                             if (card.get("vendorCode", "").split("-") + [""])[1].casefold() == "angelabag"]
+                  report = [inspect(card) for card in sorted(targets, key=lambda card: card["nmID"])]
+                  save_report(report)
+              except Exception:
+                  raise SystemExit("Read-only preflight failed") from None
+              print("Read-only preflight complete")
+
+
+          if __name__ == "__main__":
+              main()
+          PY
