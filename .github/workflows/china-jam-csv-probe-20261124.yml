@@ -39,61 +39,50 @@ jobs:
           def put(k,p,once=False):
            r=requests.post(SB+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**SH,'Prefer':'resolution='+('ignore'if once else'merge')+'-duplicates,return=representation'},json={'cache_key':k,'payload':p,'updated_at':stamp(),'expires_at':'2027-11-24T00:00:00Z'},timeout=40);r.raise_for_status()
            return len(r.json())==1
-          if get(ROOT):raise SystemExit('Existing diagnostic retained; no replay')
-          s=dict(status='checking',observed_at=stamp(),run_id=os.environ.get('GITHUB_RUN_ID'),wb_writes=0,telegram_calls=0,model_calls=0,report_create_calls=0)
-          assert put(ROOT,s,True)
-          def save():put(ROOT,s)
-          def body(r):
-           try:return r.json()
-           except ValueError:return {'text':r.text[:2000]}
+          
+          parent=get(ROOT)
+          assert parent and parent.get('create_http_status')==200
+          KEY_RESULT=ROOT+':download'
+          prior=get(KEY_RESULT)
+          if prior and prior.get('status')=='complete':raise SystemExit('Verified archive retained; no repeat')
+          rid=parent['report_id']
+          s=dict(status='checking_generated_report',report_id=rid,observed_at=stamp(),run_id=os.environ.get('GITHUB_RUN_ID'),wb_writes=0,telegram_calls=0,model_calls=0,report_create_calls=0)
+          def save():put(KEY_RESULT,s)
+          save()
           try:
-           r=requests.get(HOST+'/api/v2/nm-report/downloads',headers=WH,timeout=(10,50))
-           s['list_http_status']=r.status_code;s['list_response']=body(r);save()
-           if r.status_code!=200:
-            s['status']='access_denied'if r.status_code in(401,402,403)else'list_unavailable';save();print(json.dumps({k:s[k]for k in('status','list_http_status','wb_writes','telegram_calls','model_calls')}));raise SystemExit(0)
-           scope=get('china_agent:owner_deadstock:2026-11-23:v1:scope')
-           ids=sorted({i['nm_id']for i in scope['items']})
-           assert ids and all(type(n)is int and n>0 for n in ids)
-           rid=str(uuid.uuid4())
-           request=dict(id=rid,reportType='DETAIL_HISTORY_REPORT',userReportName='Read-only API diagnostic',params=dict(nmIDs=ids,subjectIds=[],brandNames=[],tagIds=[],startDate='2026-11-21',endDate='2026-11-24',timezone='Europe/Moscow',aggregationLevel='day',skipDeletedNm=False))
-           s.update(status='create_outcome_unconfirmed',report_id=rid,request=request,report_create_calls=1);save()
-           r=requests.post(HOST+'/api/v2/nm-report/downloads',headers=WH,json=request,timeout=(10,60))
-           s['create_http_status']=r.status_code;s['create_response']=body(r)
-           if r.status_code!=200:s['status']='create_rejected';save();raise SystemExit(0)
-           s['status']='generating';save()
-           for attempt in range(12):
-            time.sleep(25)
+           for attempt in range(8):
+            if attempt:time.sleep(30)
             r=requests.get(HOST+'/api/v2/nm-report/downloads',headers=WH,params={'filter[downloadIds]':rid},timeout=(10,50))
-            s['poll_http_status']=r.status_code
-            if r.status_code!=200:s.update(status='status_unavailable',poll_response=body(r));save();break
-            j=r.json();rows=j.get('data')or[];match=[x for x in rows if x.get('id')==rid]
-            s['report_state']=match[0]if match else None;save()
-            if not match:continue
-            status=match[0].get('status')
-            if status=='FAILED':s['status']='generation_failed';save();break
-            if status!='SUCCESS':continue
-            time.sleep(21)
+            s['status_http']=r.status_code
+            if r.status_code!=200:s.update(status='status_unavailable',error=body(r));save();break
+            j=r.json();s['report_list']=j
+            item=next((a for a in j.get('data',[])if a.get('id')==rid),{})
+            s['report_status']=item.get('status');save()
+            if item.get('status')=='FAILED':s['status']='generation_failed';save();break
+            if item.get('status')!='SUCCESS':continue
             r=requests.get(HOST+'/api/v2/nm-report/downloads/file/'+rid,headers=WH,timeout=(10,90))
-            s['file_http_status']=r.status_code
-            if r.status_code!=200:s.update(status='file_unavailable',file_response=body(r));save();break
+            s['file_http']=r.status_code
+            if r.status_code!=200:s.update(status='download_unavailable',error=body(r));save();break
             raw=r.content
             with zipfile.ZipFile(io.BytesIO(raw))as z:
              assert z.testzip()is None
-             records=[]
+             tables=[]
              for name in z.namelist():
               if not name.lower().endswith('.csv'):continue
-              b=z.read(name)
-              try:t=b.decode('utf-8-sig')
-              except UnicodeDecodeError:t=b.decode('cp1251')
-              first=t.splitlines()[0];sep=';'if first.count(';')>first.count(',')else','
-              data=list(csv.reader(io.StringIO(t),delimiter=sep));headers=data[0]if data else[]
-              normalized=[h.lower()for h in headers]
-              records.append(dict(name=name,headers=headers,rows=max(0,len(data)-1),
-               impressions_fields=[h for h,l in zip(headers,normalized)if any(x in l for x in('показы','impression','showcount','viewcount'))],
-               ctr_fields=[h for h,l in zip(headers,normalized)if'ctr'in l or'кликабельност'in l]))
-             assert records
-            put(ROOT+':archive',dict(report_id=rid,sha256=hashlib.sha256(raw).hexdigest(),size=len(raw),zip_base64=base64.b64encode(raw).decode()))
-            s.update(status='downloaded_verified',files=records,archive_sha256=hashlib.sha256(raw).hexdigest(),archive_bytes=len(raw));save();break
-           print(json.dumps({k:s.get(k)for k in('status','list_http_status','create_http_status','file_http_status','wb_writes','telegram_calls','model_calls')}))
-          except Exception as e:
-           s.update(status='diagnostic_error',error_type=type(e).__name__);save();raise SystemExit('Private diagnostic error; inspect stored receipt')
+              content=z.read(name)
+              try:text=content.decode('utf-8-sig')
+              except UnicodeDecodeError:text=content.decode('cp1251')
+              try:dialect=csv.Sniffer().sniff(text[:12000],delimiters=';,\t')
+              except csv.Error:dialect=csv.excel
+              rows=list(csv.reader(io.StringIO(text),dialect))
+              headers=next((row for row in rows[:8]if any('nm' in x.lower()or'артикул'in x.lower()for x in row)),rows[0]if rows else[])
+              tables.append(dict(name=name,headers=headers,rows=len(rows),sample=rows[:5]))
+            assert tables,'No CSV in generated archive'
+            put(ROOT+':archive',dict(report_id=rid,sha256=hashlib.sha256(raw).hexdigest(),data=base64.b64encode(raw).decode(),tables=tables,observed_at=stamp()))
+            headers=[h for t in tables for h in t['headers']]
+            s.update(status='complete',archive_sha256=hashlib.sha256(raw).hexdigest(),archive_bytes=len(raw),tables=tables,
+             has_ctr=any('ctr'in h.lower()for h in headers),has_impressions=any(any(t in h.lower()for t in('показ','impression','showcount','viewcount'))for h in headers),finished_at=stamp())
+            save();print(json.dumps({k:s[k]for k in('status','has_ctr','has_impressions','wb_writes','report_create_calls')}));break
+           else:s['status']='pending';save()
+          except Exception as ex:
+           s.update(status='diagnostic_error',error_type=type(ex).__name__);save();raise SystemExit('Private diagnostic retained')
