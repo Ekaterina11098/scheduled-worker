@@ -14,13 +14,13 @@ def main():
  io=IO();root=io.get(ROOT)
  if root:
   if root.get('status')=='verified':print('Already verified; no replay');return
-  raise ValueError('Existing recovery claim; inspect journal instead of replaying')
+  assert root.get('status')=='needs_attention'and root.get('wb_writes')==0,'Existing recovery may contain a write; no replay'
  p=io.get(PLAN+PID);a=io.get(APPROVAL+'372');e=io.get(EXEC+PID)
  assert a['plan_id']==PID and a['sender_id']==5122667182 and p['plan_sha256']==a['plan_sha256']==digest(p['items'])
  assert len(p['items'])==len(e['items'])==1 and e['wb_writes']==0
  item=p['items'][0];s=e['items'][0]
  assert (item['nm_id'],item['campaign_id'],item['target_minor'],item['placement'])==(1556488196,42068186,27,'search')
- assert s['status']=='blocked'and s['reason']=='Addition price/stock unknown or changed'and not s.get('request')and not s.get('bid_phase')
+ assert ((s['status']=='blocked'and s.get('reason')=='Addition price/stock unknown or changed')or(s['status']=='preflight'and s.get('owner_recovery_ref')==ROOT))and not s.get('request')and not s.get('bid_phase')
  orig=requests.sessions.Session.request
  def guard(session,method,url,*args,**kw):
   m=method.upper();u=urlparse(url);body=kw.get('json');host=u.hostname or''
@@ -40,9 +40,10 @@ def main():
  cp=http(io,'/api/advert/v2/adverts?ids=42068186')['adverts'][0]
  current=validate_addition(io,item,cp)
  root=dict(status='preflight_verified',created_at=datetime.now(timezone.utc).isoformat(),before_execution=copy.deepcopy(e),current_evidence=current,owner_instruction='сделай все и исправь эакие ошибки в коде',scope=dict(nm_id=1556488196,campaign_id=42068186,target_minor=27),wb_writes=0)
- assert io.create(ROOT,root)
+ if io.get(ROOT) is None:assert io.create(ROOT,root)
+ else:io.put(ROOT,root)
  # Preserve original plan/hash/confirmation. Only a proven unsubmitted blocked preflight is reset.
- s.clear();s.update(id=item['id'],status='preflight',owner_recovery_ref=ROOT,preflight_failures=[root['before_execution']['items'][0]])
+ e['recovered_preflight_failures']=copy.deepcopy(e['items']);e['items']=[]
  e['status']='running';io.put(EXEC+PID,e)
  result=execute(io,a,p)
  root.update(status='verified'if result['items'][0]['status']=='verified'else'needs_attention',execution_key=EXEC+PID,wb_writes=result['wb_writes'],completed_at=datetime.now(timezone.utc).isoformat())
