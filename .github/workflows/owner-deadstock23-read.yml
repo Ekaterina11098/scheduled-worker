@@ -74,3 +74,5 @@ jobs:
 # Resume after transport interruption; immutable stage checkpoints.
 
 # Resume only missing MSK stock stage; campaign and catalogue reads retained.
+
+# Compare financial counters independently of omitted archive coverage rows.
