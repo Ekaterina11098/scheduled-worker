@@ -75,3 +75,5 @@ jobs:
           path: ${{ runner.temp }}/stock-deploy-proof
           retention-days: 90
 
+
+# Use direct stock/reserve reads and existing verified completed-day sales reference only.
