@@ -46,7 +46,7 @@ jobs:
 
           ROOT = "angelabag_media_insert7:v1:"
           PRECHECK = "angelabag_media_insert7:v2:read_only:20261124"
-          RESULT = ROOT + "video_preflight:20261124"
+          RESULT = ROOT + "video_preflight:20261124:local"
           INPUT = ROOT + "approved_input:20261124"
           PILOT = 1473244338
           EXCLUDED = 1473244337
@@ -165,7 +165,7 @@ jobs:
                           raise Stop("hls_segments_missing")
                       for segment in segments:
                           trusted_video_url(segment)
-                      return url, sum(durations)
+                      return url, lines, sum(durations)
                   branches = [(int(re.search(r"(?:[:,])BANDWIDTH=(\d+)", line)[1]), urljoin(url, lines[i+1]))
                               for i, line in enumerate(lines[:-1]) if line.startswith("#EXT-X-STREAM-INF:")]
                   if not branches:
@@ -201,15 +201,49 @@ jobs:
               return result
 
 
+          def localize_playlist(client, url, lines, folder):
+              cache = {}
+              total = 0
+
+              def download(value):
+                  nonlocal total
+                  address = urljoin(url, value)
+                  parsed = trusted_video_url(address)
+                  if address not in cache:
+                      ext = Path(parsed.path).suffix.lower()
+                      if ext not in (".ts", ".mp4", ".m4s", ".aac", ".m4a"):
+                          ext = ".bin"
+                      name = f"segment_{len(cache):04d}{ext}"
+                      raw = client.call(address, auth=False, limit=50_000_000)
+                      total += len(raw)
+                      if not raw or total > 65_000_000:
+                          raise Stop("hls_segments_size_limit")
+                      (folder / name).write_bytes(raw)
+                      cache[address] = name
+                  return cache[address]
+
+              localized = []
+              for line in lines:
+                  if line.startswith("#EXT-X-MAP:"):
+                      line = re.sub(r'URI="([^"]+)"', lambda m: 'URI="' + download(m[1]) + '"', line)
+                  elif not line.startswith("#"):
+                      line = download(line)
+                  localized.append(line)
+              target = folder / "source.m3u8"
+              target.write_text("\n".join(localized) + "\n")
+              return target
+
+
           def validated_video(client, url, output):
               suffix = trusted_video_url(url).path.lower().rsplit(".", 1)[-1]
               if suffix == "m3u8":
-                  playlist, expected_duration = hls_vod(client, url)
-                  command(["ffmpeg", "-v", "error", "-xerror", "-nostdin", "-protocol_whitelist",
-                           "https,tls,tcp,crypto", "-rw_timeout", "12000000", "-i", playlist,
+                  source, lines, expected_duration = hls_vod(client, url)
+                  playlist = localize_playlist(client, source, lines, output.parent)
+                  command(["ffmpeg", "-v", "error", "-xerror", "-nostdin", "-allowed_extensions", "ALL",
+                           "-protocol_whitelist", "file", "-i", str(playlist),
                            "-map", "0:v:0", "-map", "0:a:0?", "-c", "copy", "-movflags", "+faststart",
-                           str(output)], "hls_remux_failed")
-                  reference = stream_identity(playlist, network=True)
+                           str(output)], "local_hls_remux_failed")
+                  reference = stream_identity(playlist)
               elif suffix in ("mp4", "mov"):
                   raw = client.call(url, auth=False, limit=50_000_000)
                   original = output.with_name("original." + suffix)
