@@ -30,9 +30,9 @@ jobs:
           def wb(label,path,method='GET',params=None,body=None):
            old=get(ROOT+':wb:'+label)
            if old and old.get('http')!=429:return old
-          if old and old.get('http')==429:
-           until=datetime.datetime.fromisoformat(old['observed_at']).timestamp()+int(old.get('retry_after')or 180)+5
-           if until>time.time():time.sleep(until-time.time())
+           if old and old.get('http')==429:
+            until=datetime.datetime.fromisoformat(old['observed_at']).timestamp()+int(old.get('retry_after')or 180)+5
+            if until>time.time():time.sleep(until-time.time())
            assert (method,path)in {('GET','/api/advert/v2/adverts'),('GET','/api/advert/v0/bids/recommendations'),('POST','/api/advert/v1/bids/min'),('POST','/api/advert/v2/budget')}
            r=requests.request(method,'https://advert-api.wildberries.ru'+path,headers={'Authorization':os.environ['WB_TOKEN_2'].strip()},params=params,json=body,timeout=60,allow_redirects=False)
            try:d=r.json()
