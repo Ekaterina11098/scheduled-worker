@@ -11,7 +11,11 @@ with runtime_db() as lock:
   with runtime_db() as db:
    s=Store(db,postgres=True)
    d=json.loads(s.sql('SELECT snapshot FROM stock_runs WHERE id=?',(ROOT,)).fetchone()[0]);db.commit()
-   if d.get('execution_complete') is not True:raise RuntimeError('Evening stock execution not complete')
+   if d.get('execution_complete') is not True:
+    print('Evening execution still active; audit waits for completed stock run',flush=True);raise SystemExit(0)
+   existing=s.sql('SELECT snapshot FROM stock_runs WHERE id=?',(AUDIT,)).fetchone();db.commit()
+   if existing and json.loads(existing[0]).get('all_zero') is True:
+    print('Final zero audit already confirmed',flush=True);raise SystemExit(0)
    g.check_run_budget=lambda:None
    shared=SharedRequests(s);g.STOCK_REQUEST_GATE=shared;g.STOCK_SHARED_ORDERS=shared
    cards=g.get_real_wb_cards_and_scores(g.cabinet_tokens()[1])
