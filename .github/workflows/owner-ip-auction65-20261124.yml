@@ -42,27 +42,33 @@ jobs:
           ps=get(ROOT+':products')['data']['data']['data']
           names={n.casefold()for n in scope['skus']}
           nms={int(p['nm_id']):p for p in ps if p['sa_name'].casefold()in names and p['stock_api_stock_count']>0}
-          r=requests.get(base+'analytics_snapshots',headers=h,params={'cabinet':'eq.token_2','source':'eq.mpstats_campaign_catalog','select':'payload','order':'id.desc','limit':2},timeout=60);r.raise_for_status()
-          cat=[x for c in r.json()for p in c['payload']for x in p['rows']]
-          ids=sorted({int(x['wb_id'])for x in cat if int(x['id'])in [11736035,11779755,11861069,12102131,12103480,12107512,12382585,12469410]})
-          state={'status':'running','wb_writes':0,'telegram_calls':0,'model_calls':0,'recommendations':[]};save(ROOT+':wb:status',state)
+          adverts=get(ROOT+':wb:adverts')['data']['adverts']
+          live=[a for a in adverts if a['status']in [9,11]and a.get('settings',{}).get('payment_type')=='cpc']
+          pairs={}
+          for a in live:
+           for n in a.get('nm_settings',[]):
+            nm=int(n['nm_id'])
+            if nm in nms and(nm not in pairs or a['status']==9):pairs[nm]=a['id']
+          eligible={}
+          for mid in [11736035,11779755,11861069,12102131,12103480,12107512,12382585,12469410]:
+           d=get(ROOT+':ad_'+str(mid))
+           if not d:continue
+           for x in d['data']['data']:
+            nm=int(x['nm_id'])
+            if nm in pairs:
+             t=eligible.setdefault(nm,{'orders':0,'revenue':0,'clicks':0})
+             for k,v in [('orders','ac_orders'),('revenue','ac_orders_sum'),('clicks','ac_clicks')]:t[k]+=x[v]
+          ready=[nm for nm,x in eligible.items()if x['orders']>=2 and x['clicks']>0 and .05*x['revenue']/x['clicks']>=2.95]
+          state={'status':'running','wb_writes':0,'recommendations':[],'selection':'only 2+ observed direct orders and CPC5 above floor; no inferred market bid for others'}
+          save(ROOT+':wb:recovery_status',state)
           try:
-           raw=wb('adverts','/api/advert/v2/adverts',params={'ids':','.join(map(str,ids))});assert raw['http']==200
-           adverts=raw['data']['adverts']
-           live=[a for a in adverts if a['status']in [9,11]]
-           bids=wb('budgets','/api/advert/v2/budget','POST',body={'advertIds':[a['id']for a in live]})
-           pairs={}
-           for a in live:
-            if a.get('settings',{}).get('payment_type')!='cpc':continue
-            for n in a.get('nm_settings',[]):
-             nm=int(n['nm_id'])
-             if nm in nms:
-              if nm not in pairs or a['status']==9:pairs[nm]=a['id']
-           for nm,cid in pairs.items():
-            v=wb('recommend_'+str(cid)+'_'+str(nm),'/api/advert/v0/bids/recommendations',params={'advertId':cid,'nmId':nm})
-            state['recommendations'].append({'nm':nm,'cid':cid,'http':v['http']});save(ROOT+':wb:status',state);time.sleep(13)
-           state['status']='complete';save(ROOT+':wb:status',state)
+           for i,nm in enumerate(ready):
+            if i:time.sleep(185)
+            cid=pairs[nm]
+            v=wb('competitive_'+str(cid)+'_'+str(nm),'/api/advert/v0/bids/recommendations',params={'advertId':cid,'nmId':nm})
+            state['recommendations'].append({'nm':nm,'cid':cid,'http':v['http']});save(ROOT+':wb:recovery_status',state)
+           state['status']='complete';save(ROOT+':wb:recovery_status',state)
           except Exception as e:
-           state.update(status='error',error=type(e).__name__);save(ROOT+':wb:status',state);raise SystemExit(1)
-          print('Private read-only auction evidence stored.')
+           state.update(status='error',error=type(e).__name__);save(ROOT+':wb:recovery_status',state);raise SystemExit(1)
+          print('Bounded competitive reads stored.')
           
