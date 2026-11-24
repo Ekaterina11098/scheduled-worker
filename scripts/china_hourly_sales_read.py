@@ -121,6 +121,38 @@ def safe_error(ex):
     return str(ex) if isinstance(ex, (ValueError, RuntimeError)) else type(ex).__name__
 
 
+def catalogue_ids(catalog):
+    """Identity remains mandatory; a broken writer must not weaken the reader."""
+    if catalog.get('cabinet') != 'token_3':
+        raise ValueError('China catalogue identity unavailable')
+    rows = catalog.get('rows')
+    if not isinstance(rows, list) or not rows:
+        raise ValueError('China catalogue rows unavailable')
+    if any(not isinstance(r, dict) or type(r.get('nmID')) is not int
+           or r['nmID'] <= 0 or not r.get('vendorCode')
+           or r.get('currencyIsoCode4217') != 'CNY' for r in rows):
+        raise ValueError('China catalogue currency or product identity mismatch')
+    ids = {r['nmID'] for r in rows}
+    if len(ids) != len(rows):
+        raise ValueError('Duplicate China catalogue identity')
+    return ids
+
+
+def stats_coverage(ids, campaigns, raw):
+    """WB omits archived campaigns without activity; retain unknowns, never fake zeros."""
+    returned = [r['advertId'] for r in raw]
+    if len(set(returned)) != len(returned) or set(returned)-set(ids):
+        raise ValueError('Advertising response identity mismatch')
+    missing = sorted(set(ids)-set(returned))
+    archived = [cid for cid in missing if campaigns[str(cid)]['status'] == 7]
+    required = sorted(set(missing)-set(archived))
+    return dict(missing_ids=missing, missing_live_ids=required,
+                omitted_archived_ids=archived,
+                historical_coverage_complete=not missing,
+                totals_scope='returned_campaigns_only; absent archived stats unknown, not zero',
+                status='partial' if required else 'complete')
+
+
 def collect_funnel(c, cut, nm_ids):
     """General funnel counters, never advertising orders divided by all visits."""
     from china_wb_evidence import Reports, FUNNEL, normalize_funnel
@@ -177,9 +209,7 @@ def run():
     w=ReadOnlyWB()
     validate_identity(c,w)
     catalog = c.get('china_agent:prices:v1') or {}
-    if catalog.get('cabinet') != 'token_3':
-        raise ValueError('China catalogue identity unavailable')
-    allowed = {int(r['nmID']) for r in catalog.get('rows', [])}
+    allowed = catalogue_ids(catalog)
     e = dict(status='reading', cabinet='token_3', slot_msk=cut.isoformat(), observed_at=stamp(),
              wb_writes=0, telegram_calls=0, workflow_run=os.environ.get('GITHUB_RUN_ID'),
              orders={}, advertising={}, funnel_requested=bool(policy.get('funnel_nm_ids')), grants_action_permission=False)
@@ -236,10 +266,10 @@ def run():
         raw = w.req('/adv/v3/fullstats?ids=' + ','.join(map(str, ids)) + '&beginDate=' + cut.date().isoformat() + '&endDate=' + cut.date().isoformat()) if ids else []
         if not isinstance(raw, list):
             raise ValueError('Malformed advertising response')
-        missing = sorted(set(ids)-{r['advertId'] for r in raw})
+        coverage = stats_coverage(ids, campaigns, raw)
         spend = sum(r['sum'] for r in raw); amount = sum(r['sum_price'] for r in raw)
-        e['advertising'] = dict(status='partial' if missing else 'complete', observed_at=stamp(),
-            requested_ids=ids, missing_ids=missing, campaigns=campaigns, stats=raw, currency='CNY',
+        e['advertising'] = dict(**coverage, observed_at=stamp(),
+            requested_ids=ids, campaigns=campaigns, stats=raw, currency='CNY',
             totals=dict(spend_cny=round(spend,2), attributed_order_amount_cny=round(amount,2),
                         orders=sum(r['orders'] for r in raw), clicks=sum(r['clicks'] for r in raw),
                         views=sum(r['views'] for r in raw), drr_pct=spend/amount*100 if amount>0 else None),
@@ -258,7 +288,9 @@ def run():
             oldkey,old=saved_slot(c,cut-timedelta(days=offset));old=old or {}
             prev = old.get('advertising', {})
             result = dict(status='unavailable_no_saved_same_clock_snapshot', source_key=oldkey)
-            if prev.get('status') == 'complete' and e['advertising']['status'] == 'complete':
+            if (prev.get('status') == 'complete' and e['advertising']['status'] == 'complete'
+                    and prev.get('requested_ids') == ids
+                    and prev.get('missing_ids', []) == coverage['missing_ids']):
                 prior_time = datetime.fromisoformat(prev['observed_at'])
                 diff = abs((adtime-prior_time-timedelta(days=offset)).total_seconds())
                 result.update(clock_difference_seconds=diff)
@@ -297,5 +329,4 @@ def run():
 
 if __name__ == '__main__':
     run()
-
 
