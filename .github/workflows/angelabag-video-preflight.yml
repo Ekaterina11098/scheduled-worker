@@ -18,6 +18,8 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install Pillow==11.3.0 requests==2.32.5
+      - name: Install video tools on the temporary runner
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg >/dev/null
       - name: Read and validate the existing video
         env:
           WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
@@ -46,7 +48,7 @@ jobs:
 
           ROOT = "angelabag_media_insert7:v1:"
           PRECHECK = "angelabag_media_insert7:v2:read_only:20261124"
-          RESULT = ROOT + "video_preflight:20261124:diagnostic"
+          RESULT = ROOT + "video_preflight:20261124:ffmpeg"
           INPUT = ROOT + "approved_input:20261124"
           PILOT = 1473244338
           EXCLUDED = 1473244337
