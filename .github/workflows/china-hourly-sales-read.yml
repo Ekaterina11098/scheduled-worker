@@ -37,6 +37,8 @@ jobs:
       - run: pip install requests==2.32.5
       - name: Verify windows, pagination, money and no-write guard
         run: python scripts/test_china_hourly_sales_read.py
+      - name: Verify saved-only analysis, scope and deduplication
+        run: python scripts/test_china_hourly_saved_analysis.py
       - name: Verify independent recovery clock and duplicate prevention
         run: node --test scripts/test_china_hourly_clock.mjs
       - name: Collect private dated API snapshots; no marketplace writes or Telegram
@@ -48,27 +50,23 @@ jobs:
 
   analyze:
     needs: read
-    # Owner 11Nov: no scheduled model analysis; keep the read-only collector.
-    if: ${{ false }}
+    # Owner25Nov: saved evidence diagnostics only; no model, WB or Telegram access.
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
           fetch-depth: 1
-          filter: blob:none
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /scripts/
-            /.github/
-            /*request*.json
+          sparse-checkout: scripts
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
-      - run: pip install openai==3.42.1
-      - name: Cloud Codex analysis of saved evidence only; no WB/TG credentials
+      - run: pip install requests==2.32.5
+      - name: Analyze frozen hourly evidence without external actions
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-          OPENAI_API_KEY: "" # Owner: no paid model API
-        run: PYTHONPATH=scripts python scripts/china_codex_hourly.py
+          WB_TOKEN_3: ""
+          CHINA_TELEGRAM_BOT_TOKEN: ""
+          OPENAI_API_KEY: ""
+        run: python scripts/china_hourly_saved_analysis.py
