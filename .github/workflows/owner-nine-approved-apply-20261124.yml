@@ -69,3 +69,5 @@ jobs:
           path: ${{ runner.temp }}/stock-deploy-proof
           retention-days: 90
 
+
+# Owner explicitly resumed the six unsent China changes after stop, Nov24.
