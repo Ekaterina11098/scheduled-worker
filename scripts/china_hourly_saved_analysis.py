@@ -3,7 +3,7 @@ import hashlib
 import json
 from datetime import datetime, timedelta, timezone
 from china_cloud_cost_control import Cache, stamp
-from china_hourly_sales_read import ROOT, POLICY, MSK, complete_slot, saved_slot, aggregate, comparison
+from china_hourly_sales_read import ROOT, POLICY, MSK, complete_slot, analysis_ready, saved_slot, aggregate, comparison
 
 ANALYSIS = 'china_agent:hourly_saved_analysis:v1:'
 
@@ -22,7 +22,7 @@ def funnel_metrics(row):
 
 def build(cache, key, source):
     cut = datetime.fromisoformat(source['slot_msk'])
-    if source.get('cabinet') != 'token_3' or not complete_slot(source):
+    if not analysis_ready(source):
         raise ValueError('Incomplete hourly source; no invented analysis')
     orders = {}
     for offset in (0, 1, 7):
@@ -52,11 +52,13 @@ def build(cache, key, source):
                 result.update(status='comparable_snapshot', rows=[dict(nm_id=nm,
                     current=funnel_metrics(wanted[nm]), baseline=funnel_metrics(have[nm])) for nm in sorted(wanted)])
         funnels[str(offset)] = result
-    return dict(status='complete', method='deterministic_saved_evidence', source_key=key,
+    return dict(status='complete' if complete_slot(source) else 'partial',
+                source_status=source['status'], coverage_complete=complete_slot(source),
+                method='deterministic_saved_evidence', source_key=key,
                 slot_msk=source['slot_msk'], observed_at=source['observed_at'], completed_at=stamp(),
                 cabinet='token_3', orders=orders, sales_comparisons=sales,
                 funnel_current=[dict(nm_id=r['nm_id'], **funnel_metrics(r['selected'])) for r in current.get('rows', [])],
-                funnel_same_clock=funnels, advertising=source['advertising']['totals'],
+                funnel_same_clock=funnels, advertising=dict(status=source['advertising']['status'], totals=source['advertising']['totals']),
                 advertising_coverage={k:source['advertising'].get(k) for k in
                     ('missing_ids', 'missing_live_ids', 'omitted_archived_ids', 'historical_coverage_complete', 'totals_scope')},
                 ad_comparisons=source.get('ad_comparisons', {}),
@@ -86,7 +88,7 @@ def run(cache=None):
     result_key = ANALYSIS + source['slot_msk'] + ':' + digest[:16]
     previous = c.get(result_key)
     if previous:
-        if previous.get('status') != 'complete' or previous.get('source_key') != key or previous.get('source_sha256') != digest:
+        if previous.get('status') not in ('complete', 'partial') or previous.get('source_key') != key or previous.get('source_sha256') != digest:
             raise ValueError('Prior analysis unresolved; no overwrite')
         print('Saved hourly analysis already complete; no repeated calculation or API calls')
         return previous
@@ -94,9 +96,9 @@ def run(cache=None):
     value['source_sha256'] = digest
     if not c.create(result_key, value) or c.get(result_key) != value:
         raise RuntimeError('Analysis readback conflict')
-    c.put(ANALYSIS + 'latest', dict(status='complete', source_key=result_key,
+    c.put(ANALYSIS + 'latest', dict(status=value['status'], source_key=result_key,
           hourly_source_key=key, slot_msk=source['slot_msk'], source_sha256=digest))
-    print(json.dumps(dict(status='complete', source_key=result_key, wb_writes=0, telegram_calls=0, model_calls=0)))
+    print(json.dumps(dict(status=value['status'], source_key=result_key, wb_writes=0, telegram_calls=0, model_calls=0)))
     return value
 
 
