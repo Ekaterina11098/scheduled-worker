@@ -6,6 +6,11 @@ from stock_execution_fence import cloud_writer
 from stock_shared_requests import SharedRequests
 ROOT='technical:stock-daily:2026-11-24'
 AUDIT='technical:ip-fbs-zero-final-audit:2026-11-24'
+with runtime_db() as preliminary:
+ root_row=preliminary.execute('SELECT snapshot FROM stock_execution.stock_runs WHERE id=%s',(ROOT,)).fetchone()
+ ready=json.loads(root_row[0]).get('execution_complete') is True if root_row else False
+ if not ready:
+  print('Stock execution remains active; final audit waits for completion',flush=True);raise SystemExit(0)
 with runtime_db() as lock:
  with cloud_writer(lock):
   with runtime_db() as db:
