@@ -7,11 +7,15 @@ from ip_report_analysis import ROOT_RULES
 original=freeze.store
 day=str(datetime.now(timezone.utc).astimezone(ZoneInfo('Europe/Moscow')).date())
 class SavedOnly:
+ def __init__(self):self.memory={}
  def cache_get(self,key):
+  if key in self.memory:return copy.deepcopy(self.memory[key])
   if key=='advertising:ip:morning_recovery:'+day+':v1':
    return original.cache_get('advertising:ip:scheduled_source:v1:'+day+':'+os.environ['IP_REPORT_SLOT'])
   return original.cache_get(key)
  def cache_set(self,key,value,**kwargs):
+  if key.startswith('advertising:ip:daily-review-audit:v1:'):
+   self.memory[key]=copy.deepcopy(value);return
   if not(key.startswith(ROOT_RULES)or(key.startswith('advertising:ip:report-analysis:v1:')and key.endswith(':preview'))):
    raise AssertionError('Unexpected verification write')
   return original.cache_set(key,value,**kwargs)
@@ -23,7 +27,11 @@ os.environ['IP_REPORT_VERIFY_ONLY']='true'
 assert not os.environ.get('OPENAI_API_KEY')
 for slot in('morning','midday'):
  os.environ['IP_REPORT_SLOT']=slot
- result=freeze.main()
+ try:result=freeze.main()
+ except Exception as exc:
+  import traceback
+  original.cache_set(ROOT_RULES+'verification-error',dict(slot=slot,error_type=type(exc).__name__,trace=traceback.format_exc()),ttl_days=7)
+  raise RuntimeError('Private saved-data verification error')from None
  assert result['status']=='verified_saved_only'
  assert all(result[k]==0 for k in('model_calls','charged_micro_usd','source_calls','wb_writes','telegram_calls'))
  saved=original.cache_get('advertising:ip:report-analysis:v1:'+result['period']+':preview')

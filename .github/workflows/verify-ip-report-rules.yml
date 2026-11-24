@@ -19,7 +19,7 @@ jobs:
             /*.py
       - uses: actions/checkout@v4
         with:
-          ref: 8b925020156e32bd289b6c0e83306ab7a72748e1
+          ref: ${{ github.sha }}
           path: ip-rules-patch
           persist-credentials: false
           sparse-checkout-cone-mode: false
