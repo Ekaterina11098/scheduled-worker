@@ -29,7 +29,10 @@ jobs:
            r=requests.post(base+'telegram_api_cache',headers=dict(h,Prefer='resolution=merge-duplicates'),params={'on_conflict':'cache_key'},json={'cache_key':k,'payload':v,'updated_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'expires_at':'2027-11-24T00:00:00Z'},timeout=60);r.raise_for_status()
           def wb(label,path,method='GET',params=None,body=None):
            old=get(ROOT+':wb:'+label)
-           if old:return old
+           if old and old.get('http')!=429:return old
+          if old and old.get('http')==429:
+           until=datetime.datetime.fromisoformat(old['observed_at']).timestamp()+int(old.get('retry_after')or 180)+5
+           if until>time.time():time.sleep(until-time.time())
            assert (method,path)in {('GET','/api/advert/v2/adverts'),('GET','/api/advert/v0/bids/recommendations'),('POST','/api/advert/v1/bids/min'),('POST','/api/advert/v2/budget')}
            r=requests.request(method,'https://advert-api.wildberries.ru'+path,headers={'Authorization':os.environ['WB_TOKEN_2'].strip()},params=params,json=body,timeout=60,allow_redirects=False)
            try:d=r.json()
@@ -38,6 +41,10 @@ jobs:
            save(ROOT+':wb:'+label,v)
            if r.status_code==429:raise RuntimeError('Read rate limited; no blind retries')
            return v
+          cooldown=get(ROOT+':wb:competitive_42139004_321001513')
+          if cooldown and cooldown.get('http')==429:
+           until=datetime.datetime.fromisoformat(cooldown['observed_at']).timestamp()+int(cooldown.get('retry_after')or 180)+5
+           if until>time.time():time.sleep(until-time.time())
           scope=get(ROOT+':scope');assert scope['wb_writes']==False
           ps=get(ROOT+':products')['data']['data']['data']
           names={n.casefold()for n in scope['skus']}
