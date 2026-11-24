@@ -54,7 +54,7 @@ jobs:
   analyze:
     needs: read
     if: ${{ needs.read.outputs.source_ready == 'true' }}
-    # Owner25Nov: saved evidence diagnostics only; no model, WB or Telegram access.
+    # Owner25Nov: analyze only a complete exact-hour source; no model, WB or Telegram access.
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
