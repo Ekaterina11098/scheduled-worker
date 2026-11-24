@@ -1,0 +1,46 @@
+name: Remove owner-handled Celeste question message
+on:
+  push:
+    paths: ['.github/workflows/remove-owner-handled-question-1521.yml']
+permissions: {contents: read}
+concurrency:
+  group: remove-owner-handled-question-1521
+  cancel-in-progress: false
+jobs:
+  remove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install 'psycopg[binary]==3.2.10'
+      - name: Delete only exact owner-selected Telegram message
+        env:
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os,json,hmac,hashlib,time,urllib.request,urllib.error
+          import psycopg
+          root=os.environ['SUPABASE_SECRET_KEY'].encode()
+          pw=hmac.new(root,b'veschi:review-approval-login:20261015:v1',hashlib.sha256).hexdigest()
+          with psycopg.connect(host='aws-0-eu-central-1.pooler.supabase.com',port=5432,dbname='postgres',user='review_approval_login_20261015.abxgjoqlddhtcmjcjwxw',password=pw,sslmode='require',autocommit=True,connect_timeout=15,options='-c statement_timeout=30000') as conn:
+           key='owner-manual-dismiss:question:1521:20261124'
+           row=conn.execute('select payload from review_approval.events where id=%s',(key,)).fetchone()
+           if row and json.loads(row[0]).get('status')=='confirmed':
+            print('Deletion already confirmed');raise SystemExit(0)
+           row=conn.execute('select payload from review_approval.cards where id=%s',('47741a1580ce1ec5ace1986a17118e28',)).fetchone()
+           card=json.loads(row[0])
+           assert card['item_id']=='vvHwDKIBPY7Vv771eNQ4' and card['message_id']==1521
+           assert card['cabinet']=='token_3' and card['kind']=='questions' and card['source']['article']=='359-CelesteBag-darkred'
+           data=json.dumps(dict(chat_id='-1003932246120',message_id=1521)).encode()
+           req=urllib.request.Request('https://api.telegram.org/bot'+os.environ['TELEGRAM_BOT_TOKEN']+'/deleteMessage',data=data,headers={'Content-Type':'application/json'})
+           try:
+            with urllib.request.urlopen(req,timeout=30) as response:result=json.load(response)
+           except urllib.error.HTTPError as exc:result=json.loads(exc.read())
+           if not result.get('ok') and 'message to delete not found' not in result.get('description','').lower():
+            raise RuntimeError('Telegram deletion failed: '+str(result.get('error_code')))
+           receipt=dict(status='confirmed',message_id=1521,chat_id='-1003932246120',card_token='47741a1580ce1ec5ace1986a17118e28',item_id=card['item_id'],owner_reported_manual_answer=True,checked_at=time.time(),run_id=os.environ.get('GITHUB_RUN_ID'),wb_calls=0)
+           conn.execute('insert into review_approval.events(id,payload) values(%s,%s) on conflict(id) do update set payload=excluded.payload',(key,json.dumps(receipt)))
+           print(json.dumps(dict(status='confirmed',message_id=1521,wb_calls=0)))
+          PY
