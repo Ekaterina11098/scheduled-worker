@@ -207,7 +207,7 @@ def execute(io,a,p):
     if present:
      if present['bids_kopecks'].get(item['placement'])!=item['target_minor']:raise ValueError('Addition already present at a different bid')
      state.update(status='verified',already_done=True,after=before);save();continue
-    validate_addition(io,item,before)
+    state['current_growth_evidence']=validate_addition(io,item,before);save()
     path='/adv/v0/auction/nms';body=dict(nms=[dict(advert_id=cid,nms=dict(add=[item['nm_id']],delete=[]))])
    elif kind=='archive_campaign':path='/adv/v0/stop?id='+str(cid);method='GET';body=None
    elif kind=='pause_campaign':path='/adv/v0/pause?id='+str(cid);method='GET';body=None
