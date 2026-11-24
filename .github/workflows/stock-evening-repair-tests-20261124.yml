@@ -12,11 +12,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Ekaterina11098/VESCHI_AI
-          ref: cc2a05f2434969d0d1dd4466e5108af91f1a6e1f
+          ref: a5ccfafddbc6df3d8250c90ea4a9db6061359d5e
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: pip install requests==2.32.5 python-dotenv==1.1.1 aiogram==3.22.0 simplejson==4.2.0 'psycopg[binary]==3.2.9' cryptography
-      - run: python -m unittest test_stock_scoped_dispatch test_stock_live_capacity test_stock_all_ip_disabled test_stock_ooo_fallback_return test_stock_ms_customer_order_batch test_stock_temporary_transfer_return test_stock_regular_service test_stock_china_mgt_daily test_stock_belt_common_pool test_stock_cancellation_credit test_stock_unposted_orders test_stock_current_order_reserve test_stock_ms_complete_report
+      - run: python -m unittest test_stock_exact_assortments test_stock_scoped_dispatch test_stock_live_capacity test_stock_all_ip_disabled test_stock_ooo_fallback_return test_stock_ms_customer_order_batch test_stock_temporary_transfer_return test_stock_regular_service test_stock_china_mgt_daily test_stock_belt_common_pool test_stock_cancellation_credit test_stock_unposted_orders test_stock_current_order_reserve test_stock_ms_complete_report
