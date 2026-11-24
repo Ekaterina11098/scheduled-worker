@@ -60,7 +60,8 @@ jobs:
           WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
         run: |
           cp scripts/china_buyer_price_forecast.py source/china_agent/buyer_price_forecast.py
-          PYTHONPATH=scripts:source python scripts/owner_price_report_two24_send.py
+          cp scripts/china_price_brief.py source/china_agent/price_brief.py
+          PYTHONPATH=scripts:source python scripts/owner_price_report_two24_resume.py
 
 # Checkpoint row created before collection; no paid model calls or WB writes.
 
