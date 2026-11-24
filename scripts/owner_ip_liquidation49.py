@@ -7,14 +7,12 @@ HOST='advert-api.wildberries.ru'
 def projection(c):
  return dict(id=c['id'],status=c['status'],currency=c['currency'],bid_type=c['bid_type'],settings=c['settings'],members={str(n['nm_id']):n['bids_kopecks'] for n in c['nm_settings']})
 def validate(a):
- if a.get('status')!='approved' or a.get('owner_id')!=5122667182 or a.get('cabinet')!='token_2' or a.get('currency')!='RUB':raise PermissionError('Owner scope missing')
+ pin={k:v for k,v in a.items()if k!='executor_revision'}
+ if hashlib.sha256(json.dumps(pin,sort_keys=True,separators=(',',':')).encode()).hexdigest()!='a69932c4a358bdc629f279fa85401f0b4345c08652de7f1c69e09c7592df78b1':raise PermissionError('Exact private owner scope changed')
  if datetime.datetime.now(datetime.timezone.utc)>=datetime.datetime.fromisoformat(a['expires_at']):raise PermissionError('Authorization expired')
- if any(a.get(k)is not False for k in ('auto_topup','card_charge_allowed','telegram_sends','other_schedules')):raise PermissionError('Capability expansion')
- if [(g['group'],len(g['items']),g['budget'],g['existing_id'])for g in a['groups']]!=[('Noel',6,3000,None),('Спрос',30,6000,42139004),('Без заказов',13,2000,None)]:raise PermissionError('Group scope changed')
- items=[n for g in a['groups']for n in g['items']]
- if len({n['nm']for n in items})!=49 or {n['nm']for n in items}&set(a['excluded_risk']+a['no_fbo']):raise PermissionError('SKU overlap or excluded SKU')
- if any(n['bid_minor']not in (295,309)for n in items) or sum(n['bid_minor']==309 for n in items)!=2:raise PermissionError('Rate scope changed')
 class Runner:
+ @property
+ def target_id(self):return next(g["existing_id"]for g in self.a["groups"]if g["existing_id"])
  def __init__(self):
   self.db=State();self.a=self.db.get(ROOT+':approval');validate(self.a)
   self.wb=ReadWB(self.db,'token_2');self.wb.identity();self.deadline=time.time()+4*3600
@@ -79,9 +77,9 @@ class Runner:
   self.s['finished_at']=stamp();self.save();print(json.dumps({'status':self.s['status'],'writes':self.s['wb_write_attempts'],'telegram_sends':0}),flush=True)
  def execute(self):
   index=self.call('/adv/v1/promotion/count');ids=sorted({r['advertId']for g in index.get('adverts',[])if g['status']in(4,9,11)for r in g.get('advert_list',[])})
-  if 42139004 not in ids or len(ids)>50:raise ValueError('Existing campaign scope changed')
+  if self.target_id not in ids or len(ids)>50:raise ValueError('Existing campaign scope changed')
   before=self.configs(ids);self.s.update(before=before,baseline_at=stamp());self.save()
-  target=before['42139004']
+  target=before[str(self.target_id)]
   if target['currency']!='RUB'or target['bid_type']!='manual'or target['settings']['payment_type']!='cpc'or target['settings']['placements']!={'search':True,'recommendations':False}:raise ValueError('Existing target changed')
   names={c['settings']['name']for c in before.values()}
   if any(g['name']in names for g in self.a['groups']if g['name']):raise ValueError('Named draft exists without execution receipt')
@@ -94,19 +92,19 @@ class Runner:
   for g in groups:g['items']=[n for n in g['items']if n['nm']in eligible]
   if any(not g['items']for g in groups):raise ValueError('An entire group has no FBO')
   for cid,c in before.items():
-   if c['status']==9 and cid!='42139004' and {n['nm_id']for n in c['nm_settings']}&eligible:raise ValueError('Active overlap in campaign '+cid+'; no changes')
+   if c['status']==9 and cid!=str(self.target_id) and {n['nm_id']for n in c['nm_settings']}&eligible:raise ValueError('Active overlap in campaign '+cid+'; no changes')
   old={n['nm_id']:n for n in target['nm_settings']};current=groups[1];newn={n['nm']for n in groups[0]['items']+groups[2]['items']};deletes=sorted(set(old)&(newn|set(self.a['excluded_risk'])))
   adds=sorted({n['nm']for n in current['items']}-set(old))
   if (adds or deletes)and not target.get('restrictions',{}).get('can_change_nms'):raise ValueError('Existing campaign membership locked')
   if len(set(old)-set(deletes)|set(adds))>50:raise ValueError('Existing capacity exceeded')
   self.s['outside_scope_preserved']=sorted(set(old)-set(wanted)-set(self.a['excluded_risk']));self.save()
-  minimum=self.call('/api/advert/v1/bids/min','POST',{'advert_id':42139004,'nm_ids':[next(iter(old))],'payment_type':'cpc','placement_types':['search']})
+  minimum=self.call('/api/advert/v1/bids/min','POST',{'advert_id':self.target_id,'nm_ids':[next(iter(old))],'payment_type':'cpc','placement_types':['search']})
   bs=[b for n in minimum['bids']for b in n['bids']if b['type']=='search'and b['currency']=='RUB']
-  if len(bs)!=1 or bs[0]['value']>295:raise ValueError('Category minimum above approved rate')
+  if len(bs)!=1 or bs[0]['value']>min(n['bid_minor']for n in wanted.values()):raise ValueError('Category minimum above approved rate')
   self.s['minimum_receipt']=minimum
   wallet=self.call('/adv/v1/balance');self.s['wallet_before']=wallet
-  budget=self.budgets([42139004]);self.s['budget_before']=budget
-  needed=5000+max(0,6000-budget['42139004'])
+  budget=self.budgets([self.target_id]);self.s['budget_before']=budget
+  needed=sum(g['budget']for g in groups if not g['existing_id'])+max(0,next(g['budget']for g in groups if g['existing_id'])-budget[str(self.target_id)])
   if wallet.get('currency')!='RUB'or wallet.get('net',0)<needed:raise ValueError('WB available net balance insufficient; no card charge')
   self.s.update(status='preflight_verified',groups=groups,maximum_deposit=needed);self.save()
   for g in groups:
@@ -116,15 +114,15 @@ class Runner:
    cid=value if type(value)is int else value.get('advertId')
    if type(cid)is not int or cid<=0:raise RuntimeError('Creation ID uncertain; no recreation')
    g['existing_id']=cid;self.s['created'][g['group']]=cid;self.save()
-  if target['status']==9:self.call('/adv/v0/pause',params={'id':42139004},step='pause_existing')
-  if adds or deletes:self.call('/adv/v0/auction/nms','PATCH',{'nms':[{'advert_id':42139004,'nms':{'add':adds,'delete':deletes}}]},step='membership_existing')
+  if target['status']==9:self.call('/adv/v0/pause',params={'id':self.target_id},step='pause_existing')
+  if adds or deletes:self.call('/adv/v0/auction/nms','PATCH',{'nms':[{'advert_id':self.target_id,'nms':{'add':adds,'delete':deletes}}]},step='membership_existing')
   bidrows=[{'advert_id':g['existing_id'],'nm_bids':[{'nm_id':n['nm'],'placement':'search','bid_kopecks':n['bid_minor']}for n in g['items']]}for g in groups]
   self.call('/api/advert/v1/bids','PATCH',{'bids':bidrows},step='bids_all')
   expected=copy.deepcopy(before)
-  expected['42139004']['status']=11
-  expected['42139004']['nm_settings']=[n for n in expected['42139004']['nm_settings']if n['nm_id']not in deletes]
-  for nm in adds:expected['42139004']['nm_settings'].append({'nm_id':nm,'bids_kopecks':{'search':wanted[nm]['bid_minor'],'recommendations':0}})
-  for n in expected['42139004']['nm_settings']:
+  expected[str(self.target_id)]['status']=11
+  expected[str(self.target_id)]['nm_settings']=[n for n in expected[str(self.target_id)]['nm_settings']if n['nm_id']not in deletes]
+  for nm in adds:expected[str(self.target_id)]['nm_settings'].append({'nm_id':nm,'bids_kopecks':{'search':wanted[nm]['bid_minor'],'recommendations':0}})
+  for n in expected[str(self.target_id)]['nm_settings']:
    if n['nm_id']in {r['nm']for r in current['items']}:n['bids_kopecks']['search']=wanted[n['nm_id']]['bid_minor']
   allids=sorted(set(ids)|set(self.s['created'].values()));configured=self.configs(allids);self.s['configured_readback']=configured;self.save()
   for cid,c in expected.items():
@@ -145,7 +143,7 @@ class Runner:
   for g in groups:self.call('/adv/v0/start',params={'id':g['existing_id']},step='start_'+g['group'])
   after=self.configs(allids);self.s.update(after=after,readback_at=stamp());self.save()
   for cid,c in expected.items():
-   if cid=='42139004':c['status']=9
+   if cid==str(self.target_id):c['status']=9
    if projection(c)!=projection(after[cid]):raise ValueError('Final unexpected change '+cid)
   results=[]
   for g in groups:
