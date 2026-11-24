@@ -99,7 +99,7 @@ def prepare_midday(io,day,source=None):
     continue
    # Do not propose to empty a campaign via individual approvals.
    if len(attention)==len(c.get('nm_settings',[])):attention=[]
-   out.append(dict(id=c['id'],name=c['settings']['name'],draft=draft,today=metric,attention=attention,post_change_note=('По товарам после запуска/изменений полный следующий день МСК ещё не завершён; повторных действий по ним нет.' if protected else None)))
+   out.append(dict(id=c['id'],name=c['settings']['name'],status=c['status'],archived_at=(c.get('timestamps')or{}).get('deleted'),draft=draft,today=metric,attention=attention,post_change_note=('По товарам после запуска/изменений полный следующий день МСК ещё не завершён; повторных действий по ним нет.' if protected else None)))
  if not out:raise ValueError('Empty midday catalogue')
  return dict(day=day,observed_at=source.get('completed_at',source['observed_at']),campaigns=out,presentation='midday_green_current_day_v1',review_context=context)
 def only_completed_day_actions(bundle):
@@ -135,6 +135,8 @@ def covered_totals(campaigns):
  return dict(total=sums(known) if known else None,missing=missing,covered=len(known),campaigns=len(campaigns))
 
 def render_midday(b):
+ from china_archived_report_window import midday_view
+ b=midday_view(b)
  b=dict(b,campaigns=[c for c in b['campaigns'] if not c.get('draft')])
  W=2400;H=6500;xs=[44,480,780,1050,1650,2356];files=[];green='#196b44'
  def wrap(d,s,w,n=27):
@@ -179,7 +181,7 @@ def render_midday(b):
   for i,lines in enumerate(ls):
    for j,line in enumerate(lines):d.text((xs[i],y+18+j*35),line,font=font(27),fill=color(p) if i==2 else '#111111')
   acts.extend(r['action'] for r in c['attention']);y+=h+12
- coverage=covered_totals(b['campaigns']);total=coverage['total']
+ coverage=covered_totals([c for c in b.get('presentation_totals_campaigns',b['campaigns'])if not c.get('draft')]);total=coverage['total']
  d.rounded_rectangle((24,y+10,W-24,y+215),18,fill=green)
  d.text((44,y+30),('ИТОГО · известная часть · текущий день' if coverage['missing'] else 'ИТОГО · Китай · только текущий день'),font=font(29,True),fill='white')
  d.text((44,y+85),'Расход: '+money(total['spend'] if total else None)+' ¥   |   ДРР: '+pct(total)+'   |   Рекламных заказов: '+str(int(total['orders']) if total else 'нет данных'),font=font(29,True),fill='white')
