@@ -46,7 +46,7 @@ jobs:
 
           ROOT = "angelabag_media_insert7:v1:"
           PRECHECK = "angelabag_media_insert7:v2:read_only:20261124"
-          RESULT = ROOT + "video_preflight:20261124:local"
+          RESULT = ROOT + "video_preflight:20261124:diagnostic"
           INPUT = ROOT + "approved_input:20261124"
           PILOT = 1473244338
           EXCLUDED = 1473244337
@@ -179,8 +179,24 @@ jobs:
               try:
                   result = subprocess.run(args, capture_output=True, check=True, timeout=180)
                   return result.stdout
-              except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
-                  raise Stop(failure) from None
+              except subprocess.CalledProcessError as error:
+                  stderr = (error.stderr or b"").decode("utf-8", errors="replace").lower()
+                  categories = {
+                      "extension": ("not in allowed_segment_extensions", "invalid extension", "not in allowed extensions"),
+                      "invalid_segment": ("invalid data found", "error when loading first segment"),
+                      "unsupported_stream": ("codec not currently supported", "could not find tag for codec"),
+                      "no_streams": ("does not contain any stream", "matches no streams", "could not find codec parameters"),
+                      "network": ("http error", "connection refused", "input/output error"),
+                      "file_missing": ("no such file or directory",),
+                      "timestamp": ("non-monoton", "invalid dts", "invalid pts"),
+                  }
+                  match = next((name for name, needles in categories.items()
+                                if any(needle in stderr for needle in needles)), "unknown_ffmpeg_error")
+                  raise Stop(failure + "_" + match) from None
+              except subprocess.TimeoutExpired:
+                  raise Stop(failure + "_timeout") from None
+              except OSError:
+                  raise Stop(failure + "_tool_unavailable") from None
 
 
           def media_info(path):
