@@ -29,7 +29,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Ekaterina11098/VESCHI_AI
-          ref: 289267ab77fcf423e3a58d9b1f2decbd344f02d2
+          ref: 2f20ad2dfd7418c1787c58327861f67bb61481f4
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           persist-credentials: false
           path: private-source
@@ -67,7 +67,7 @@ jobs:
         run: |
           python warehouse_id_patch.py private-source
           python -c "import stock_deploy_support, stock_regular_job"
-          (cd private-source && env -u STOCK_DAILY_ENABLED -u STOCK_OZON_ENABLED -u STOCK_PENDING_RESERVE_ENABLED -u STOCK_CANCELLATION_RESTORE_ENABLED -u STOCK_RUN_SLOT -u STOCK_NOTIFICATIONS_ENABLED -u STOCK_CLOUD_EXECUTION_ENABLED -u STOCK_JOURNAL_IMPORT_ACCEPTED python -m unittest test_stock_owner_ip_transfer test_stock_owner_table_apply test_stock_china_cancellation_release test_stock_belt_common_pool)
+          (cd private-source && env -u STOCK_DAILY_ENABLED -u STOCK_OZON_ENABLED -u STOCK_PENDING_RESERVE_ENABLED -u STOCK_CANCELLATION_RESTORE_ENABLED -u STOCK_RUN_SLOT -u STOCK_NOTIFICATIONS_ENABLED -u STOCK_CLOUD_EXECUTION_ENABLED -u STOCK_JOURNAL_IMPORT_ACCEPTED python -m unittest test_stock_ms_customer_order_batch test_stock_owner_ip_transfer test_stock_owner_table_apply test_stock_china_cancellation_release test_stock_belt_common_pool)
           python owner_all_ip_to_china_apply_20261124.py
       - uses: actions/upload-artifact@v4
         if: always()
