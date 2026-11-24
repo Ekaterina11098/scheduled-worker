@@ -46,7 +46,7 @@ jobs:
 
           ROOT = "angelabag_media_insert7:v1:"
           PRECHECK = "angelabag_media_insert7:v2:read_only:20261124"
-          RESULT = ROOT + "write_result:20261124:r2"
+          RESULT = ROOT + "write_result:20261124:r3"
           INPUT = ROOT + "approved_input:20261124"
           PILOT = 1473244338
           EXCLUDED = 1473244337
@@ -131,22 +131,18 @@ jobs:
 
           def assets(client):
               import json
-              config = client.get(INPUT) or {}
-              ids = config.get("drive_files", [])
-              if len(ids) != 4 or len(set(ids)) != 4:
-                  raise Stop("invalid_approved_file_set")
-              creds = json.loads(client.call(client.base + "/rest/v1/rpc/content_photo_drive_credentials", "POST", {}))
-              drive = Delivery(creds, requests.request)
-              drive.refresh()
+              import base64
               material = []
-              for ident, expected in zip(ids, SHA):
-                  meta = drive.metadata(ident)
-                  if meta.get("parents") != [FOLDER] or meta.get("mimeType") != "image/png" or meta.get("trashed"):
-                      raise Stop("drive_asset_outside_approved_folder")
-                  response = drive.call("GET", API + "/" + ident, params={"alt": "media"})
-                  if response.status_code != 200 or sha(response.content) != expected:
-                      raise Stop("drive_asset_download_or_hash_failed")
-                  raw = response.content
+              for idx, expected in enumerate(SHA, 1):
+                  prefix = ROOT + f"private_asset:{idx:02d}:"
+                  rows = client.cache({"cache_key": "like." + prefix + "*",
+                                       "select": "payload", "order": "cache_key.asc", "limit": 10})
+                  parts = [row["payload"] for row in rows]
+                  if [part["part"] for part in parts] != list(range((5, 5, 6, 6)[idx - 1])):
+                      raise Stop("private_asset_chunks_missing")
+                  raw = b"".join(base64.b64decode(part["chunk"], validate=True) for part in parts)
+                  if sha(raw) != expected:
+                      raise Stop("private_asset_hash_mismatch")
                   with Image.open(io.BytesIO(raw)) as im:
                       if im.format != "PNG" or im.size != (1086, 1448):
                           raise Stop("asset_format_changed")
