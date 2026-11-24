@@ -27,7 +27,18 @@ def main():
  items.append(dict(nm_id=2344552267,article='018-JuneBag-black'))
  assert len(items)==25 and len({i['nm_id']for i in items})==25
  v['items']=items;ids=[i['nm_id']for i in items]
- stage('prices',lambda:current_prices(io,ids))
+ def exact_prices():
+  found={}
+  for offset in range(0,20000,1000):
+   rows=io.wb('/api/v2/list/goods/filter?limit=1000&offset='+str(offset))['listGoods']
+   for r in rows:
+    if r['nmID']not in ids:continue
+    assert r['currencyIsoCode4217']=='CNY'
+    vals={z.get('discountedPrice')for z in r.get('sizes',[])}
+    found[r['nmID']]=dict(nm_id=r['nmID'],article=r['vendorCode'],seller_price=next(iter(vals))if len(vals)==1 else None,size_ids=[z['sizeID']for z in r.get('sizes',[])],raw=r)
+   if len(rows)<1000:break
+  return dict(observed_at=now(),rows=list(found.values()),missing_nm_ids=[nm for nm in ids if nm not in found],unpriced_nm_ids=[nm for nm,r in found.items()if not isinstance(r['seller_price'],(int,float))or r['seller_price']<=0])
+ stage('prices',exact_prices)
  stage('stock',lambda:read_stock([i['article']for i in items],warehouse_role='msk'))
  if 'prices'in v:stage('published',lambda:published_stock(io,v['prices'],ids))
  def funnel(start,end,past):
