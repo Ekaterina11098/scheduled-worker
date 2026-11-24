@@ -1,0 +1,251 @@
+name: AngelaBag China verified four-slide insert
+on:
+  push:
+    branches: [angelabag-media-preflight-20261124]
+    paths: ['.github/workflows/angelabag-media-insert.yml']
+permissions:
+  contents: read
+concurrency:
+  group: angelabag-media-insert-20261124
+  cancel-in-progress: false
+jobs:
+  insert:
+    if: github.ref == 'refs/heads/angelabag-media-preflight-20261124'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install Pillow==11.3.0 requests==2.32.5
+      - name: Insert and verify approved galleries
+        env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_URL: https://abxgjoqlddhtcmjcjwxw.supabase.co
+          PYTHONPATH: scripts
+        run: |
+          python - <<'PYTHON'
+          import datetime as dt
+          import hashlib
+          import io
+          import os
+          import re
+          import time
+          from urllib.parse import urlsplit
+
+          import requests
+          from PIL import Image, ImageChops, ImageOps, ImageStat
+
+          from content_photo_drive import API, FOLDER, Delivery
+          from content_photo_bridge import Client
+
+          ROOT = "angelabag_media_insert7:v1:"
+          PRECHECK = "angelabag_media_insert7:v2:read_only:20261124"
+          RESULT = ROOT + "write_result:20261124"
+          INPUT = ROOT + "approved_input:20261124"
+          PILOT = 1473244338
+          EXCLUDED = 1473244337
+          HOST = "https://content-api.wildberries.cn"
+          SHA = (
+              "a37a9793029f6daa8920ce7fb0f035f1dea128146c5d9d18e393695326fbb558",
+              "9ea239ca285ce492a6d0cb478cc79387c4e605bf71b6034af9f0fe2fe980619e",
+              "5006616f95df18800198d4bff2e4b5d2d142f68739380cd7d618246cd55d55a1",
+              "ed4a7562b02aafd9686d375db64894e21711564b377a3d3f65ae4ecfd2b93d71",
+          )
+
+
+          class Stop(Exception):
+              pass
+
+
+          def sha(raw):
+              return hashlib.sha256(raw).hexdigest()
+
+
+          def image(raw):
+              with Image.open(io.BytesIO(raw)) as im:
+                  return ImageOps.fit(im.convert("RGB"), (192, 256))
+
+
+          def difference(a, b):
+              return sum(ImageStat.Stat(ImageChops.difference(a, b)).mean) / 3
+
+
+          def matches(slides, photos):
+              return [[i for i, photo in enumerate(photos) if difference(slide, photo) <= 5]
+                      for slide in slides]
+
+
+          def media_urls(card):
+              urls = []
+              for photo in card.get("photos") or []:
+                  url = photo.get("big")
+                  u = urlsplit(url or "")
+                  if (u.scheme != "https" or not re.fullmatch(r"basket-\d+\.(wbbasket\.ru|wbcontent\.net)", u.netloc)
+                          or not re.fullmatch(r"/vol\d+/part\d+/\d+/images/big/\d+\.(webp|jpg|jpeg|png)", u.path)
+                          or u.query or u.fragment):
+                      raise Stop("unexpected_photo_url")
+                  urls.append(url)
+              return urls
+
+
+          def photos(client, urls, fresh=False):
+              stamp = str(time.time_ns())
+              return [client.call(url + ("?verify=" + stamp if fresh else ""),
+                                  auth=False, limit=32_000_000) for url in urls]
+
+
+          def core(card):
+              return {k: v for k, v in card.items() if k not in ("photos", "video", "updatedAt")}
+
+
+          def read_card(client, nm, article):
+              body = {"settings": {"cursor": {"limit": 100}, "filter": {"withPhoto": -1, "textSearch": str(nm)}}}
+              import json
+              raw = client.call(HOST + "/content/v2/get/cards/list", "POST", body,
+                                {"Authorization": os.environ["WB_TOKEN_3"]})
+              data = json.loads(raw)
+              hits = [c for c in data.get("data", data)["cards"] if c.get("nmID") == nm]
+              if not hits:
+                  hits = [c for c in client.catalog() if c.get("nmID") == nm]
+              if len(hits) != 1 or hits[0].get("vendorCode") != article:
+                  raise Stop("card_identity_not_verified")
+              return hits[0]
+
+
+          def save(client, report, claim=False):
+              now = dt.datetime.now(dt.timezone.utc)
+              body = {"cache_key": RESULT, "payload": report, "updated_at": now.isoformat(),
+                      "expires_at": (now + dt.timedelta(days=30)).isoformat()}
+              mode = "ignore" if claim else "merge"
+              rows = client.cache({"on_conflict": "cache_key"}, "POST", body,
+                                  f"resolution={mode}-duplicates,return=representation")
+              if len(rows) != 1 or client.get(RESULT) != report:
+                  raise Stop("journal_not_verified_or_run_already_claimed")
+
+
+          def assets(client):
+              import json
+              config = client.get(INPUT) or {}
+              ids = config.get("drive_files", [])
+              if len(ids) != 4 or len(set(ids)) != 4:
+                  raise Stop("invalid_approved_file_set")
+              creds = json.loads(client.call(client.base + "/rest/v1/rpc/content_photo_drive_credentials", "POST", {}))
+              drive = Delivery(creds, requests.request)
+              drive.refresh()
+              material = []
+              for ident, expected in zip(ids, SHA):
+                  meta = drive.metadata(ident)
+                  if meta.get("parents") != [FOLDER] or meta.get("mimeType") != "image/png" or meta.get("trashed"):
+                      raise Stop("drive_asset_outside_approved_folder")
+                  response = drive.call("GET", API + "/" + ident, params={"alt": "media"})
+                  if response.status_code != 200 or sha(response.content) != expected:
+                      raise Stop("drive_asset_download_or_hash_failed")
+                  raw = response.content
+                  with Image.open(io.BytesIO(raw)) as im:
+                      if im.format != "PNG" or im.size != (1086, 1448):
+                          raise Stop("asset_format_changed")
+                      im.verify()
+                  material.append(raw)
+              bucket = json.loads(client.call(client.base + "/storage/v1/bucket/owner-media-recovery"))
+              if bucket.get("public") is not False:
+                  raise Stop("asset_bucket_not_private")
+              signed = []
+              for raw, expected in zip(material, SHA):
+                  path = "content-photo-bridge/v1/angelabag-insert7/approved/" + expected + ".png"
+                  client.storage_upload(path, raw, "image/png")
+                  url = client.signed_url(path)
+                  if sha(client.call(url, auth=False, limit=1_000_000)) != expected:
+                      raise Stop("signed_asset_readback_mismatch")
+                  signed.append(url)
+              return [image(raw) for raw in material], signed
+
+
+          def verify(client, nm, article, baseline, old, slides):
+              for delay in (8, 12, 20, 30, 40, 50, 60, 75):
+                  time.sleep(delay)
+                  card = read_card(client, nm, article)
+                  if card.get("video") or core(card) != core(baseline):
+                      raise Stop("video_or_non_media_fields_changed")
+                  actual = [image(raw) for raw in photos(client, media_urls(card), fresh=True)]
+                  if len(actual) == len(old) and all(difference(a, b) <= 3 for a, b in zip(old, actual)):
+                      continue
+                  if len(actual) != len(old) + 4:
+                      raise Stop(f"unexpected_photo_count_{len(actual)}_expected_{len(old) + 4}")
+                  if matches(slides, actual) != [[6], [7], [8], [9]]:
+                      raise Stop("slide_positions_or_duplicates_differ")
+                  if any(difference(a, b) > 3 for a, b in zip(old, actual[:6] + actual[10:])):
+                      raise Stop("old_photo_order_or_content_changed")
+                  return
+              raise Stop("write_not_visible_originals_unchanged")
+
+
+          def process(client, report, record, article, slides, signed):
+              nm = record["nmID"]
+              card = read_card(client, nm, article)
+              if card.get("video"):
+                  return "skipped_video"
+              urls = media_urls(card)
+              if len(urls) < 6:
+                  return "skipped_photo_count"
+              old = [image(blob) for blob in photos(client, urls, fresh=True)]
+              duplicates = matches(slides, old)
+              if duplicates == [[6], [7], [8], [9]]:
+                  return "already_at_positions"
+              if any(duplicates) or any(difference(slide, photo) < 10 for slide in slides for photo in old):
+                  return "skipped_existing_or_ambiguous_slides"
+              if len(urls) > 26:
+                  return "skipped_photo_count"
+              current = read_card(client, nm, article)
+              if current.get("video"):
+                  return "skipped_video"
+              if current.get("photos") != card.get("photos") or core(current) != core(card):
+                  raise Stop("card_changed_before_write")
+              record["status"] = "write_pending_readback"
+              save(client, report)
+              try:
+                  response = requests.post(HOST + "/content/v3/media/save",
+                                           headers={"Authorization": os.environ["WB_TOKEN_3"]},
+                                           json={"nmId": nm, "data": urls[:6] + signed + urls[6:]},
+                                           timeout=90, allow_redirects=False)
+                  record["write_response"] = "accepted" if response.status_code == 200 and response.json().get("error") is False else "rejected_or_uncertain"
+              except (ValueError, requests.RequestException):
+                  record["write_response"] = "uncertain"
+              verify(client, nm, article, card, old, slides)
+              return "updated_verified"
+
+
+          def main():
+              client = Client()
+              report = {"run_id": os.environ["GITHUB_RUN_ID"], "status": "preparing", "cards": []}
+              save(client, report, claim=True)
+              try:
+                  baseline = client.get(PRECHECK)
+                  approved = {r["nmID"]: r["vendorCode"] for r in baseline if not r["has_video"] and r["nmID"] != EXCLUDED}
+                  if len(approved) != 19 or approved.get(PILOT) != "208-AngelaBag-black":
+                      raise Stop("approved_target_set_mismatch")
+                  slides, signed = assets(client)
+                  for nm in [PILOT] + sorted(set(approved) - {PILOT}):
+                      record = {"nmID": nm, "status": "reading"}
+                      report["cards"].append(record)
+                      record["status"] = process(client, report, record, approved[nm], slides, signed)
+                      save(client, report)
+                      if nm == PILOT and record["status"] != "updated_verified":
+                          raise Stop("pilot_not_updated_and_verified")
+                  report["status"] = "complete"
+              except Exception as error:
+                  report["status"] = "stopped"
+                  report["reason"] = str(error) if isinstance(error, Stop) or type(error).__name__ == "DriveError" else type(error).__name__
+                  save(client, report)
+                  raise SystemExit("AngelaBag upload stopped") from None
+              save(client, report)
+              print("AngelaBag upload verified")
+
+
+          if __name__ == "__main__":
+              main()
+          PYTHON
