@@ -1,4 +1,4 @@
-name: Owner exact four budget topups
+name: Owner MSK price raise read only
 on:
   push:
     branches: [main]
@@ -47,7 +47,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - run: pip install requests==2.32.5 pillow==11.3.0 python-dotenv simplejson==4.2.0 openai==3.42.1
-      - name: Owner cash-only four approved topups after standard completion
+      - name: Read-only MSK price and stable-order review
         env:
           CHINA_AD_PREPARE_ONLY: 'false'
           CHINA_TELEGRAM_BOT_TOKEN: '' # constructor only; no Telegram credentials or calls
@@ -58,7 +58,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
-        run: PYTHONPATH=scripts:source python scripts/owner_fund3550_24.py
+        run: PYTHONPATH=scripts:source python scripts/owner_raise24_read.py
 
 # Checkpoint row created before collection; no paid model calls or WB writes.
 
