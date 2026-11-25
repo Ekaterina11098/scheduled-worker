@@ -1,0 +1,59 @@
+name: Owner China corrected midday saved replay25
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/owner-midday25-preview.yml]
+permissions: {contents: read}
+concurrency:
+  group: china-dialog-data
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-midday25-preview] Verify saved midday correction'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/
+            /.github/
+            /*request*.json
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: a7efd98c6ef7e54f415471abcb694c748c2b4f6d
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          path: source
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /analytics/
+            /business_agents/
+            /advertising_agent/
+            /china_agent/
+            /tests/
+            /*.py
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5 pillow==11.3.0 python-dotenv simplejson==4.2.0 openai==3.42.1
+      - name: Regression tests without marketplace credentials
+        env:
+          PYTHONPATH: scripts:source
+        run: |
+          python -m unittest scripts.test_china_midday_growth_preservation25
+          python -m unittest discover -s scripts -p 'test_china_advertising*.py'
+      - name: Replay saved midday evidence
+        env:
+          PYTHONPATH: scripts:source
+          OPENAI_API_KEY: ""
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ""
+          CHINA_TELEGRAM_BOT_TOKEN: ""
+        run: PYTHONPATH=scripts:source python scripts/owner_midday25_preview.py
