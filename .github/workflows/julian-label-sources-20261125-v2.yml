@@ -1,0 +1,64 @@
+name: Read Julian31 barcode candidates v2
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/julian-label-sources-20261125-v2.yml']
+permissions: {}
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5
+      - env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        shell: python
+        run: |
+          import os,json,time,re,requests
+          from datetime import datetime,timezone
+          HOST='https://content-api.wildberries.cn'
+          WH={'Authorization':os.environ['WB_TOKEN_3'],'Content-Type':'application/json'}
+          SB=os.environ['SUPABASE_URL'].rstrip('/');SK=os.environ['SUPABASE_SECRET_KEY']
+          SH={'apikey':SK,'Authorization':'Bearer '+SK,'Content-Type':'application/json'}
+          KEY='julian_all31:label_sources:20261125:v2'
+          SPECS=[{"article":"375-ReginaBag-zbrown","model":"Regina","color":"коричневый","material":"замша","position":4,"row":6,"number":"375","wb_color":"коричневый"},{"article":"376-ReginaBag-zblack","model":"Regina","color":"черный","material":"замша","position":5,"row":7,"number":"376","wb_color":"черный"},{"article":"377-CelineaBag-burgundy","model":"Celinea","color":"бордовый","material":"кожа","position":9,"row":11,"number":"377","wb_color":"бордовый"},{"article":"378-CelineaBag-yellow","model":"Celinea","color":"желтый","material":"кожа","position":10,"row":12,"number":"378","wb_color":"желтый"},{"article":"379-MiraBag-green","model":"Mira","color":"зеленый","material":"кожа","position":12,"row":14,"number":"379","wb_color":"зеленый"},{"article":"380-MiraBag-grey","model":"Mira","color":"серый","material":"кожа","position":13,"row":15,"number":"380","wb_color":"серый"},{"article":"381-MarielleBag-black","model":"Marielle","color":"черный","material":"кожа","position":22,"row":24,"number":"381","wb_color":"черный"},{"article":"382-MarielleBag-beige","model":"Marielle","color":"бежевый","material":"кожа","position":23,"row":25,"number":"382","wb_color":"бежевый"}]
+          def now():return datetime.now(timezone.utc).isoformat()
+          def cache(k):
+           r=requests.get(SB+'/rest/v1/telegram_api_cache',headers=SH,params={'cache_key':'eq.'+k,'select':'payload'},timeout=40);r.raise_for_status()
+           return r.json()[0]['payload'] if r.json() else None
+          def save(e):
+           r=requests.post(SB+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**SH,'Prefer':'resolution=merge-duplicates,return=minimal'},json={'cache_key':KEY,'payload':e,'updated_at':now(),'expires_at':'2099-01-01T00:00:00Z'},timeout=40);r.raise_for_status()
+          def read(path,body=None):
+           for attempt in range(3):
+            r=requests.get(HOST+path,headers=WH,timeout=60) if body is None else requests.post(HOST+path,headers=WH,json=body,timeout=60)
+            if r.status_code==429:
+             time.sleep(max(6,min(60,int(r.headers.get('X-Ratelimit-Retry','10')))));continue
+            r.raise_for_status();j=r.json();assert not j.get('error'),path
+            return j
+           raise RuntimeError('Read rate limited')
+          def cards(trash=False):
+           cur={'limit':100};rows=[]
+           for page in range(80):
+            j=read('/content/v2/get/cards/trash' if trash else '/content/v2/get/cards/list',{'settings':{'sort':{'ascending':True},'cursor':cur,'filter':{'withPhoto':-1}}})
+            rows.extend(j.get('cards',[]));cu=j.get('cursor',{})
+            if cu.get('total',0)<100:return rows
+            date='trashedAt' if trash else 'updatedAt';cur={'limit':100,date:cu[date],'nmID':cu['nmID']};time.sleep(.8)
+           raise RuntimeError('Incomplete pagination')
+          def core(c):
+           x={k:v for k,v in c.items() if k not in ('updatedAt',)}
+           x['characteristics']=sorted(x.get('characteristics',[]),key=lambda a:str(a['id']))
+           return x
+          
+          nums=["64","57","158","375","376","661","685","663","377","378","664","379","380","27","161","163","157","160","71","70","72","381","382","358","359","360","361","362","363","364","365"]
+          live=cards()
+          items=[]
+          for n in nums:
+           matches=[c for c in live if c.get('vendorCode','').split('-')[0].isdigit() and str(int(c['vendorCode'].split('-')[0]))==n]
+           items.append({'number':n,'matches':[{'article':c['vendorCode'],'nmID':c['nmID'],'subjectID':c['subjectID'],'subjectName':c.get('subjectName'),'barcodes':[str(b) for z in c.get('sizes',[]) for b in z.get('skus',[])]} for c in matches]})
+          save({'status':'read_complete','items':items,'wb_writes':0,'checked_at':now()})
+          print('Read only:31 number candidates saved for review')
+          
