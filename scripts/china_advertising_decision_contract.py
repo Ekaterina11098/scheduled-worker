@@ -2,7 +2,7 @@
 import copy,hashlib,json
 from datetime import datetime
 from zoneinfo import ZoneInfo
-REVISION='completed-postchange-economics-v2-budget-resume'
+REVISION='completed-postchange-economics-v3-preserve-growth'
 MSK=ZoneInfo('Europe/Moscow')
 KINDS={'price','bid','added','returned','relaunch'}
 def effective_launch_at(source,state):
@@ -142,11 +142,25 @@ def finalize(io,bundle,source,minima):
  """Shared entry point for morning, midday and a cached analyst preview; no API calls."""
  from china_advertising_economic_review import apply
  from china_advertising_directions import attach
+ from china_advertising_target import resolve
+ source=copy.deepcopy(source);bundle=copy.deepcopy(bundle)
+ target=resolve(io,bundle,source);source['target_drr_pct']=bundle['target_drr_pct']=target
+ raises={(c['id'],r['nm']):copy.deepcopy(r)for c in bundle['campaigns']for r in c.get('focus',[])if (r.get('action')or{}).get('kind')=='ad_set_bid'and(r.get('action')or{}).get('direction')=='raise'}
  if not bundle.get('day')or not bundle.get('days'):raise ValueError('Unified decision requires completed dated source')
  additions={(c['id'],r['nm']):copy.deepcopy(r)for c in bundle['campaigns']for r in c.get('focus',[])if (r.get('action')or{}).get('kind')=='ad_add_sku'}
  out=apply(bundle,source,minima)
  for cp in out['campaigns']:
   cp['focus']=[additions.get((cp['id'],r['nm']),r)for r in cp.get('focus',[])]
+  for row in cp.get('focus',[]):
+   candidate=raises.get((cp['id'],row['nm']))
+   if candidate:
+    restored,reason=validated_growth_raise(candidate,row,cp,source,minima,target)
+    if restored:
+     row.update(action=copy.deepcopy(candidate['action']),decision=candidate['decision'],reason=candidate.get('reason',row.get('reason')))
+    else:
+     row['growth_suppression_reason']=reason
+     if row.get('action')==candidate['action']:
+      row.update(action=None,decision='Повышение не готово: '+reason+'.')
   cp['attention']=[r for r in cp['focus']if r.get('action')]
  out=apply_owner_unchanged(attach(out,source))
  for cp in out['campaigns']:
@@ -196,5 +210,33 @@ def finalize(io,bundle,source,minima):
   if prior:io.put(ledger_key,ledger)
   else:io.create(ledger_key,ledger)
  out['decision_contract']=dict(revision=REVISION,rows=rows,deterministic=True,model_calls=0,wb_writes=0)
+ if out.get('sales_growth_review'):
+  from china_sales_growth_review import attach as sales_review
+  out=sales_review(out)
  return out
 
+def validated_growth_raise(candidate,row,campaign,source,minima,target):
+ """The second economic pass must not erase a separately validated growth proposal."""
+ action=candidate.get('action')or{};e=action.get('growth_evidence')or{};window=row.get('decision_window')or{}
+ def reject(reason):return False,reason
+ if row.get('pending_first_day')or row.get('already_excluded')or row.get('data_blocker'):return reject('fresh_review_pending_or_unavailable')
+ if row.get('action')and row['action']!=action:return reject('current_cost_action_takes_precedence')
+ if action.get('kind')!='ad_set_bid'or action.get('direction')!='raise'or not action.get('target_minor',0)>action.get('old_minor',0):return reject('not_exact_raise')
+ cid=campaign['id'];nm=row['nm'];state=next((c for b in source.get('batches',{}).values()for c in b.get('campaigns',{}).get('adverts',[])if c['id']==cid),None)
+ if not state or state.get('status')!=9 or state.get('currency')!='CNY':return reject('campaign_not_active_CNY')
+ member=next((n for n in state.get('nm_settings',[])if n['nm_id']==nm),None)
+ if not member or member.get('bids_kopecks',{}).get(action.get('placement'))!=action['old_minor']:return reject('current_bid_changed_or_already_done')
+ if action.get('campaign_id')!=cid or action.get('nm_id')!=nm:return reject('identity_mismatch')
+ days=e.get('decision_days');metric=window.get('metrics')or{}
+ if not days or days!=window.get('days')or days[-1]>source.get('period_to',''):return reject('completed_window_mismatch')
+ if e.get('cabinet')!='token_3'or e.get('currency')!='CNY'or not e.get('source_key'):return reject('growth_evidence_unavailable')
+ minimum=minima.get(str(cid)+':'+str(nm));cfg=source.get('config')or{}
+ if type(minimum)is not int or not minimum<=action['target_minor']<=cfg.get('cpcMaxBid',0)or action['target_minor']%cfg.get('cpcStep',1):return reject('minimum_or_step_unverified')
+ economics=(source.get('economics',{}).get('rows',{}).get(str(nm))or{})
+ if not all(type(economics.get(k))in(int,float)and economics[k]>0 for k in('stock_free','published_stock','seller_price_cny','expected_margin_before_ads_cny')):return reject('fresh_positive_economics_unavailable')
+ if economics['seller_price_cny']!=e.get('price_cny'):return reject('price_changed')
+ if not metric.get('orders',0)>0 or not metric.get('clicks',0)>0 or not metric.get('amount',0)>0:return reject('no_completed_paid_order_basis')
+ scenario=action['target_minor']*metric['clicks']/metric['amount']
+ if scenario>target:return reject('scenario_drr_above_owner_target')
+ if economics['expected_margin_before_ads_cny']<=action['target_minor']/100*metric['clicks']/metric['orders']:return reject('nonpositive_target_economics')
+ return True,None
