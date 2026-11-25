@@ -25,7 +25,7 @@ def run():
    if prior:
     if prior.get('status')=='verified':continue
     raise RuntimeError('Prior edit outcome retained; no replay')
-   original=db.get('ooo_agent:morning:2026-11-17:telegram:delivery:'+x['kind'])or{}
+   original=db.get('ooo_agent:midday:2026-11-25:1500:telegram:delivery:'+x['kind'])or{}
    if original.get('status')not in('sent','verified')or original.get('message_id')!=x['message_id']or original.get('chat_id')!=a['chat_id']:raise PermissionError('Original delivered receipt mismatch')
    raw=base64.b64decode(''.join(db.get(k)['data']for k in x['chunk_keys']))
    if len(raw)!=x['bytes']or hashlib.sha256(raw).hexdigest()!=x['sha256']:raise RuntimeError('Artifact hash/length mismatch')
@@ -42,7 +42,7 @@ def run():
     receipt.update(status='uncertain'if r.status_code==200 else'rejected',http_status=r.status_code,description=body.get('description'));save();raise RuntimeError('Telegram edit not confirmed')
    receipt.update(status='verified',verified_at=stamp(),file_id=result.get('photo',[{}])[-1].get('file_id'));save()
   s.update(status='verified',verified_at=stamp());save()
-  publication='ooo_agent:sol_dialog:v1:publication:morning-2026-11-17';p=db.get(publication)
+  publication='ooo_agent:sol_dialog:v1:publication:midday-2026-11-25-1500';p=db.get(publication)
   if p:
    p['display_replacement']={'status':'verified','receipt_key':ROOT+':execution','artifact_sha256':[x['sha256']for x in a['images']],'message_ids':[74],'manifest_unchanged':True};db.update(publication,p)
   print('Existing midday PNG replaced and verified; no new messages or WB calls')
