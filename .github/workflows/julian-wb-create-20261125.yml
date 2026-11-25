@@ -1,0 +1,138 @@
+name: Julian approved eight WB China cards375-382
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/julian-wb-create-20261125.yml']
+permissions: {}
+concurrency:
+  group: julian-wb-create-20261125
+  cancel-in-progress: false
+jobs:
+  create:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5
+      - env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        shell: python
+        run: |
+          import os,json,time,re,requests
+          from datetime import datetime,timezone
+          HOST='https://content-api.wildberries.cn'
+          WH={'Authorization':os.environ['WB_TOKEN_3'],'Content-Type':'application/json'}
+          SB=os.environ['SUPABASE_URL'].rstrip('/');SK=os.environ['SUPABASE_SECRET_KEY']
+          SH={'apikey':SK,'Authorization':'Bearer '+SK,'Content-Type':'application/json'}
+          KEY='julian_stage4:wb_create:20261125:v1'
+          SPECS=[{"article":"375-ReginaBag-zbrown","model":"Regina","color":"коричневый","material":"замша","position":4,"row":6,"number":"375","wb_color":"коричневый"},{"article":"376-ReginaBag-zblack","model":"Regina","color":"черный","material":"замша","position":5,"row":7,"number":"376","wb_color":"черный"},{"article":"377-CelineaBag-burgundy","model":"Celinea","color":"бордовый","material":"кожа","position":9,"row":11,"number":"377","wb_color":"бордовый"},{"article":"378-CelineaBag-yellow","model":"Celinea","color":"желтый","material":"кожа","position":10,"row":12,"number":"378","wb_color":"желтый"},{"article":"379-MiraBag-green","model":"Mira","color":"зеленый","material":"кожа","position":12,"row":14,"number":"379","wb_color":"зеленый"},{"article":"380-MiraBag-grey","model":"Mira","color":"серый","material":"кожа","position":13,"row":15,"number":"380","wb_color":"серый"},{"article":"381-MarielleBag-black","model":"Marielle","color":"черный","material":"кожа","position":22,"row":24,"number":"381","wb_color":"черный"},{"article":"382-MarielleBag-beige","model":"Marielle","color":"бежевый","material":"кожа","position":23,"row":25,"number":"382","wb_color":"бежевый"}]
+          def now():return datetime.now(timezone.utc).isoformat()
+          def cache(k):
+           r=requests.get(SB+'/rest/v1/telegram_api_cache',headers=SH,params={'cache_key':'eq.'+k,'select':'payload'},timeout=40);r.raise_for_status()
+           return r.json()[0]['payload'] if r.json() else None
+          def save(e):
+           r=requests.post(SB+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**SH,'Prefer':'resolution=merge-duplicates,return=minimal'},json={'cache_key':KEY,'payload':e,'updated_at':now(),'expires_at':'2099-01-01T00:00:00Z'},timeout=40);r.raise_for_status()
+          def read(path,body=None):
+           for attempt in range(3):
+            r=requests.get(HOST+path,headers=WH,timeout=60) if body is None else requests.post(HOST+path,headers=WH,json=body,timeout=60)
+            if r.status_code==429:
+             time.sleep(max(6,min(60,int(r.headers.get('X-Ratelimit-Retry','10')))));continue
+            r.raise_for_status();j=r.json();assert not j.get('error'),path
+            return j
+           raise RuntimeError('Read rate limited')
+          def cards(trash=False):
+           cur={'limit':100};rows=[]
+           for page in range(80):
+            j=read('/content/v2/get/cards/trash' if trash else '/content/v2/get/cards/list',{'settings':{'sort':{'ascending':True},'cursor':cur,'filter':{'withPhoto':-1}}})
+            rows.extend(j.get('cards',[]));cu=j.get('cursor',{})
+            if cu.get('total',0)<100:return rows
+            date='trashedAt' if trash else 'updatedAt';cur={'limit':100,date:cu[date],'nmID':cu['nmID']};time.sleep(.8)
+           raise RuntimeError('Incomplete pagination')
+          def core(c):
+           x={k:v for k,v in c.items() if k not in ('updatedAt',)}
+           x['characteristics']=sorted(x.get('characteristics',[]),key=lambda a:str(a['id']))
+           return x
+          assert cache(KEY) is None,'Existing execution; do not replay'
+          ms=cache('julian_stage3:ms_create:20261125:v1')
+          assert ms and ms['status']=='verified' and len(ms['created'])==8
+          assert {p['article'] for p in ms['created']}=={p['article'] for p in SPECS}
+          live=cards();trash=cards(True);articles={s['article'] for s in SPECS};numbers={s['number'] for s in SPECS}
+          for c in live+trash:
+           assert str(c.get('vendorCode','')).split('-')[0].lstrip('0') not in numbers,'Number now occupied'
+          reorder=[c for c in live if c.get('vendorCode')=='160-CelineaBag-burgundy']
+          assert len(reorder)==1
+          schema=read('/content/v2/object/charcs/50?locale=ru')['data'];cm={c['name']:c for c in schema}
+          allowed={c['name'] for c in read('/content/v2/directory/colors?locale=ru')['data']}
+          names={'Цвет','Состав','Пол','Страна производства','ТНВЭД','Код ТН ВЭД'}
+          assert names<=cm.keys()
+          assert not [c for c in schema if c.get('required') and not c.get('existNamedField') and c['name'] not in names],'Unexpected required field'
+          assert all(s['wb_color'] in allowed for s in SPECS)
+          limits=read('/content/v2/cards/limits')['data']
+          assert limits['freeLimits']+limits['paidLimits']-len(live)-len(trash)>=8
+          e={'status':'preflight_passed','started_at':now(),'approved_specs':SPECS,'barcodes':{},'barcode_generation_attempts':0,'upload_attempts':0,'submitted':False,'products':[],'ms_writes':0,'reorder_before':reorder[0]}
+          r=requests.post(SB+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**SH,'Prefer':'resolution=ignore-duplicates,return=representation'},json={'cache_key':KEY,'payload':e,'updated_at':now(),'expires_at':'2099-01-01T00:00:00Z'},timeout=40);r.raise_for_status();assert len(r.json())==1
+          try:
+           e.update(status='allocating_barcodes',barcode_generation_attempts=1);save(e)
+           r=requests.post(HOST+'/content/v2/barcodes',headers=WH,json={'count':8},timeout=60)
+           e['barcode_http_status']=r.status_code
+           if not r.ok:
+            e.update(status='barcode_allocation_uncertain');save(e);raise RuntimeError('Barcode response unavailable; do not retry blindly')
+           j=r.json();assert not j.get('error') and len(j.get('data',[]))==8
+           allocated=[str(b) for b in j['data']]
+           assert len(set(allocated))==8 and all(b.isdigit() for b in allocated)
+           old_skus={str(b) for c in live+trash for z in c.get('sizes',[]) for b in z.get('skus',[])}
+           assert not set(allocated)&old_skus
+           e['barcodes']={s['article']:b for s,b in zip(SPECS,allocated)}
+           e.update(status='barcodes_reserved');save(e)
+           payload=[]
+           for s in SPECS:
+            material='натуральная замша' if s['material']=='замша' else 'натуральная кожа'
+            vals={'Цвет':[s['wb_color']],'Состав':[material],'Пол':['Женский'],'Страна производства':['Китай'],'ТНВЭД':['4202210000'],'Код ТН ВЭД':['4202210000']}
+            desc='Женская сумка '+s['model']+'. Материал — '+material+'. Цвет — '+s['color']+'.'
+            card={'vendorCode':s['article'],'title':'Сумка '+material,'description':desc,'brand':'','characteristics':[{'id':cm[n]['charcID'],'value':v} for n,v in vals.items()],'sizes':[{'skus':[e['barcodes'][s['article']]]}]}
+            payload.append({'subjectID':50,'variants':[card]})
+           e['payload']=payload;e.update(status='submission_started',submitted=True,upload_attempts=1);save(e)
+           r=requests.post(HOST+'/content/v2/cards/upload',headers=WH,json=payload,timeout=60)
+           e['upload_http_status']=r.status_code
+           if not r.ok:
+            e.update(status='submission_uncertain' if r.status_code>=500 else 'submission_rejected');e['upload_response_text']=r.text[:1500];save(e)
+           else:
+            j=r.json();e['upload_response']=j
+            e['status']='awaiting_creation' if not j.get('error') else 'submission_rejected';save(e)
+           for attempt in range(30):
+            time.sleep(12)
+            fresh=cards();found=[c for c in fresh if c.get('vendorCode') in articles]
+            e['products']=found;e['found_count']=len(found);e['observed_at']=now();save(e)
+            if len(found)==8:break
+            e['creation_errors']=read('/content/v2/cards/error/list',{'cursor':{'limit':100},'order':{'ascending':False}});save(e)
+            if e['status']=='submission_rejected':raise RuntimeError('Card creation rejected; inspect journal')
+           else:
+            e['status']='awaiting_creation_no_resubmit';save(e);raise RuntimeError('Not all cards visible; do not resubmit')
+           assert len({c['nmID'] for c in found})==8 and len({c['imtID'] for c in found})==8,'Unexpected merge or duplicates'
+           for c in found:
+            s=next(s for s in SPECS if s['article']==c['vendorCode'])
+            skus=[str(b) for z in c.get('sizes',[]) for b in z.get('skus',[])]
+            assert skus==[e['barcodes'][s['article']]],'Barcode mismatch'
+            assert c.get('brand','')=='' and c.get('title')==('Сумка натуральная замша' if s['material']=='замша' else 'Сумка натуральная кожа')
+            attrs={a['id']:a.get('value') for a in c.get('characteristics',[])}
+            body=next(p['variants'][0] for p in payload if p['variants'][0]['vendorCode']==s['article'])
+            assert all(attrs.get(a['id'])==a['value'] for a in body['characteristics']),'Characteristic mismatch'
+            assert c.get('description')==body['description']
+          
+            assert not c.get('photos') and not c.get('video'),'Unexpected media'
+           fresh143=[c for c in fresh if c.get('vendorCode')=='160-CelineaBag-burgundy']
+           assert len(fresh143)==1 and core(fresh143[0])==core(reorder[0]),'Existing reorder changed externally'
+           e.update(status='verified',reorder_unchanged=True,completed_at=now());save(e)
+           # Keep this confirmed initial content separate from future live resets.
+           r=requests.post(SB+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**SH,'Prefer':'resolution=ignore-duplicates,return=minimal'},json={'cache_key':'wb_content_protection:julian_initial:20261125:v1','payload':{'status':'verified_initial','cards':{c['vendorCode']:c for c in found},'source':'confirmed order and owner approval; initial identity cards; unconfirmed dimensions, weights, pockets and hardware omitted'},'updated_at':now(),'expires_at':'2099-01-01T00:00:00Z'},timeout=40);r.raise_for_status()
+           print('Eight separate WB China cards and exact allocated barcodes verified; reorder unchanged; no MS,price,stock,photo,table or Drive writes')
+          except Exception as ex:
+           e['error_type']=type(ex).__name__
+           if e['status'] not in ('barcode_allocation_uncertain','submission_uncertain','submission_rejected','awaiting_creation_no_resubmit'):e['status']='stopped_review_required'
+           save(e);raise SystemExit('Stopped; inspect private journal before retry')
+          
+          
