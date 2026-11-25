@@ -17,6 +17,8 @@ def merge_completed(bundle,review,source_ref):
  for c in out['campaigns']:
   c['attention']=[];r=closed.get(c['id'])
   if not r:continue
+  for field in('owner_unchanged','owner_review_note'):
+   if field in r:c[field]=copy.deepcopy(r[field])
   if r.get('financial_action'):
    c['financial_action']=copy.deepcopy(r['financial_action']);c['financial_recommendation']=r['financial_recommendation']
   if r.get('recommendation_review_note'):c['recommendation_review_note']=r['recommendation_review_note']
@@ -60,6 +62,7 @@ def merge_completed(bundle,review,source_ref):
    if not ready:campaign['addition_review_notes'].append(row['article']+': кандидат на добавление; требуется отдельный точный план.')
 
  out['economic_review_complete']=review.get('economic_review_complete')is True
+ out['target_drr_pct']=review.get('target_drr_pct',5)
  out['recommendation_basis']='completed_days_with_fresh_economics_and_current_state'
  return out
 def completed_campaign_stats(io,campaigns,saved_stats,period_from,period_to,pending_unknown=None):
@@ -232,8 +235,3 @@ def attach(io,bundle,day):
  states={str(c['id']):{k:c.get(k)for k in ('status','currency','bid_type','settings','nm_settings')}for batch in source['batches'].values()for c in batch['campaigns']['adverts']}
  save(io,key,dict(source_ref=evidence_key,campaign_states=states,review=review,input_review_context=bundle.get('review_context',{}),status='complete',observed_at=source['observed_at'],model_calls=0 if no_model_enabled(io)else None,wb_writes=0))
  return merge_completed(bundle,review,key)
-
-
-
-
-
