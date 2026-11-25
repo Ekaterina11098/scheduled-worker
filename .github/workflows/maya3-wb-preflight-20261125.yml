@@ -1,0 +1,38 @@
+name: MAYA3 WB fresh schema and duplicate preflight25Nov
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/maya3-wb-preflight-20261125.yml']
+permissions: {}
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5
+      - env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        shell: python
+        run: |
+          import os,requests,time
+          from datetime import datetime,timezone
+          host='https://content-api.wildberries.cn';wh={'Authorization':os.environ['WB_TOKEN_3']}
+          def call(path,body=None):
+           r=requests.get(host+path,headers=wh,timeout=60) if body is None else requests.post(host+path,headers=wh,json=body,timeout=60)
+           r.raise_for_status();return r.json()
+          def cards(trash=False):
+           cur={'limit':100};out=[]
+           for page in range(80):
+            j=call('/content/v2/get/cards/trash' if trash else '/content/v2/get/cards/list',{'settings':{'sort':{'ascending':True},'cursor':cur,'filter':{'withPhoto':-1}}});out.extend(j.get('cards',[]));cu=j.get('cursor',{})
+            if cu.get('total',0)<100:return out
+            date='trashedAt' if trash else 'updatedAt';cur={'limit':100,date:cu[date],'nmID':cu['nmID']};time.sleep(.8)
+           raise RuntimeError('Incomplete pagination')
+          active=cards();trash=cards(True)
+          out={'status':'read','wb_writes':0,'active_articles':[c['vendorCode'] for c in active],'trash_articles':[c['vendorCode'] for c in trash],'existing_targets':[c for c in active+trash if c['vendorCode'].split('-')[0] in [str(n) for n in range(366,375)]],'reorder':[c for c in active if c['vendorCode']=='143-ReginaBag-black'],'schema':call('/content/v2/object/charcs/50?locale=ru'),'colors':call('/content/v2/directory/colors?locale=ru'),'limits':call('/content/v2/cards/limits')}
+          sb=os.environ['SUPABASE_URL'].rstrip('/');sk=os.environ['SUPABASE_SECRET_KEY'];headers={'apikey':sk,'Authorization':'Bearer '+sk,'Content-Type':'application/json','Prefer':'resolution=ignore-duplicates,return=minimal'}
+          r=requests.post(sb+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers=headers,json={'cache_key':'maya3_stage4:wb_preflight:20261125:v1','payload':out,'updated_at':datetime.now(timezone.utc).isoformat(),'expires_at':'2099-01-01T00:00:00Z'},timeout=60);r.raise_for_status()
+          print('Fresh WB schema and complete list stored privately; no WB writes')
