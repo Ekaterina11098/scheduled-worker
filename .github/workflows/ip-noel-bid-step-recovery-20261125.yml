@@ -1,0 +1,120 @@
+name: Owner scoped Noel bid step
+on:
+  push:
+    paths: [.github/workflows/ip-noel-bid-step-recovery-20261125.yml]
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency: {group: ip-noel-bid-step-20261125, cancel-in-progress: false}
+jobs:
+  apply:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/owner_ad_tests23.py
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5 > /dev/null 2>&1
+      - shell: python
+        env:
+          PYTHONPATH: scripts
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_2: ${{ secrets.WB_TOKEN_2 }}
+        run: |
+          import sys
+          sys.path.insert(0,'scripts')
+          """Single owner-authorized bid step, private scope, durable no-replay journal."""
+          import copy,datetime,hashlib,json,math,os,time,requests
+          from owner_ad_tests23 import State,ReadWB,stamp
+          ROOT='ip_agent:noel_bid_step:2026-11-25:v1'
+          HOST='advert-api.wildberries.ru'
+          class Run:
+           def __init__(self):
+            self.db=State();self.a=self.db.get(ROOT+':approval');self.wb=ReadWB(self.db,'token_2');self.s={'status':'preflight','wb_write_attempts':0,'telegram_sends':0,'started_at':stamp()};self.deadline=time.time()+4500
+           def save(self):self.db.put(ROOT+':recovery:v2:execution',self.s)
+           def guard(self):
+            if not self.a or self.a.get('status')!='approved' or self.a.get('cabinet')!='token_2' or self.a.get('max_raise_fraction')!=.05:raise PermissionError('Approval')
+            if self.db.get(ROOT+':approval')!=self.a or datetime.datetime.now(datetime.timezone.utc)>=datetime.datetime.fromisoformat(self.a['expires_at']):raise PermissionError('Approval changed or expired')
+           def call(self,path,method='GET',body=None,params=None,host=HOST):
+            if (method,host,path)not in {('GET',HOST,'/api/advert/v2/adverts'),('PATCH',HOST,'/api/advert/v1/bids'),('POST','seller-analytics-api.wildberries.ru','/api/analytics/v3/sales-funnel/products')}:raise PermissionError('Endpoint')
+            write=method=='PATCH'
+            for attempt in range(3):
+             self.guard();pk='wb-pause:'+hashlib.sha256((self.wb.token+host+path).encode()).hexdigest();until=float((self.db.get(pk)or{}).get('until',0))
+             if until>self.deadline:raise RuntimeError('Cooldown exceeds authorization run')
+             while until>time.time():
+              self.s.update(status='waiting_provider',resume_after=datetime.datetime.fromtimestamp(until,datetime.timezone.utc).isoformat());self.save();time.sleep(min(25,max(.1,until-time.time())));self.guard()
+             if write:
+              if self.s.get('write',{}).get('status')in ('submitting','accepted','uncertain'):raise RuntimeError('No write replay')
+              self.s.update(status='submitting',write={'status':'submitting','body':body,'at':stamp()});self.s['wb_write_attempts']+=1;self.save()
+             try:r=requests.request(method,'https://'+host+path,headers={'Authorization':self.wb.token},params=params,json=body,timeout=(10,65),allow_redirects=False)
+             except requests.RequestException:
+              if write:self.s['write']['status']='uncertain';self.save()
+              raise RuntimeError('Unknown request result; no replay')from None
+             try:data=r.json()if r.content else{}
+             except ValueError:data={'unparseable':True}
+             raw=r.headers.get('X-Ratelimit-Retry')or r.headers.get('Retry-After')or r.headers.get('X-Ratelimit-Reset')
+             try:delay=float(raw or 0)
+             except ValueError:delay=0
+             if delay>time.time()-86400:delay=max(0,delay-time.time())
+             if r.status_code==429 or r.headers.get('X-Ratelimit-Remaining')=='0':self.db.put(pk,{'until':time.time()+max(3,delay)+5,'basis':'provider_header'})
+             if r.status_code==429:
+              self.s.setdefault('definite_429',[]).append({'path':path,'at':stamp(),'retry_after':delay})
+              if write:self.s['write']['status']='rejected429'
+              self.save();continue
+             if not r.ok or isinstance(data,dict)and data.get('unparseable'):
+              if write:self.s['write'].update(status='uncertain'if r.status_code>=500 or r.ok else'rejected',http=r.status_code,response=data);self.save()
+              raise RuntimeError('API HTTP '+str(r.status_code))
+             if write:self.s['write'].update(status='accepted',accepted_at=stamp(),response=data);self.save()
+             return data
+            raise RuntimeError('Bounded 429 retries exhausted')
+           def configs(self):
+            ids=self.a['read_campaign_ids'];rows=self.call('/api/advert/v2/adverts',params={'ids':','.join(map(str,ids))})['adverts']
+            if {c['id']for c in rows}!=set(ids):raise ValueError('Campaign coverage')
+            return {str(c['id']):c for c in rows}
+           def execute(self):
+            self.guard();self.wb.identity();before=self.original['before'];self.s.update(before=before,baseline_at=stamp());self.save()
+            cid=self.a['campaign'];c=before[str(cid)]
+            if c['status']!=9 or c['currency']!='RUB'or c['bid_type']!='manual'or c['settings']['payment_type']!='cpc'or c['settings']['placements']!={'search':False,'recommendations':True}:raise ValueError('Active recommendations-only CPC required')
+            members={n['nm_id']:n for n in c['nm_settings']};wanted=self.a['items']
+            if len(wanted)!=2 or len({x['nm']for x in wanted})!=2:raise ValueError('Exact two-item scope')
+            productdata={'data':{'products':[{'product':p}for p in self.original['stock_readback'].values()]}}
+            products={r['product']['nmId']:r['product']for r in productdata['data']['products']};self.s.update(stock_readback=products,stock_at=stamp());self.save()
+            changes=[]
+            for x in wanted:
+             nm=x['nm'];p=products.get(nm,{})
+             if nm not in members or p.get('vendorCode','').casefold()!=x['sku'].casefold()or p.get('subjectId')!=50 or p.get('stocks',{}).get('wb',0)<=0:raise ValueError('SKU identity or positive FBO')
+             old=members[nm]['bids_kopecks']['recommendations'];econ=x['historical_economics']
+             if type(old)is not int or old!=x['expected_bid_minor']:raise ValueError('Stored rate differs from live rate')
+             new=math.floor(old*1.05)
+             if not old<new<=x['max_target_minor']or econ['own_unit_margin_before_ads']<=0 or econ['ad_orders']<1 or econ['ad_clicks']<=0:raise ValueError('Bound or economic basis')
+             if new/100>.05*econ['ad_revenue']/econ['ad_clicks']:raise ValueError('Historical conditional CPC5 bound')
+             changes.append(dict(nm=nm,sku=x['sku'],old_bid_minor=old,target_bid_minor=new,placement='recommendations',basis='small historical sample; research step, not current profit guarantee'))
+            self.s['changes']=changes;expected=copy.deepcopy(before)
+            for n in expected[str(cid)]['nm_settings']:
+             change=next((x for x in changes if x['nm']==n['nm_id']),None)
+             if change:n['bids_kopecks']['recommendations']=change['target_bid_minor']
+            self.s['expected']=expected;self.save()
+            body={'bids':[{'advert_id':cid,'nm_bids':[{'nm_id':x['nm'],'placement':'recommendations','bid_kopecks':x['target_bid_minor']}for x in changes]}]}
+            self.call('/api/advert/v1/bids','PATCH',body)
+            time.sleep(6);after=self.configs();self.s.update(after=after,readback_at=stamp())
+            if self.project(after)!=self.project(expected):raise ValueError('Final full-scope readback differs from expected')
+            self.s.update(status='verified_all',verified_count=len(changes));self.save()
+           def project(self,cs):
+            return {cid:{'id':c['id'],'status':c['status'],'currency':c['currency'],'bid_type':c['bid_type'],'settings':c['settings'],'members':{str(n['nm_id']):n['bids_kopecks']for n in c['nm_settings']}}for cid,c in cs.items()}
+           def run(self):
+            self.original=self.db.get(ROOT+':execution')or{}
+            if self.original.get('status')!='attention'or self.original.get('wb_write_attempts')!=0 or self.original.get('write'):raise RuntimeError('Original run not safely recoverable')
+            age=time.time()-datetime.datetime.fromisoformat(self.original['baseline_at']).timestamp()
+            if not 0<=age<=300:raise RuntimeError('Baseline older than five minutes; no writes')
+            if self.db.get(ROOT+':recovery:v2:execution'):raise RuntimeError('Recovery exists; no replay')
+            if not self.db.put(ROOT+':recovery:v2:execution',self.s,once=True):raise RuntimeError('Already claimed')
+            try:self.execute()
+            except Exception as e:self.s.update(status='attention',error=str(e)if isinstance(e,(ValueError,RuntimeError,PermissionError))else type(e).__name__);self.save()
+            self.s['finished_at']=stamp();self.save();print(json.dumps({k:self.s.get(k)for k in ('status','verified_count','wb_write_attempts','error')}))
+          if __name__=='__main__':Run().run()
