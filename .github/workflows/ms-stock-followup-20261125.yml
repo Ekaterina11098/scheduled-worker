@@ -1,0 +1,68 @@
+name: Trace one negative warehouse balance read-only
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/ms-stock-followup-20261125.yml']
+permissions:
+  contents: read
+jobs:
+  trace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Read movement history and source documents
+        shell: python
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          import sys,datetime
+          sys.path.insert(0,'scripts')
+          import fbs_document_chain as m
+          ROOT='ms_negative_stock_trace:20261125:572:'
+          class ReadOnly(m.Transport):
+           def request(self,base,path,method='GET',body=None,params=None):
+            if base==m.MS and method!='GET':raise m.Stop('MS writes prohibited')
+            if base==m.WB:raise m.Stop('WB out of scope')
+            return super().request(base,path,method,body,params)
+          t=ReadOnly();db=m.Cache(t);c=db.get(ROOT+'input:v1');ROOT='ms_negative_stock_trace:20261125:572:followup:'
+          assert c['read_only'] is True
+          product=m.MS+'entity/product/'+c['product_id'];store=m.MS+'entity/store/'+c['store_id']
+          moment=datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=3))).strftime('%Y-%m-%d %H:%M:%S')
+          db.put(ROOT+'status:v1',{'status':'reading','at':m.now(),'ms_writes':0})
+          p=t.request(m.MS,'entity/product/'+c['product_id'])
+          wh=t.request(m.MS,'entity/store/'+c['store_id'])
+          params={'filter':'product='+product,'momentFrom':'2000-01-01 00:00:00','momentTo':moment,'limit':1000,'offset':0}
+          report=t.request(m.MS,'report/turnover/byoperations',params=params)
+          db.put(ROOT+'report:v1',report)
+          rows=list(report.get('rows',[]));size=report.get('meta',{}).get('size',len(rows))
+          while len(rows)<size:
+           extra=t.request(m.MS,'report/turnover/byoperations',params={**params,'offset':len(rows)})
+           assert extra.get('rows')
+           rows.extend(extra['rows'])
+          docs=[];seen=set()
+          for r in rows:
+           href=m.href(r.get('operation',{})).split('?')[0]
+           if not href or href in seen:continue
+           seen.add(href)
+           assert href.startswith(m.MS+'entity/')
+           path=href[len(m.MS):]
+           doc=t.request(m.MS,path)
+           positions=[];offset=0
+           if isinstance(doc.get('positions'),dict):
+            while True:
+             pp=t.request(m.MS,path+'/positions',params={'limit':1000,'offset':offset})
+             positions.extend(pp['rows'])
+             if len(positions)>=pp['meta']['size']:break
+             assert pp['rows'];offset=len(positions)
+           docs.append({'document':doc,'matching_positions':[x for x in positions if m.href(x.get('assortment',{})).split('?')[0]==product]})
+          stock=t.request(m.MS,'report/stock/all',params={'filter':'product='+product,'limit':1000})
+          by_store=t.request(m.MS,'report/turnover/bystore',params={'filter':'product='+product,'momentFrom':'2000-01-01 00:00:00','momentTo':moment})
+          result={'by_store':by_store,'status':'complete','product':p,'store':wh,'moment_msk':moment,'movements':rows,'documents':docs,'stock':stock,'finished_at':m.now(),'ms_writes':0}
+          db.put(ROOT+'result:v1',result)
+          print('Negative balance movement trace completed; evidence stored privately; MS unchanged.')
