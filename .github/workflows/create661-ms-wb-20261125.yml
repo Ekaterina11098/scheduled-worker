@@ -1,0 +1,131 @@
+name: Create approved661 MS and WB China preserving owner barcode
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/create661-ms-wb-20261125.yml']
+permissions: {}
+concurrency:
+  group: create661-ms-wb-20261125
+  cancel-in-progress: false
+jobs:
+  create:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5
+      - env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        shell: python
+        run: |
+          import os,json,time,re,requests
+          from datetime import datetime,timezone
+          HOST='https://content-api.wildberries.cn'
+          WH={'Authorization':os.environ['WB_TOKEN_3'],'Content-Type':'application/json'}
+          SB=os.environ['SUPABASE_URL'].rstrip('/');SK=os.environ['SUPABASE_SECRET_KEY']
+          SH={'apikey':SK,'Authorization':'Bearer '+SK,'Content-Type':'application/json'}
+          KEY='julian_661:create_wb_ms:20261125:v1'
+          
+          def now():return datetime.now(timezone.utc).isoformat()
+          def cache(k):
+           r=requests.get(SB+'/rest/v1/telegram_api_cache',headers=SH,params={'cache_key':'eq.'+k,'select':'payload'},timeout=40);r.raise_for_status()
+           return r.json()[0]['payload'] if r.json() else None
+          def save(e):
+           r=requests.post(SB+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**SH,'Prefer':'resolution=merge-duplicates,return=minimal'},json={'cache_key':KEY,'payload':e,'updated_at':now(),'expires_at':'2099-01-01T00:00:00Z'},timeout=40);r.raise_for_status()
+          def read(path,body=None):
+           for attempt in range(3):
+            r=requests.get(HOST+path,headers=WH,timeout=60) if body is None else requests.post(HOST+path,headers=WH,json=body,timeout=60)
+            if r.status_code==429:
+             time.sleep(max(6,min(60,int(r.headers.get('X-Ratelimit-Retry','10')))));continue
+            r.raise_for_status();j=r.json();assert not j.get('error'),path
+            return j
+           raise RuntimeError('Read rate limited')
+          def cards(trash=False):
+           cur={'limit':100};rows=[]
+           for page in range(80):
+            j=read('/content/v2/get/cards/trash' if trash else '/content/v2/get/cards/list',{'settings':{'sort':{'ascending':True},'cursor':cur,'filter':{'withPhoto':-1}}})
+            rows.extend(j.get('cards',[]));cu=j.get('cursor',{})
+            if cu.get('total',0)<100:return rows
+            date='trashedAt' if trash else 'updatedAt';cur={'limit':100,date:cu[date],'nmID':cu['nmID']};time.sleep(.8)
+           raise RuntimeError('Incomplete pagination')
+          def core(c):
+           x={k:v for k,v in c.items() if k not in ('updatedAt',)}
+           x['characteristics']=sorted(x.get('characteristics',[]),key=lambda a:str(a['id']))
+           return x
+          
+          A='661-CelineaBag-gray';BC='2048823942938'
+          MS='https://api.moysklad.ru/api/remap/1.2'
+          MH={'Authorization':'Bearer '+os.environ['MOYSKLAD_API_TOKEN'],'Accept-Encoding':'gzip','Content-Type':'application/json'}
+          def mr(path,params=None):
+           for i in range(6):
+            time.sleep(2);r=requests.get(MS+path,headers=MH,params=params,timeout=60)
+            if r.status_code==429:time.sleep(10+i*5);continue
+            r.raise_for_status();return r.json()
+           raise RuntimeError('MS reads rate limited')
+          assert cache(KEY) is None,'Existing journal: inspect before replay'
+          live=cards();trash=cards(True)
+          for c in live+trash:
+           assert c.get('vendorCode','').split('-')[0].lstrip('0')!='661','Existing661 WB'
+           assert BC not in [str(b) for z in c.get('sizes',[]) for b in z.get('skus',[])],'Barcode exists on another WB card'
+          products=[]
+          for archived in (False,True):
+           offset=0
+           for page in range(40):
+            params={'limit':1000,'offset':offset}
+            if archived:params['filter']='archived=true'
+            rows=mr('/entity/product',params).get('rows',[]);products.extend(rows)
+            if len(rows)<1000:break
+            offset+=1000
+           else:raise RuntimeError('IncompleteMS')
+          for p in products:
+           assert p.get('article','').split('-')[0].lstrip('0')!='661' and p.get('code') not in ('661с','661c'),'MS661collision'
+           assert BC not in [str(v) for b in p.get('barcodes',[]) for v in b.values()],'Barcode belongs to another MS product'
+          defs=mr('/entity/product/metadata/attributes');defs=defs.get('rows',[]) if isinstance(defs,dict) else defs
+          mapping={x['name']:x['meta'] for x in defs if x.get('type')=='string'}
+          assert {'Цвет','ВендорКод','Категория товара'}<=mapping.keys()
+          cm={c['name']:c for c in read('/content/v2/object/charcs/50?locale=ru')['data']}
+          vals={'Цвет':['серый'],'Состав':['натуральная кожа'],'Пол':['Женский'],'Страна производства':['Китай'],'ТНВЭД':['4202210000'],'Код ТН ВЭД':['4202210000']}
+          assert vals.keys()<=cm.keys()
+          card={'vendorCode':A,'title':'Сумка натуральная кожа','description':'Женская сумка Celinea из натуральной кожи. Цвет — серый.','brand':'','characteristics':[{'id':cm[n]['charcID'],'value':v} for n,v in vals.items()],'sizes':[{'skus':[BC]}]}
+          attrs={'Цвет':'серый','ВендорКод':'661','Категория товара':'Сумка'}
+          mbody={'article':A,'name':'Сумка кожа 661 Celinea серый','code':'661с','externalCode':'julian-661-owner-label-20261125','barcodes':[{'code128':BC}],'attributes':[{'meta':mapping[n],'value':v} for n,v in attrs.items()]}
+          e={'status':'preflight_verified','article':A,'barcode':BC,'source':'Owner supplied existing label; source order position6 natural leather','started_at':now(),'ms_body':mbody,'wb_body':card,'ms_post_attempts':0,'wb_upload_attempts':0,'barcode_generation_attempts':0}
+          r=requests.post(SB+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**SH,'Prefer':'resolution=ignore-duplicates,return=representation'},json={'cache_key':KEY,'payload':e,'updated_at':now(),'expires_at':'2099-01-01T00:00:00Z'},timeout=40);r.raise_for_status();assert len(r.json())==1
+          try:
+           e.update(status='ms_create_started',ms_post_attempts=1);save(e)
+           r=requests.post(MS+'/entity/product',headers=MH,json=mbody,timeout=60)
+           if not r.ok:
+            e['ms_http_status']=r.status_code;save(e);raise RuntimeError('MS create response not confirmed; inspect before retry')
+           p=r.json();after=mr('/entity/product/'+p['id'])
+           assert all(after.get(k)==v for k,v in mbody.items() if k not in ('barcodes','attributes'))
+           assert {'code128':BC} in after.get('barcodes',[])
+           av={x['name']:x['value'] for x in after.get('attributes',[])}
+           assert all(av.get(n)==v for n,v in attrs.items())
+           e.update(status='ms_verified',ms_product=after);save(e)
+           fresh=cards()
+           assert not [c for c in fresh if c.get('vendorCode','').split('-')[0].lstrip('0')=='661']
+           e.update(status='wb_submission_started',wb_upload_attempts=1);save(e)
+           r=requests.post(HOST+'/content/v2/cards/upload',headers=WH,json=[{'subjectID':50,'variants':[card]}],timeout=60)
+           e['wb_http_status']=r.status_code;save(e);r.raise_for_status()
+           j=r.json();e['wb_upload_response']=j;save(e);assert not j.get('error')
+           for attempt in range(25):
+            time.sleep(12);fresh=cards();matches=[c for c in fresh if c.get('vendorCode')==A]
+            if matches:break
+            e['creation_errors']=read('/content/v2/cards/error/list',{'cursor':{'limit':100},'order':{'ascending':False}});save(e)
+           else:raise RuntimeError('Awaiting WB creation; no resubmit')
+           assert len(matches)==1
+           c=matches[0];assert [str(b) for z in c['sizes'] for b in z.get('skus',[])]==[BC]
+           assert c['title']==card['title'] and c['description']==card['description'] and c.get('brand','')==''
+           av={x['id']:x['value'] for x in c['characteristics']}
+           assert all(av.get(x['id'])==x['value'] for x in card['characteristics'])
+           after2=mr('/entity/product/'+after['id']);assert after2['article']==A and {'code128':BC} in after2['barcodes']
+           e.update(status='verified',wb_card=c,ms_final=after2,completed_at=now());save(e)
+           print('661 verified in MS and WB China using owner existing barcode; no barcode allocation, stock, price or media writes')
+          except Exception as ex:
+           e.update(status='stopped_review_required',error_type=type(ex).__name__);save(e);raise SystemExit('Stopped: inspect private journal before retry')
+          
