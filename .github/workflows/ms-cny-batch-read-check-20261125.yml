@@ -27,7 +27,7 @@ jobs:
           t=b.ReadOnly();db=b.m.Cache(t)
           docs=db.get(b.ROOT+'backup:customerorder:page:0')['documents'][:3]
           ids={d['id'] for d in docs}
-          result=t.request(b.m.MS,'entity/customerorder',params={'filter':';'.join('id='+i for i in sorted(ids)),'expand':'positions','limit':1000})
+          result=t.request(b.m.MS,'entity/customerorder',params={'filter':';'.join('id='+i for i in sorted(ids)),'expand':'positions','limit':100})
           assert result['meta']['size']==len(ids) and {d['id'] for d in result['rows']}==ids
           assert all(d['positions']['meta']['size']==len(d['positions'].get('rows',[])) for d in result['rows'])
           b.put(db,'batch_read_proof:v1',{'status':'complete','at':b.m.now(),'selected':len(ids),'exact_ids':True,'positions_complete':True,'ms_writes':0})
