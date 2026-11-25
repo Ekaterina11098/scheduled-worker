@@ -1,0 +1,77 @@
+name: Read-only all-price conversion planning
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/ms-cny-prices-plan-20261125.yml']
+permissions:
+  contents: read
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Read prices and account currency references
+        shell: python
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          import sys,collections,time
+          from decimal import Decimal,ROUND_HALF_UP
+          sys.path.insert(0,'scripts')
+          import fbs_document_chain as m
+          ROOT='ms_currency_cny_plan:20261125:'
+          class ReadOnly(m.Transport):
+           def request(self,base,path,method='GET',body=None,params=None):
+            if base==m.MS and method!='GET':raise m.Stop('Planning only; MS writes prohibited')
+            if base==m.WB:raise m.Stop('WB outside planning scope')
+            return super().request(base,path,method,body,params)
+          t=ReadOnly();db=m.Cache(t)
+          def save(key,value):
+           for i in range(4):
+            try:db.put(ROOT+key,value);return
+            except Exception:
+             try:
+              if db.get(ROOT+key)==value:return
+             except Exception:pass
+             if i==3:raise
+             time.sleep(i+2)
+          def rows(path):
+           offset=0
+           while True:
+            data=t.request(m.MS,path,params={'limit':1000,'offset':offset})
+            for d in data['rows']:yield d
+            offset+=len(data['rows'])
+            if offset==data['meta']['size']:return
+            if not data['rows']:raise m.Stop('Incomplete pagination')
+          result={'status':'reading','scope':'all_history_all_documents_all_prices_accounting_currency','ms_writes':0,'started_at':m.now(),'types':{},'account_currencies':[]}
+          save('price_inventory:v1',result)
+          for typ in ('product','variant','bundle','service'):
+           count=0;prices=0;rounding=0;currencies=collections.Counter();samples=[]
+           for item in rows('entity/'+typ):
+            count+=1
+            fields=[('salePrice',p) for p in item.get('salePrices',[])]
+            fields += [(k,item[k]) for k in ('buyPrice','minPrice') if item.get(k)]
+            for kind,p in fields:
+             prices+=1;currencies[m.href(p.get('currency',{})) or 'UNSPECIFIED']+=1
+             old=Decimal(str(p.get('value',0)))/100
+             exact=old/12;new=exact.quantize(Decimal('0.01'),rounding=ROUND_HALF_UP)
+             if exact!=new:rounding+=1
+             if old and len(samples)<3:samples.append({'id':item['id'],'name':item.get('name'),'field':kind,'RUB':str(old),'proposed_CNY':str(new)})
+            if count%1000==0:
+             result['types'][typ]={'status':'reading','items':count,'prices':prices,'needs_rounding':rounding,'currencies':dict(currencies)}
+             save('price_inventory:v1',result)
+           result['types'][typ]={'status':'complete','items':count,'prices':prices,'needs_rounding':rounding,'currencies':dict(currencies),'illustrative_samples':samples}
+           save('price_inventory:v1',result)
+          for org in rows('entity/organization'):
+           for account in rows('entity/organization/'+org['id']+'/accounts'):
+            result['account_currencies'].append({'id':account['id'],'organization':org['id'],'currency':account.get('currency')})
+          result.update(status='complete',finished_at=m.now())
+          save('price_inventory:v1',result)
+          print('Price and account planning inventory saved privately; MS unchanged.')
+          
