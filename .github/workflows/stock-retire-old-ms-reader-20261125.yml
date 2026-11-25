@@ -1,0 +1,25 @@
+name: Retire obsolete MS order reader25Nov
+on:
+  push:
+    paths: ['.github/workflows/stock-retire-old-ms-reader-20261125.yml']
+permissions:
+  actions: write
+  contents: read
+jobs:
+  cancel:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Retire exact obsolete read-only collection attempt
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import os,json,urllib.request
+          base='https://api.github.com/repos/Ekaterina11098/scheduled-worker/actions/runs/45667680500'
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'}
+          with urllib.request.urlopen(urllib.request.Request(base,headers=headers)) as response:r=json.load(response)
+          assert r['name']=='Stock daily 05:00 and 20:00 MSK'
+          if r['status']!='completed':
+              urllib.request.urlopen(urllib.request.Request(base+'/cancel',data=b'',headers=headers,method='POST')).read()
+          print(json.dumps({'run':r['id'],'previous_status':r['status'],'purpose':'retire_obsolete_growing_customerorder_reader'}))
+          PY
