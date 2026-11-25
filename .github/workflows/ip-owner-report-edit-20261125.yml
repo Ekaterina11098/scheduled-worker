@@ -1,8 +1,6 @@
 name: Owner approved report photo replacement
 on:
-  push:
-    branches: [main]
-    paths: [.github/workflows/ip-owner-report-edit-20261125.yml]
+  workflow_dispatch:
 permissions: {contents: read}
 concurrency: {group: ip-owner-report-photo-edit, cancel-in-progress: false}
 jobs:
