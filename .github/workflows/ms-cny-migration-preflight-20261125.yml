@@ -1,0 +1,56 @@
+name: Currency conversion readiness read-only
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/ms-cny-migration-preflight-20261125.yml']
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Read current migration controls and counts
+        shell: python
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          import sys,concurrent.futures
+          sys.path.insert(0,'scripts')
+          import fbs_document_chain as m
+          ROOT='ms_currency_cny_migration:20261125:'
+          class ReadOnly(m.Transport):
+           def request(self,base,path,method='GET',body=None,params=None):
+            if base==m.MS and method!='GET':raise m.Stop('Preflight: MS writes prohibited')
+            if base==m.WB:raise m.Stop('WB out of scope')
+            return super().request(base,path,method,body,params)
+          t=ReadOnly();db=m.Cache(t)
+          prior=db.get('ms_currency_cny_plan:20261125:inventory:v1')
+          assert db.get(ROOT+'authorization:v1')['authorized']
+          db.put(ROOT+'preflight_status:v1',{'status':'reading','at':m.now(),'ms_writes':0})
+          def check(item):
+           tr=ReadOnly()
+           typ=item['type'];d=tr.request(m.MS,'entity/'+typ,params={'limit':1})
+           return {'type':typ,'count':d['meta']['size'],'prior_count':item['count'],'count_matches':d['meta']['size']==item['count']}
+          with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:counts=list(pool.map(check,prior['documents']))
+          currencies=t.request(m.MS,'entity/currency',params={'limit':1000})
+          assert len(currencies['rows'])==currencies['meta']['size']
+          example=None
+          page=db.get('ms_currency_cny_plan:20261125:detail:v1:loss:page:0')
+          records=[]
+          for offset in range(0,next(x['count'] for x in counts if x['type']=='loss'),100):
+           cached=db.get('ms_currency_cny_plan:20261125:detail:v1:loss:page:'+str(offset))
+           for r in (cached or {}).get('records',[]):
+            if r['name']=='00018-00006':example=r
+          assert example
+          doc=t.request(m.MS,'entity/loss/'+example['id'])
+          positions=t.request(m.MS,'entity/loss/'+example['id']+'/positions',params={'limit':1000})
+          result={'status':'complete','at':m.now(),'counts':counts,'currencies':currencies['rows'],'example_document':doc,'example_positions':positions,'ms_writes':0,'mutation_started':False}
+          db.put(ROOT+'preflight:v1',result)
+          print('Read-only migration preflight complete; current controls saved privately; MS unchanged.')
