@@ -126,12 +126,10 @@ def completed_recommendation(r):
 
 def recommendations(c):
  if c.get('owner_unchanged'):return ['Ничего не менять.']
- rows=[completed_recommendation(r)for r in c['attention']]
- rows+=c.get('addition_review_notes',[])
- # Unready research stays in the private analysis journal.
- if rows:return rows
- if 'today'in c and c['today']is None:return ['Нет данных WB; решение не готово.']
- return [c.get('owner_review_note')or c.get('recommendation_review_note')or c.get('post_change_note')or'Новых действий по завершённым дням нет.']
+ # The approved PNG contains actionable SKU instructions only. Keep waiting,
+ # missing-data and unready-candidate diagnostics in the private review.
+ rows=[completed_recommendation(r)for r in c.get('attention',[])if r.get('action')]
+ return rows or ['Без изменений.']
 def covered_totals(campaigns):
  known=[c['today'] for c in campaigns if c.get('today') is not None]
  missing=[c['id'] for c in campaigns if c.get('today') is None and not c.get('draft')]
