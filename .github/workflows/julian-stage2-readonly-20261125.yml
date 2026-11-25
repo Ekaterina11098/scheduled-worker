@@ -1,0 +1,75 @@
+name: Julian stage2 read only model and article audit25Nov
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/julian-stage2-readonly-20261125.yml']
+permissions: {}
+concurrency:
+  group: julian-stage2-readonly-20261125
+  cancel-in-progress: false
+jobs:
+  read:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5
+      - env:
+          WB_TOKEN_1: ${{ secrets.WB_TOKEN_1 }}
+          WB_TOKEN_2: ${{ secrets.WB_TOKEN_2 }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        shell: python
+        run: |
+          import os,time,requests,re
+          from datetime import datetime,timezone
+          out={'status':'reading','wb_writes':0,'ms_writes':0,'started_at':datetime.now(timezone.utc).isoformat(),'wb':{},'moysklad':{}}
+          def relevant(a):
+           return bool(re.search(r'regina|celinea|mirabag|marielle|^0?27(?:-|$)',str(a),re.I))
+          def read_cards(token,trash=False):
+           cur={'limit':100}; cards=[]; articles=[]
+           path='/content/v2/get/cards/trash' if trash else '/content/v2/get/cards/list'
+           for page in range(80):
+            r=requests.post('https://content-api.wildberries.cn'+path,headers={'Authorization':token},json={'settings':{'cursor':cur,'filter':{'withPhoto':-1}}},timeout=50)
+            if not r.ok:return {'complete':False,'http_status':r.status_code,'articles':articles,'matching':cards}
+            j=r.json();rows=j.get('cards',[])
+            for c in rows:
+             a=c.get('vendorCode','');articles.append(a)
+             if relevant(a):cards.append(c)
+            cu=j.get('cursor',{})
+            if cu.get('total',0)<100:return {'complete':True,'count':len(articles),'articles':articles,'matching':cards}
+            if not cu.get('nmID'):return {'complete':False,'reason':'cursor_missing','articles':articles,'matching':cards}
+            cur={'limit':100,'nmID':cu['nmID']}
+            date_key='trashedAt' if trash else 'updatedAt'
+            if cu.get(date_key):cur[date_key]=cu[date_key]
+            time.sleep(.8)
+           return {'complete':False,'reason':'page_limit','articles':articles,'matching':cards}
+          for n in (1,2,3):
+           token=os.environ.get('WB_TOKEN_'+str(n),'')
+           if not token:out['wb'][str(n)]={'error':'missing_config'};continue
+           out['wb'][str(n)]={'active':read_cards(token),'trash':read_cards(token,True)}
+          token=os.environ.get('MOYSKLAD_API_TOKEN','')
+          if token:
+           offset=0;articles=[];matches=[];complete=False
+           for page in range(40):
+            r=requests.get('https://api.moysklad.ru/api/remap/1.2/entity/product',headers={'Authorization':'Bearer '+token,'Accept-Encoding':'gzip'},params={'limit':1000,'offset':offset},timeout=60)
+            if not r.ok:out['moysklad']['http_status']=r.status_code;break
+            j=r.json();rows=j.get('rows',[])
+            for p in rows:
+             a=p.get('article','');c=p.get('code','')
+             articles.append({'article':a,'code':c,'id':p.get('id'),'archived':p.get('archived',False)})
+             if relevant(a) or c in ('027с','27с'):
+              matches.append({k:p.get(k) for k in ('id','name','article','code','archived','barcodes','attributes','images')})
+            if len(rows)<1000:complete=True;break
+            offset+=1000;time.sleep(.7)
+           out['moysklad'].update(complete=complete,count=len(articles),articles=articles,matching=matches)
+          else:out['moysklad']={'error':'missing_config'}
+          out['status']='read_complete';out['completed_at']=datetime.now(timezone.utc).isoformat()
+          sb=os.environ['SUPABASE_URL'].rstrip('/');sk=os.environ['SUPABASE_SECRET_KEY']
+          r=requests.post(sb+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={'apikey':sk,'Authorization':'Bearer '+sk,'Content-Type':'application/json','Prefer':'resolution=ignore-duplicates,return=minimal'},json={'cache_key':'julian_stage2:20261125:readonly:v1','payload':out,'updated_at':out['completed_at'],'expires_at':'2099-01-01T00:00:00Z'},timeout=60)
+          r.raise_for_status()
+          print('Read-only snapshots stored privately; no WB/MS business writes')
