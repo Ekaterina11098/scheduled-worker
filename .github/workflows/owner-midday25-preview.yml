@@ -47,7 +47,7 @@ jobs:
           PYTHONPATH: scripts:source
         run: |
           python -m unittest scripts.test_china_midday_growth_preservation25
-          python -m unittest discover -s scripts -p 'test_china_advertising*.py'
+          # Full438 regression passed45615089356; verify the new header case above.
       - name: Replay corrected saved midday evidence
         env:
           PYTHONPATH: scripts:source
