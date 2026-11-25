@@ -1,0 +1,77 @@
+name: WB card content read once
+on:
+  push:
+    branches: [wb-card-content-once-20261125]
+    paths: ['.github/workflows/wb-card-content-read-once.yml']
+permissions:
+  contents: read
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests==2.32.5
+      - name: Read current cards into private journal
+        env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_URL: https://abxgjoqlddhtcmjcjwxw.supabase.co
+          PYTHONPATH: scripts
+        run: |
+          python - <<'PYTHON'
+          import datetime as dt
+          import json
+          import os
+          import time
+          from content_photo_bridge import Client, Stop
+
+          key = 'wb_card_once:20261125:01'
+          client = Client()
+          now = dt.datetime.now(dt.timezone.utc)
+
+          def save(report):
+              row = {'cache_key': key + ':read', 'payload': report,
+                     'updated_at': now.isoformat(),
+                     'expires_at': (now + dt.timedelta(days=30)).isoformat()}
+              client.cache({'on_conflict': 'cache_key'}, 'POST', row,
+                           'resolution=merge-duplicates,return=representation')
+              if client.get(key + ':read') != report:
+                  raise Stop('journal_readback_mismatch')
+
+          report = {'run_id': os.environ['GITHUB_RUN_ID'], 'status': 'reading'}
+          save(report)
+          try:
+              request = client.get(key + ':input')
+              codes = request['articles']
+              if len(codes) != 4 or len(set(codes)) != 4:
+                  raise Stop('invalid_article_set')
+              cards = [card for card in client.catalog() if card.get('vendorCode') in codes]
+              report['cards'] = cards
+              if sorted(card['vendorCode'] for card in cards) != sorted(codes):
+                  raise Stop('missing_or_duplicate_article')
+              if len({card['nmID'] for card in cards}) != 4:
+                  raise Stop('duplicate_nm_id')
+              host = 'https://content-api.wildberries.cn'
+              headers = {'Authorization': os.environ['WB_TOKEN_3']}
+              report['schemas'] = {}
+              for subject in sorted({int(card['subjectID']) for card in cards}):
+                  time.sleep(1)
+                  raw = client.call(host + f'/content/v2/object/charcs/{subject}?locale=ru', headers=headers)
+                  report['schemas'][str(subject)] = json.loads(raw)
+              time.sleep(1)
+              raw = client.call(host + '/content/v2/directory/colors?locale=ru', headers=headers)
+              report['colors'] = json.loads(raw)
+              report['status'] = 'read_verified'
+          except Exception as error:
+              report['status'] = 'stopped'
+              report['reason'] = str(error) if isinstance(error, Stop) else type(error).__name__
+          save(report)
+          if report['status'] != 'read_verified':
+              raise SystemExit('Card read stopped; see private journal')
+          PYTHON
