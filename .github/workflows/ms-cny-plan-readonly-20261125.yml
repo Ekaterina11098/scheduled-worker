@@ -1,0 +1,73 @@
+name: Read-only currency conversion planning inventory
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/ms-cny-plan-readonly-20261125.yml']
+permissions:
+  contents: read
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Collect planning facts without changing MS
+        shell: python
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          import sys,time,concurrent.futures
+          sys.path.insert(0,'scripts')
+          import fbs_document_chain as m
+          KEY='ms_currency_cny_plan:20261125:inventory:v1'
+          TYPES=["cashin","cashout","commissionreportin","commissionreportout","customerorder","demand","enter","facturein","factureout","internalorder","invoicein","invoiceout","loss","move","paymentin","paymentout","prepayment","prepaymentreturn","purchaseorder","purchasereturn","retailsalesreturn","retaildemand","retaildrawercashin","retaildrawercashout","retireorder","salesreturn","supply"]
+          class ReadOnly(m.Transport):
+           def request(self,base,path,method='GET',body=None,params=None):
+            if base==m.MS and method!='GET':raise m.Stop('Planning only: MS writes prohibited')
+            if base==m.WB:raise m.Stop('WB not in scope')
+            return super().request(base,path,method,body,params)
+          t=ReadOnly();db=m.Cache(t)
+          def put(value):
+           for i in range(4):
+            try:db.put(KEY,value);return
+            except Exception:
+             try:
+              if db.get(KEY)==value:return
+             except Exception:pass
+             if i==3:raise
+             time.sleep(2+i)
+          def allrows(path):
+           out=[];offset=0
+           while True:
+            d=t.request(m.MS,path,params={'limit':1000,'offset':offset})
+            out.extend(d['rows']);offset+=len(d['rows'])
+            if offset==d['meta']['size']:return out
+            if not d['rows']:raise m.Stop('Incomplete collection')
+          result={'status':'reading','started_at':m.now(),'ms_writes':0,'proposed_rate':{'RUB_per_CNY':12},'scope_pending':True}
+          put(result)
+          result['currencies']=allrows('entity/currency')
+          settings=t.request(m.MS,'context/companysettings')
+          result['company_currency']=settings.get('currency')
+          result['price_types']=settings.get('priceTypes')
+          orgs=allrows('entity/organization')
+          result['organizations']=[{'id':o['id'],'name':o.get('name')} for o in orgs]
+          def inspect(typ):
+           tr=ReadOnly()
+           try:
+            data=tr.request(m.MS,'entity/'+typ,params={'limit':1})
+            samples=[{k:d.get(k) for k in ('id','name','moment','sum','rate','organization','applicable','organizationAccount')} for d in data['rows']]
+            return {'type':typ,'count':data['meta']['size'],'sample':samples,'status':'read'}
+           except Exception as e:return {'type':typ,'status':'failed','error':str(e) if isinstance(e,m.Stop) else type(e).__name__}
+          with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+           result['documents']=list(pool.map(inspect,TYPES))
+          result['total_documents']=sum(x.get('count',0) for x in result['documents'])
+          result['status']='complete' if all(x['status']=='read' for x in result['documents']) else 'incomplete'
+          result['finished_at']=m.now()
+          put(result)
+          print('Read-only currency planning inventory saved privately; no MS mutations.')
+          
