@@ -47,6 +47,17 @@ jobs:
             /test_ip_report_analysis.py
       - name: Install reviewed rules module
         run: cp ip-rules-patch/ip_report_analysis.py ip-rules-patch/test_ip_report_analysis.py .
+      - name: Apply campaign scope reconciliation
+        uses: actions/checkout@v4
+        with:
+          ref: 971d0deb1551ecd989e02e1d4c8d23da787fc456
+          path: ip-scope-patch
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /ip_report_freeze.py
+      - name: Install reviewed scope reconciliation
+        run: cp ip-scope-patch/ip_report_freeze.py .
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - run: pip install requests==2.32.5 cryptography==46.0.2 Pillow==12.3.0 > "$RUNNER_TEMP/dependencies.log" 2>&1
