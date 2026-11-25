@@ -1,0 +1,25 @@
+name: OOO owner requested report amendment
+on:
+  push:
+    branches: [main]
+    paths: ['scripts/ooo_replace_report25.py']
+permissions: {contents: read}
+concurrency:
+  group: ooo-owner-report-amendment
+  cancel-in-progress: false
+jobs:
+  amend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, sparse-checkout: scripts}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5 Pillow==12.3.0 --quiet
+      - name: Replace exact existing photos and bind owner-reviewed amendment
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          OOO_TELEGRAM_BOT_TOKEN: ${{ secrets.OOO_TELEGRAM_BOT_TOKEN }}
+        run: python -u scripts/ooo_replace_report25.py
