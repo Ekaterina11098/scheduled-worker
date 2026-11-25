@@ -29,7 +29,7 @@ def summary(c):
  return text
 
 def recommendations(c):
- if 'direction_recommendations' in c:return c['direction_recommendations'] or ['Новых готовых действий нет.']
+ if 'direction_recommendations' in c:return c['direction_recommendations'] or ['Без изменений.']
  rows=[r for r in c.get('attention',[]) if r.get('action')]
  out=[r['article']+': '+r['decision'] for r in rows]
  for r in c.get('focus',[]):
@@ -74,9 +74,9 @@ def render_ip(view,contract,outdir):
   if any(v is not None and (v['orders'] is None or v['clicks'] is None) for v in seq):seq=[None if v and (v['orders'] is None or v['clicks'] is None) else v for v in seq]
   period={k:sum(v[k] for v in seq) for k in ('spend','amount','orders','clicks')} if all(v is not None for v in seq) else None
   current=[a for a in contract['actions'] if a['campaign']==cid]
-  rec=[decision(a)+' Новое предложение.' for a in current]
+  rec=[decision(a) for a in current]
   # Execution receipts and analytical notes stay internal, never recommendations.
-  if not rec:rec=['РК приостановлена; запуск не предлагается.'] if raw.get('status_id')==11 else ['Архив; не запускать.'] if raw.get('status_id')==7 else ['Новых готовых действий нет.']
+  if not rec:rec=['Оставить на паузе.'] if raw.get('status_id')==11 else ['Архив; не запускать.'] if raw.get('status_id')==7 else ['Новых готовых действий нет.']
   label=contract.get('campaign_labels',{}).get(str(cid),{})
   name=raw.get('campaign_name') or label.get('name') or 'Название не сохранено'
   pay=raw.get('payment_type') or label.get('payment')
