@@ -49,7 +49,7 @@ def midday_view(bundle):
  if not bundle.get('day'):return bundle
  kept=[];omitted=[];totals=[]
  for row in bundle.get('campaigns',[]):
-  hidden=_archived_before(row,bundle['day']) and not _has_report_activity(row.get('today'))
+  hidden=(row.get('status')==7 or _archived_before(row,bundle['day'])) and not _has_report_activity(row.get('today'))
   if hidden:
    if row.get('attention')or row.get('financial_action'):raise ValueError('Archived row contains an executable action')
    omitted.append(dict(campaign_id=row['id'],window_start=bundle['day'],reason='inactive_pre_window_archive'))
