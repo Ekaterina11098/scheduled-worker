@@ -1,0 +1,112 @@
+name: Julian approved eight MoySklad products375-382
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/julian-ms-create-20261125.yml']
+permissions: {}
+concurrency:
+  group: julian-ms-create-20261125
+  cancel-in-progress: false
+jobs:
+  create:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5
+      - env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        shell: python
+        run: |
+          import os,json,time,requests
+          from datetime import datetime,timezone
+          BASE='https://api.moysklad.ru/api/remap/1.2'
+          MH={'Authorization':'Bearer '+os.environ['MOYSKLAD_API_TOKEN'],'Accept-Encoding':'gzip','Content-Type':'application/json'}
+          SB=os.environ['SUPABASE_URL'].rstrip('/');SK=os.environ['SUPABASE_SECRET_KEY']
+          SH={'apikey':SK,'Authorization':'Bearer '+SK,'Content-Type':'application/json'}
+          KEY='julian_stage3:ms_create:20261125:v1'
+          SPECS=[{"article":"375-ReginaBag-zbrown","model":"Regina","color":"коричневый","material":"замша","position":4,"row":6,"number":"375"},{"article":"376-ReginaBag-zblack","model":"Regina","color":"черный","material":"замша","position":5,"row":7,"number":"376"},{"article":"377-CelineaBag-burgundy","model":"Celinea","color":"бордовый","material":"кожа","position":9,"row":11,"number":"377"},{"article":"378-CelineaBag-yellow","model":"Celinea","color":"желтый","material":"кожа","position":10,"row":12,"number":"378"},{"article":"379-MiraBag-green","model":"Mira","color":"зеленый","material":"кожа","position":12,"row":14,"number":"379"},{"article":"380-MiraBag-grey","model":"Mira","color":"серый","material":"кожа","position":13,"row":15,"number":"380"},{"article":"381-MarielleBag-black","model":"Marielle","color":"черный","material":"кожа","position":22,"row":24,"number":"381"},{"article":"382-MarielleBag-beige","model":"Marielle","color":"бежевый","material":"кожа","position":23,"row":25,"number":"382"}]
+          def now():return datetime.now(timezone.utc).isoformat()
+          def cache():
+           r=requests.get(SB+'/rest/v1/telegram_api_cache',headers=SH,params={'cache_key':'eq.'+KEY,'select':'payload'},timeout=50);r.raise_for_status();return r.json()
+          def save(e):
+           r=requests.post(SB+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**SH,'Prefer':'resolution=merge-duplicates,return=minimal'},json={'cache_key':KEY,'payload':e,'updated_at':now(),'expires_at':'2099-01-01T00:00:00Z'},timeout=50);r.raise_for_status()
+          def read(path,params=None):
+           for attempt in range(6):
+            time.sleep(2);r=requests.get(BASE+path,headers=MH,params=params,timeout=60)
+            if r.status_code==429:time.sleep(10+attempt*5);continue
+            r.raise_for_status();return r.json()
+           raise RuntimeError('MS read rate limited')
+          def all_products(params=None):
+           result=[];offset=0
+           for page in range(40):
+            j=read('/entity/product',{**(params or {}),'limit':1000,'offset':offset});rows=j.get('rows',[]);result.extend(rows)
+            if len(rows)<1000:return result
+            offset+=1000
+           raise RuntimeError('MS pagination incomplete')
+          def exact(a):
+           return [p for p in read('/entity/product',{'filter':'article='+a,'limit':100})['rows'] if p.get('article')==a]
+          def name(s):return 'Сумка '+s['material']+' '+s['number']+' '+s['model']+' '+s['color']
+          def validate(p,s):
+           assert p.get('article')==s['article'] and p.get('code')==s['number']+'с' and p.get('name')==name(s)
+           assert not p.get('archived',False) and p.get('externalCode')=='julian-f031e921-row'+str(s['row']).zfill(2)
+           attrs={a['name']:a.get('value') for a in p.get('attributes',[])}
+           assert attrs.get('Цвет')==s['color'] and attrs.get('ВендорКод')==s['number'] and attrs.get('Категория товара')=='Сумка'
+          def stable(p):
+           x={k:v for k,v in p.items() if k!='updated'}
+           if 'attributes' in x:x['attributes']=sorted(x['attributes'],key=lambda a:str(a['id']))
+           return x
+          assert not cache(),'Existing execution; inspect before resuming'
+          rows={p['id']:p for p in all_products()+all_products({'filter':'archived=true'})}
+          for s in SPECS:
+           collisions=[p for p in rows.values() if p.get('article')==s['article'] or p.get('code') in (s['number']+'с',s['number']+'c') or str(p.get('article','')).split('-')[0].lstrip('0')==s['number']]
+           assert not collisions,'Number/article already exists; inspect before creating'
+          reorder160=exact('160-CelineaBag-burgundy');assert len(reorder160)==1
+          metadata=read('/entity/product/metadata/attributes');defs=metadata.get('rows',[]) if isinstance(metadata,dict) else metadata
+          mapping={}
+          for attr in ('Цвет','ВендорКод','Категория товара'):
+           found=[a for a in defs if a.get('name')==attr]
+           assert len(found)==1 and found[0].get('type')=='string','Missing required attribute schema'
+           mapping[attr]=found[0]['meta']
+          e={'status':'prepared','started_at':now(),'source_sha256':'f031e921b6c1cdbf6c7ef1c3a2e92f3429080d010331fe20f19e027bacb04fef','requested':SPECS,'created':[],'ms_post_attempts':0,'wb_writes':0,'ms_update_writes':0,'reorder160_before':reorder160[0]}
+          r=requests.post(SB+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**SH,'Prefer':'resolution=ignore-duplicates,return=representation'},json={'cache_key':KEY,'payload':e,'updated_at':now(),'expires_at':'2099-01-01T00:00:00Z'},timeout=50);r.raise_for_status();assert len(r.json())==1
+          try:
+           for s in SPECS:
+            assert not exact(s['article'])
+            assert not read('/entity/product',{'filter':'code='+s['number']+'с','limit':100})['rows']
+            vals={'Цвет':s['color'],'ВендорКод':s['number'],'Категория товара':'Сумка'}
+            body={'name':name(s),'article':s['article'],'code':s['number']+'с','externalCode':'julian-f031e921-row'+str(s['row']).zfill(2),'attributes':[{'meta':mapping[k],'value':v} for k,v in vals.items()]}
+            e.update(status='creating',pending_article=s['article'],pending_body=body);save(e)
+            created=None
+            for attempt in range(5):
+             e['ms_post_attempts']+=1;save(e);time.sleep(2)
+             try:
+              r=requests.post(BASE+'/entity/product',headers=MH,json=body,timeout=60)
+              e['last_http_status']=r.status_code
+              if r.status_code==429:
+               time.sleep(15+attempt*5);matches=exact(s['article'])
+               if len(matches)==1:created=matches[0];break
+               assert not matches;continue
+              if r.ok:created=r.json();break
+              raise RuntimeError('Create rejected or uncertain')
+             except Exception:
+              matches=exact(s['article'])
+              if len(matches)==1:created=matches[0];break
+              e['status']='uncertain_create';save(e);raise
+            assert created,'No confirmed create response; inspect live data before retry'
+            after=read('/entity/product/'+created['id']);validate(after,s)
+            matches=exact(s['article']);assert len(matches)==1 and matches[0]['id']==after['id']
+            e['created'].append({'article':s['article'],'id':after['id'],'code':after['code'],'name':after['name'],'attributes':after.get('attributes',[]),'barcodes':after.get('barcodes',[]),'after':after,'verified':True})
+            e.update(status='in_progress',pending_article=None,pending_body=None);save(e)
+           after160=read('/entity/product/'+reorder160[0]['id'])
+           e['reorder160_unchanged']=stable(after160)==stable(reorder160[0])
+           assert e['reorder160_unchanged'] and len(e['created'])==8 and all(x['verified'] for x in e['created'])
+           e.update(status='verified',completed_at=now());save(e)
+           print('Eight approved Julian products verified; existing160untouched; no WB,stock,price,receipt,catalog or Drive writes')
+          except Exception as ex:
+           if e.get('status')!='uncertain_create':e['status']='stopped_review_required'
+           e['error_type']=type(ex).__name__;save(e);raise SystemExit('Stopped; inspect private journal before any retry')
