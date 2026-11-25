@@ -1,0 +1,31 @@
+name: Recover exact China WB-GI-319792093 after stock replenishment
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/recover-china-319792093.yml']
+permissions:
+  contents: read
+concurrency:
+  group: fbs-document-chain-production
+  cancel-in-progress: false
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check live MS stock and duplicates, post only missing exact chain, then verify
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          FBS_EXECUTION_KIND: manual
+          FBS_OWNER_APPROVAL_ID: china-319792093-20261125
+        run: python scripts/recover_china_319792093.py
