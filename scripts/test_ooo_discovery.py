@@ -48,6 +48,13 @@ class Discovery(unittest.TestCase):
  def test_recent_verified_change_prevents_premature_exclusion(self):
   a,e=self.minimum_fixture();a['verified_bid_changes']=[{'cid':2,'nm':1,'at':'2026-11-18T10:00:00+00:00'}]
   self.assertEqual(minimum_bid_exclusions(a,e,'2026-11-24')[0],[])
+ def test_costly_new_test_exits_after_full_day_at_minimum(self):
+  a,e=self.minimum_fixture();a['configurations']['2']['timestamps']['created']='2026-11-22T10:00:00+03:00'
+  a['campaigns']={'2':{'day':{'sum':900,'sum_price':8000},'three':{'sum':1500,'sum_price':13000}}}
+  e['sources']['advertising14']['data'][0]['days'][-1]['apps'][0]['nms'][0].update(sum=367.25,clicks=113)
+  self.assertEqual(len(minimum_bid_exclusions(a,e,'2026-11-24')[0]),1)
+  a['campaigns']['2']['day']['sum_price']=50000
+  self.assertEqual(minimum_bid_exclusions(a,e,'2026-11-24')[0],[])
  def test_small_spend_and_missing_day_never_trigger_exclusion(self):
   a,e=self.minimum_fixture();e['sources']['advertising14']['data'][0]['days'].pop()
   self.assertEqual(minimum_bid_exclusions(a,e,'2026-11-24')[0],[])

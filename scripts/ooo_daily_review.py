@@ -21,7 +21,8 @@ def minimum_bid_exclusions(a,e,day):
    dates += [v['at'][:10]for v in a.get('verified_bid_changes',[])if v['cid']==m['cid']and v['nm']==r['nm']]
    if not dates:continue
    start=max(earliest,datetime.date.fromisoformat(max(dates))+datetime.timedelta(days=1))
-   if(end-start).days<6:continue # Change day is mixed; seven FULL days required.
+   if start>end:continue # Change day is mixed; at least one FULL day required.
+   short_test=(end-start).days<6
    campaign=next((c for c in stats if c['advertId']==m['cid']),{})
    observed={d['date'][:10]for d in campaign.get('days',[])}
    required={str(start+datetime.timedelta(days=i))for i in range((end-start).days+1)}
@@ -41,7 +42,14 @@ def minimum_bid_exclusions(a,e,day):
    drr=totals['sum']/totals['sum_price']*100 if totals['sum_price']>0 else None
    sustained=len(spending_days)>=3 and all(v['orders']==0 for v in recent.values())and any(v['sum']>0 for v in recent.values())
    ready=totals['sum']>=300 and totals['clicks']>=90 and sustained and(drr is None or drr>5)
-   checks.append({'cid':m['cid'],'nm':r['nm'],'period':[str(start),str(end)],'all_campaign_totals':dict(totals),'drr':drr,'propose_exclusion':ready})
+   if short_test:
+    native=a.get('campaigns',{}).get(str(m['cid']),{})
+    def high(p):return p.get('sum_price',0)>0 and p.get('sum',0)/p['sum_price']*100>5
+    # A costly new test must not wait a week: the mixed launch day is excluded,
+    # both native campaign periods are above target, and 100 FULL-day clicks
+    # with >=300 KGS have produced no direct SKU orders. Proposals only.
+    ready=totals['sum']>=300 and totals['clicks']>=100 and totals['orders']==0 and high(native.get('day',{}))and high(native.get('three',{}))
+   checks.append({'cid':m['cid'],'nm':r['nm'],'period':[str(start),str(end)],'all_campaign_totals':dict(totals),'drr':drr,'short_costly_test':short_test,'propose_exclusion':ready})
    if ready:result.append({'kind':'exclude_sku','cid':m['cid'],'nm':r['nm'],'article':r['article']})
  return result,checks
 
