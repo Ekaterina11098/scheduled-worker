@@ -23,6 +23,22 @@ def metric(c):
  if not c or not c.get('metrics_complete')or any(c.get(k)is None for k in('spend','revenue')):return None
  return dict(spend=c['spend'],amount=c['revenue'],orders=c.get('total_orders'),clicks=c.get('clicks'))
 
+def reconcile_scope(full,current):
+ """Current catalog determines coverage; absent historical rows remain unknown."""
+ full=copy.deepcopy(full)
+ by={c['campaign_id']:c for c in full['campaigns']}
+ for recent in current['campaigns']:
+  cid=recent['campaign_id']
+  if cid not in by:
+   row=dict(campaign_id=cid,campaign_name=recent.get('campaign_name',''),status_id=recent.get('status_id'),metrics_complete=False,sku_rows=[],budget={})
+   row.update({k:None for k in ('spend','revenue','total_orders','direct_orders','clicks','weekly_spend','no_order_count','no_order_spend')})
+   full['campaigns'].append(row);by[cid]=row
+  else:
+   by[cid]['status_id']=recent.get('status_id')
+   by[cid]['campaign_name']=recent.get('campaign_name')or by[cid].get('campaign_name','')
+ if not set(c['campaign_id'] for c in current['campaigns']).issubset(by):raise ValueError('Report scope mismatch')
+ return full
+
 def midday_image(full,current,contract,out):
  from ip_campaign_table_png import render_ip
  # Reuse the existing campaign-row renderer to obtain the identical table layout.
@@ -32,8 +48,11 @@ def midday_image(full,current,contract,out):
   bundle=copy.deepcopy(bundle);by={c['campaign_id']:c for c in current['campaigns']}
   for c in bundle['campaigns']:
    now=by.get(c['id'],{});c['last']=metric(now);c['status']=now.get('status_id',c.get('status'));c['no_order_count']=now.get('no_order_count');c['no_order_spend']=now.get('no_order_spend')
+   if c.get('period')is None and not c.get('attention'):
+    c['direction_recommendations']=['Историческая база этой РК неполна: готовое изменение не подтверждено. Сегодняшние показатели предварительные; проверить расходующие SKU после полного дня.']
+  if not set(by).issubset({c['id']for c in bundle['campaigns']}):raise ValueError('PNG omits current campaigns')
   bundle.update(intraday=True,observed_day=current['period'],observed_at=current['observed_at'])
-  bundle['source_observed_at']='Сегодня '+current['period']+' до '+datetime.fromisoformat(current['observed_at']).astimezone(ZoneInfo('Europe/Moscow')).strftime('%H:%M')+' МСК · неполный день; решения по завершённым дням'
+  bundle['source_observed_at']='Сегодня '+current['period']+' до '+datetime.fromisoformat(current['observed_at']).astimezone(ZoneInfo('Europe/Moscow')).strftime('%H:%M')+' МСК · '+str(sum(metric(c)is not None for c in current['campaigns']))+'/'+str(len(current['campaigns']))+' РК · неполный день'
   return original(bundle)
  renderer.render_campaign_table=adapt
  try:return render_ip(full,contract,out)
@@ -52,6 +71,7 @@ def main():
   fullsource=store.cache_get('advertising:ip:scheduled_source:v1:'+day+':morning')or store.cache_get('advertising:ip:morning_recovery:'+day+':v1')or{}
   full=copy.deepcopy(fullsource.get('view')or load_daily_table_view(store,now))
  else:full=copy.deepcopy(current)
+ full=reconcile_scope(full,current)
  full['_recent_views']=[]
  for back in(2,1):
   older=load_daily_table_view(store,now-timedelta(days=back));full['_recent_views'].append(older)
@@ -98,3 +118,5 @@ if __name__=='__main__':
  try:
   result=main();print(json.dumps({k:result[k]for k in('status','period','source_calls','wb_writes','telegram_calls')if k in result}))
  except Exception as e:print(json.dumps({'status':'report_freeze_blocked','error_type':type(e).__name__}));raise SystemExit(1)
+
+
