@@ -117,7 +117,13 @@ def run(typ,start,end):
    receipt={'status':'intended','type':typ,'offset':offset,'source_hash':page['sha256'],'live_before':list(before.values()),'bodies':bodies,'plans':plans,'at':m.now()}
    if not db.claim(ROOT+key,receipt):raise m.Stop('Batch already claimed; no concurrent replay')
    if bodies:write_once(db,typ,bodies,key)
-  after=live(t,typ,ids)
+  # A timed-out MS request can finish after the client loses its response.
+  # Poll only GET readback; never repeat the mutation during settlement.
+  import time
+  for settle_attempt in range(13):
+   after=live(t,typ,ids)
+   if all(signature(after[i],typ)==goals[i] for i in ids):break
+   if settle_attempt<12:time.sleep(15)
   for old in source:
    actual=signature(after[old['id']],typ)
    if actual!=goals[old['id']]:
