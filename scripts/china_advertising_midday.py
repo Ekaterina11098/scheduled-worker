@@ -137,6 +137,11 @@ def covered_totals(campaigns):
  missing=[c['id'] for c in campaigns if c.get('today') is None and not c.get('draft')]
  return dict(total=sums(known) if known else None,missing=missing,covered=len(known),campaigns=len(campaigns))
 
+def direction_count(section,key):
+ if not section or section.get('status')=='unavailable':return 'нет готовых (неполные данные)'
+ ready=section.get('ready_count',section.get('count',0));pending=section.get('unready_count',0)
+ return str(ready)+(' (проверяются: '+str(pending)+')'if pending else '')
+
 def render_midday(b):
  from china_archived_report_window import midday_view
  b=midday_view(b)
@@ -168,7 +173,7 @@ def render_midday(b):
   coverage=[]
   for key,label in labels.items():
    section=sections.get(key,{})
-   state='нет готовых (неполные данные)' if not section or section.get('status')=='unavailable' else str(section.get('count',0))+(' кандидатов' if key=='add' else '')
+   state=direction_count(section,key)
    coverage.append(label+': '+state)
   d.text((44,205),' · '.join(coverage),font=font(24),fill=green)
   for i,label in enumerate(['Кампания WB','Расход, CNY','ДРР сегодня','Результат сегодня','Рекомендации']):
