@@ -1,0 +1,29 @@
+name: Complete remaining currency backup sections
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/ms-cny-other-backup-20261125.yml']
+permissions:
+  contents: read
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Read remaining document types with one API reader
+        shell: python
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          import sys,concurrent.futures
+          sys.path.insert(0,'scripts')
+          import cny_migration_backup_20261125 as b
+          Original=b.concurrent.futures.ThreadPoolExecutor
+          b.concurrent.futures.ThreadPoolExecutor=lambda **kwargs:Original(max_workers=1)
+          b.backup('other')
