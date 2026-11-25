@@ -1,0 +1,84 @@
+name: Read exact warehouse cost totals for currency planning
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/ms-cny-warehouse-refresh-20261125.yml']
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Read exact inventory valuations and verify quantities
+        shell: python
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          import sys,concurrent.futures,datetime
+          from decimal import Decimal,ROUND_HALF_UP
+          sys.path.insert(0,'scripts')
+          import fbs_document_chain as m
+          ROOT='ms_currency_cny_plan:20261125:warehouse_balance:v2:'
+          class ReadOnly(m.Transport):
+           def request(self,base,path,method='GET',body=None,params=None):
+            if base==m.MS and method!='GET':raise m.Stop('MS writes prohibited')
+            if base==m.WB:raise m.Stop('WB out of scope')
+            return super().request(base,path,method,body,params)
+          t=ReadOnly();db=m.Cache(t)
+          moment=datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=3))).strftime('%Y-%m-%d %H:%M:%S')
+          def allrows(path,params=None):
+           rr=[]
+           while True:
+            d=t.request(m.MS,path,params={**(params or {}),'limit':1000,'offset':len(rr)})
+            rr.extend(d['rows'])
+            if len(rr)==d['meta']['size']:return rr
+            assert d['rows']
+          manifest={'moment_msk':moment,'stores':allrows('entity/store',{'filter':'archived=false'})+allrows('entity/store',{'filter':'archived=true'}),'currencies':allrows('entity/currency')}
+          assert len({s['id'] for s in manifest['stores']})==len(manifest['stores'])
+          assert all(c['isoCode']=='RUB' for c in manifest['currencies'])
+          db.put(ROOT+'manifest',manifest)
+          moment=manifest['moment_msk'];stores=manifest['stores']
+          db.put(ROOT+'valuation_status',{'status':'reading','at':m.now(),'moment_msk':moment,'ms_writes':0})
+          def readstore(s):
+           tr=ReadOnly();cache=m.Cache(tr);rr=[];offset=0
+           try:
+            while True:
+             d=tr.request(m.MS,'report/turnover/all',params={'filter':'store='+m.href(s),'momentFrom':'2000-01-01 00:00:00','momentTo':moment,'groupBy':'variant','limit':1000,'offset':offset})
+             batch=d.get('rows');size=d.get('meta',{}).get('size')
+             if not isinstance(batch,list):raise m.Stop('Incomplete valuation report')
+             cache.put(ROOT+s['id']+':valuation_page:'+str(offset),{'store_id':s['id'],'offset':offset,'moment_msk':moment,'meta':d.get('meta'),'rows':batch,'read_at':m.now()})
+             rr.extend(batch)
+             if size is not None and len(rr)>=size:
+              assert len(rr)==size
+              break
+             if not batch:raise m.Stop('Incomplete pagination')
+             offset+=len(batch)
+            D=lambda v:Decimal(str(v or 0))
+            assert all('sum' in r.get('onPeriodEnd',{}) and 'quantity' in r['onPeriodEnd'] for r in rr)
+            total=sum((D(r['onPeriodEnd']['sum']) for r in rr),Decimal(0))
+            qty=sum((D(r['onPeriodEnd']['quantity']) for r in rr),Decimal(0))
+            ss=tr.request(m.MS,'report/stock/all',params={'filter':'store='+m.href(s),'limit':1000})
+            sr=list(ss['rows'])
+            while len(sr)<ss['meta']['size']:
+             pp=tr.request(m.MS,'report/stock/all',params={'filter':'store='+m.href(s),'limit':1000,'offset':len(sr)})
+             assert pp['rows'];sr.extend(pp['rows'])
+            old={'stock':str(sum((D(x.get('stock')) for x in sr),Decimal(0)))} 
+            result={'status':'complete','store_id':s['id'],'name':s['name'],'archived':s.get('archived',False),'rows':len(rr),'stock':str(qty),'cost_minor_rub':str(total),'target_cny':str((total/100/12).quantize(Decimal('.01'),rounding=ROUND_HALF_UP)),'negative_stock_rows':sum(D(r['onPeriodEnd']['quantity'])<0 for r in rr),'zero_cost_nonzero_stock_rows':sum(D(r['onPeriodEnd']['quantity'])!=0 and D(r['onPeriodEnd']['sum'])==0 for r in rr),'stock_report_quantity':old.get('stock'),'quantity_matches_stock_report':qty==D(old.get('stock')),'moment_msk':moment,'finished_at':m.now(),'ms_writes':0}
+           except Exception as e:
+            result={'status':'failed','store_id':s['id'],'name':s['name'],'error':str(e),'rows_read':len(rr),'finished_at':m.now(),'ms_writes':0}
+           cache.put(ROOT+s['id']+':valuation_result',result)
+           return result
+          with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:results=list(pool.map(readstore,stores))
+          after=t.request(m.MS,'entity/currency',params={'limit':1000})
+          codes_same={c['id']:c.get('isoCode') for c in after['rows']}=={c['id']:c.get('isoCode') for c in manifest['currencies']}
+          result={'status':'complete' if all(r['status']=='complete' and r.get('quantity_matches_stock_report') for r in results) and codes_same else 'incomplete','finished_at':m.now(),'moment_msk':moment,'warehouses':results,'currency_unchanged':codes_same,'ms_writes':0}
+          db.put(ROOT+'valuation_result',result)
+          print('Read-only warehouse valuation collection finished; private results saved; MS unchanged.')
+          assert result['status']=='complete'
