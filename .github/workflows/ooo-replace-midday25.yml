@@ -1,0 +1,25 @@
+name: OOO requested midday display correction
+on:
+  push:
+    branches: [main]
+    paths: ['scripts/ooo_replace_midday25.py']
+permissions: {contents: read}
+concurrency:
+  group: ooo-requested-midday-display-edit
+  cancel-in-progress: false
+jobs:
+  edit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, sparse-checkout: scripts}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5 --quiet
+      - name: Edit only the exact authorized existing midday photo
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          OOO_TELEGRAM_BOT_TOKEN: ${{ secrets.OOO_TELEGRAM_BOT_TOKEN }}
+        run: python -u scripts/ooo_replace_midday25.py
