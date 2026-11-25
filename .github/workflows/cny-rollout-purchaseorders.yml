@@ -23,3 +23,5 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
         run: python scripts/cny_document_rollout.py purchaseorder
+
+# Resume after semantic numeric comparison check; no prior rollout mutation occurred.
