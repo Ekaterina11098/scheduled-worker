@@ -50,14 +50,18 @@ jobs:
       - name: Apply campaign scope reconciliation
         uses: actions/checkout@v4
         with:
-          ref: 971d0deb1551ecd989e02e1d4c8d23da787fc456
+          ref: 67a060ddb4b861d42b9fb22f6872846c5a47893a
           path: ip-scope-patch
           persist-credentials: false
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             /ip_report_freeze.py
+            /ip_campaign_table_png.py
       - name: Install reviewed scope reconciliation
-        run: cp ip-scope-patch/ip_report_freeze.py .
+        run: |
+          cp ip-scope-patch/ip_report_freeze.py .
+          cp ip-scope-patch/ip_campaign_table_png.py .
+          cp ip-scope-patch/ip_campaign_table_png.py private-source/
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - run: pip install requests==2.32.5 cryptography==46.0.2 Pillow==12.3.0 > "$RUNNER_TEMP/dependencies.log" 2>&1
