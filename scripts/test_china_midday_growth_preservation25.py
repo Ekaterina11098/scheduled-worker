@@ -41,6 +41,9 @@ class GrowthPreservation(unittest.TestCase):
  def test_wait_and_missing_and_protected_are_explicit(self):
   self.assertEqual(recommendations(dict(today={},attention=[],post_change_note='Оценка27.11.')),['Оценка27.11.'])
   self.assertIn('Нет данных',recommendations(dict(today=None,attention=[]))[0]);self.assertEqual(recommendations(dict(owner_unchanged=True,attention=[])),['Ничего не менять.'])
+ def test_unready_additions_are_not_counted_as_ready(self):
+  from china_advertising_midday import direction_count
+  self.assertEqual(direction_count(dict(status='checked',count=2,ready_count=0,unready_count=2),'add'),'0 (проверяются: 2)')
  def test_same_day_zero_archive_is_omitted(self):
   b=dict(day='2026-11-25',campaigns=[dict(id=1,status=9,today=dict(spend=1)),dict(id=2,status=7,archived_at='2026-11-25T12:00:00+03:00',today=dict(spend=0,orders=0,clicks=0,amount=0))]);v=midday_view(b);self.assertEqual([c['id']for c in v['campaigns']],[1]);self.assertEqual(len(v['presentation_totals_campaigns']),2)
  def test_archived_spend_is_not_lost(self):
