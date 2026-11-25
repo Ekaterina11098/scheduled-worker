@@ -1,0 +1,114 @@
+name: MAYA3 approved WB barcode links in MoySklad25Nov
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/maya3-ms-barcodes-20261125.yml']
+permissions: {}
+concurrency:
+  group: maya3-ms-barcodes-20261125
+  cancel-in-progress: false
+jobs:
+  link:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5
+      - env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        shell: python
+        run: |
+          import os,time,json,requests
+          from datetime import datetime,timezone
+          SB=os.environ['SUPABASE_URL'].rstrip('/');SK=os.environ['SUPABASE_SECRET_KEY']
+          SH={'apikey':SK,'Authorization':'Bearer '+SK,'Content-Type':'application/json'}
+          MS='https://api.moysklad.ru/api/remap/1.2'
+          MH={'Authorization':'Bearer '+os.environ['MOYSKLAD_API_TOKEN'],'Accept-Encoding':'gzip','Content-Type':'application/json'}
+          WH={'Authorization':os.environ['WB_TOKEN_3']}
+          KEY='maya3_stage5:ms_barcodes:20261125:v1'
+          def now():return datetime.now(timezone.utc).isoformat()
+          def cache(k):
+           r=requests.get(SB+'/rest/v1/telegram_api_cache',headers=SH,params={'cache_key':'eq.'+k,'select':'payload'},timeout=40);r.raise_for_status();rows=r.json()
+           return rows[0]['payload'] if rows else None
+          def save(e):
+           r=requests.post(SB+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**SH,'Prefer':'resolution=merge-duplicates,return=minimal'},json={'cache_key':KEY,'payload':e,'updated_at':now(),'expires_at':'2099-01-01T00:00:00Z'},timeout=40);r.raise_for_status()
+          def msread(path,params=None):
+           r=requests.get(MS+path,headers=MH,params=params,timeout=60);r.raise_for_status();return r.json()
+          def wb_cards():
+           cur={'limit':100};out=[]
+           for page in range(80):
+            r=requests.post('https://content-api.wildberries.cn/content/v2/get/cards/list',headers=WH,json={'settings':{'sort':{'ascending':True},'cursor':cur,'filter':{'withPhoto':-1}}},timeout=60);r.raise_for_status();j=r.json();assert not j.get('error')
+            out.extend(j.get('cards',[]));cu=j.get('cursor',{})
+            if cu.get('total',0)<100:return out
+            cur={'limit':100,'updatedAt':cu['updatedAt'],'nmID':cu['nmID']};time.sleep(.8)
+           raise RuntimeError('WB pagination incomplete')
+          def core(p):
+           x={k:v for k,v in p.items() if k not in ('barcodes','updated')}
+           if 'attributes' in x:x['attributes']=sorted(x['attributes'],key=lambda a:str(a['id']))
+           return x
+          def normalized(b):return sorted(json.dumps(x,sort_keys=True,ensure_ascii=False) for x in b)
+          assert cache(KEY) is None,'Existing execution; inspect before replay'
+          wb=cache('maya3_stage4:wb_create:20261125:v1');ms=cache('maya3_stage3:ms_create:20261125:v1')
+          assert wb and wb['status']=='verified' and ms and ms['status']=='verified'
+          items=ms['created'];assert len(items)==9
+          freshwb=wb_cards();live={c['vendorCode']:c for c in freshwb}
+          targets=[]
+          for item in items:
+           a=item['article'];card=live[a];prior=next(c for c in wb['products'] if c['vendorCode']==a)
+           assert card['nmID']==prior['nmID'] and card['imtID']==prior['imtID']
+           b=[str(b) for z in card['sizes'] for b in z.get('skus',[])]
+           assert b==[wb['barcodes'][a]]
+           product=msread('/entity/product/'+item['id'])
+           assert product['article']==a and product['code']==a.split('-')[0]+'с' and not product.get('archived',False)
+           targets.append({'article':a,'id':product['id'],'barcode':b[0],'before':product})
+          # Check foreign use of the nine barcodes before any write.
+          allrows=[];offset=0
+          for page in range(40):
+           j=msread('/entity/product',{'limit':1000,'offset':offset});rows=j.get('rows',[]);allrows.extend(rows)
+           if len(rows)<1000:break
+           offset+=1000;time.sleep(.3)
+          else:raise RuntimeError('MS pagination incomplete')
+          bybarcode={t['barcode']:t for t in targets}
+          for product in allrows:
+           for obj in product.get('barcodes',[]):
+            for value in obj.values():
+             if str(value) in bybarcode:assert product['id']==bybarcode[str(value)]['id'],'Barcode belongs to other product'
+          reorder=msread('/entity/product/762a7b63-d3cf-11ef-0a80-0e8500025f22')
+          assert reorder['article']=='143-ReginaBag-black' and {'code128':'2042639118433'} in reorder.get('barcodes',[])
+          e={'status':'preparing','started_at':now(),'wb_writes':0,'ms_put_attempts':0,'products':[],'targets':targets,'reorder_before':reorder}
+          r=requests.post(SB+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**SH,'Prefer':'resolution=ignore-duplicates,return=representation'},json={'cache_key':KEY,'payload':e,'updated_at':now(),'expires_at':'2099-01-01T00:00:00Z'},timeout=40);r.raise_for_status();assert len(r.json())==1
+          try:
+           for target in targets:
+            before=msread('/entity/product/'+target['id'])
+            assert core(before)==core(target['before']) and normalized(before.get('barcodes',[]))==normalized(target['before'].get('barcodes',[])),'Product changed during preparation'
+            old=before.get('barcodes',[]);bc=target['barcode']
+            new=old if {'code128':bc} in old else old+[{'code128':bc}]
+            if new!=old:
+             e.update(status='writing',pending_article=target['article'],pending_barcodes=new,ms_put_attempts=e['ms_put_attempts']+1);save(e)
+             try:
+              r=requests.put(MS+'/entity/product/'+target['id'],headers=MH,json={'barcodes':new},timeout=60)
+              e['last_http_status']=r.status_code
+              if not r.ok:raise RuntimeError('PUT rejected or uncertain')
+             except Exception:
+              after=msread('/entity/product/'+target['id'])
+              if normalized(after.get('barcodes',[]))!=normalized(new):
+               e.update(status='uncertain_write');save(e);raise
+            after=msread('/entity/product/'+target['id'])
+            assert normalized(after.get('barcodes',[]))==normalized(new),'Barcode verification failed'
+            assert core(after)==core(before),'Unrelated fields changed'
+            assert all(v in after.get('barcodes',[]) for v in old),'Original barcode missing'
+            e['products'].append({'article':target['article'],'id':target['id'],'wb_barcode':bc,'before_barcodes':old,'after_barcodes':after.get('barcodes',[]),'non_barcode_unchanged':True,'verified':True})
+            e.update(status='in_progress',pending_article=None,pending_barcodes=None);save(e);time.sleep(.4)
+           after143=msread('/entity/product/'+reorder['id'])
+           e['reorder_unchanged']=core(after143)==core(reorder) and normalized(after143.get('barcodes',[]))==normalized(reorder.get('barcodes',[]))
+           assert e['reorder_unchanged'] and len(e['products'])==9
+           e.update(status='verified',completed_at=now());save(e)
+           print('Nine WB barcodes linked and verified; every previous barcode and other product field preserved;143unchanged')
+          except Exception as ex:
+           if e.get('status')!='uncertain_write':e['status']='stopped_review_required'
+           e['error_type']=type(ex).__name__;save(e);raise SystemExit('Stopped; inspect private journal before retry')
