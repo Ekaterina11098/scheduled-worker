@@ -100,6 +100,7 @@ def worker(slot,day=None,verify=False,prepare_only=False):
    if not verify:execute(reader,R/'work/readmid.py')
    s=db.get(root+':read')or{}
    if not s.get('data')or not s.get('steps'):raise RuntimeError('Current-day source unavailable')
+   a['configurations'].update(s.get('current_configurations',{}))
    for cid,cfg in s.get('current_statuses',{}).items():a['configurations'].setdefault(cid,cfg)
    quality=require_complete_statistics(s['data'],[day],s.get('current_statuses')or a['configurations'])
    s.update(day=day,observed_at=s['steps']['0']['observed_at'],status='partial',missing_ids=sorted(set(s['steps']['0']['requested_ids'])-{c['advertId']for c in s['data']}))
