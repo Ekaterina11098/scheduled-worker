@@ -1,0 +1,27 @@
+name: MAYA3 Samanta rename read-only error diagnostics25Nov
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/maya3-samanta-error-read-20261125.yml']
+permissions: {}
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5
+      - env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        shell: python
+        run: |
+          import os,requests,time
+          from datetime import datetime,timezone
+          h={'Authorization':os.environ['WB_TOKEN_3']};host='https://content-api.wildberries.cn'
+          r=requests.post(host+'/content/v2/cards/error/list',headers=h,json={'cursor':{'limit':100},'order':{'ascending':False}},timeout=60);r.raise_for_status();out={'errors':r.json(),'wb_writes':0}
+          sb=os.environ['SUPABASE_URL'].rstrip('/');sk=os.environ['SUPABASE_SECRET_KEY']
+          r=requests.post(sb+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={'apikey':sk,'Authorization':'Bearer '+sk,'Content-Type':'application/json','Prefer':'resolution=ignore-duplicates,return=minimal'},json={'cache_key':'maya3_correction:samanta366_368:20261125:errors_read:v1','payload':out,'updated_at':datetime.now(timezone.utc).isoformat(),'expires_at':'2099-01-01T00:00:00Z'},timeout=60);r.raise_for_status()
+          print('Read-only WB error diagnostics stored privately')
