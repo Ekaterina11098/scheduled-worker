@@ -1,0 +1,44 @@
+name: Read supplementary currency-bearing sections
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/ms-cny-extra-scope-20261125.yml']
+permissions:
+  contents: read
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Read supplementary document and settings scope
+        shell: python
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          import sys,concurrent.futures
+          sys.path.insert(0,'scripts')
+          import fbs_document_chain as m
+          ROOT='ms_currency_cny_migration:20261125:'
+          class ReadOnly(m.Transport):
+           def request(self,base,path,method='GET',body=None,params=None):
+            if base==m.MS and method!='GET':raise m.Stop('MS GET only')
+            if base==m.WB:raise m.Stop('WB out of scope')
+            return super().request(base,path,method,body,params)
+          t=ReadOnly();db=m.Cache(t)
+          types=['inventory','processing','processingorder','productiontask','payroll','counterpartyadjustment','pricelist','contract','retailshift','processingplan','discount','bonusprogram','bonustransaction']
+          def read(typ):
+           tr=ReadOnly();cache=m.Cache(tr)
+           try:
+            d=tr.request(m.MS,'entity/'+typ,params={'limit':10})
+            cache.put(ROOT+'scope_extra:'+typ,{'count':d['meta']['size'],'sample':d['rows'],'status':'complete','at':m.now()})
+            return {'type':typ,'count':d['meta']['size'],'status':'complete'}
+           except Exception as e:return {'type':typ,'status':'failed','error':str(e)}
+          with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:results=list(pool.map(read,types))
+          db.put(ROOT+'scope_extra:v1',{'status':'complete' if all(x['status']=='complete' for x in results) else 'incomplete','results':results,'at':m.now(),'ms_writes':0})
+          print('Supplementary scope read completed; findings retained privately; MS unchanged.')
