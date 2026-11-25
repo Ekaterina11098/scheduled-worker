@@ -1,0 +1,44 @@
+name: Trace one negative warehouse balance read-only
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/ms-stock-recheck-20261125.yml']
+permissions:
+  contents: read
+jobs:
+  trace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Read movement history and source documents
+        shell: python
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          import sys,datetime
+          sys.path.insert(0,'scripts')
+          import fbs_document_chain as m
+          ROOT='ms_negative_stock_trace:20261125:572:'
+          class ReadOnly(m.Transport):
+           def request(self,base,path,method='GET',body=None,params=None):
+            if base==m.MS and method!='GET':raise m.Stop('MS writes prohibited')
+            if base==m.WB:raise m.Stop('WB out of scope')
+            return super().request(base,path,method,body,params)
+          t=ReadOnly();db=m.Cache(t);c=db.get(ROOT+'input:v1');ROOT='ms_negative_stock_trace:20261125:572:recheck2:'
+          assert c['read_only'] is True
+          product=m.MS+'entity/product/'+c['product_id'];store=m.MS+'entity/store/'+c['store_id']
+          moment=datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=3))).strftime('%Y-%m-%d %H:%M:%S')
+          db.put(ROOT+'status:v1',{'status':'reading','at':m.now(),'ms_writes':0})
+          p=t.request(m.MS,'entity/product/'+c['product_id'])
+          wh=t.request(m.MS,'entity/store/'+c['store_id'])
+          report=t.request(m.MS,'report/turnover/bystore',params={'filter':'product='+product,'momentFrom':'2000-01-01 00:00:00','momentTo':moment})
+          stocks=t.request(m.MS,'report/stock/bystore',params={'filter':'product='+product,'limit':1000})
+          result={'status':'complete','moment_msk':moment,'report':report,'stocks':stocks,'ms_writes':0}
+          db.put(ROOT+'result:v1',result)
+          print('Read-only stock recheck complete; evidence saved privately.')
