@@ -39,8 +39,11 @@ class GrowthPreservation(unittest.TestCase):
   self.bundle['campaigns'][0]['id']=42088552;self.action['campaign_id']=42088552;self.source['batches']['x']['campaigns']['adverts'][0]['id']=42088552;self.minima={'42088552:10':28}
   self.assertFalse(self.run_final()['campaigns'][0]['attention'])
  def test_wait_and_missing_and_protected_are_explicit(self):
-  self.assertEqual(recommendations(dict(today={},attention=[],post_change_note='Оценка27.11.')),['Оценка27.11.'])
-  self.assertIn('Нет данных',recommendations(dict(today=None,attention=[]))[0]);self.assertEqual(recommendations(dict(owner_unchanged=True,attention=[])),['Ничего не менять.'])
+  self.assertEqual(recommendations(dict(today={},attention=[],post_change_note='Оценка27.11.')),['Без изменений.'])
+  self.assertEqual(recommendations(dict(today=None,attention=[])),['Без изменений.']);self.assertEqual(recommendations(dict(owner_unchanged=True,attention=[])),['Ничего не менять.'])
+ def test_diagnostics_and_unready_candidates_remain_private(self):
+  row=dict(attention=[],addition_review_notes=['Кандидат, нужен план.'],recommendation_review_note='Нет полной истории.',owner_review_note='Ожидание.',post_change_note='Тест не завершён.')
+  self.assertEqual(recommendations(row),['Без изменений.'])
  def test_unready_additions_are_not_counted_as_ready(self):
   from china_advertising_midday import direction_count
   self.assertEqual(direction_count(dict(status='checked',count=2,ready_count=0,unready_count=2),'add'),'0 (проверяются: 2)')
