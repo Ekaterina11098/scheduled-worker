@@ -9,7 +9,7 @@ from china_price_apply import process,PREFIX,POLICY,day,plan
 from china_moysklad_read import Reader
 from china_advertising_economic_review import model_rows
 from china_morning_readiness import published_stock
-ROOT='china_agent:owner_catalog26_prices:v1'
+ROOT='china_agent:owner_catalog26_prices:v2'
 IDS=set()
 def stamp():return datetime.now(timezone.utc).isoformat()
 def digest(x):return hashlib.sha256(json.dumps(x,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
@@ -28,7 +28,7 @@ def main():
  e=dict(status='preflight',approval_key=ROOT+':approval',created_at=stamp(),wb_writes=0,telegram_calls=0,stock_writes=0,funding_writes=0,advertising_writes=0,model_calls=0)
  assert cache.create(ROOT+':execution',e)
  def save():cache.put(ROOT+':execution',json.loads(json.dumps(e)))
- expected={i['nm_id']:dict(nmID=i['nm_id'],price=i['base_target'],discount=i['discount'])for i in p['items']};original=requests.sessions.Session.request
+ expected={i['nm_id']:dict(nmID=i['nm_id'],price=int(i['base_target']),discount=i['discount'])for i in p['items']};original=requests.sessions.Session.request
  def guard(session,method,url,*args,**kw):
   u=urlparse(url);m=method.upper();b=kw.get('json');path=u.path
   if u.hostname==urlparse(os.environ['SUPABASE_URL']).hostname:ok=path.startswith('/rest/v1/')and m in('GET','POST','PATCH')
