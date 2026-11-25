@@ -24,7 +24,7 @@ def main():
   if u.hostname=='discounts-prices-api.wildberries.ru':ok=m=='GET'and p=='/api/v2/list/goods/filter'
   if u.hostname=='marketplace-api.wildberries.ru':ok=m=='POST'and p=='/api/v3/stocks/2126188'
   if u.hostname=='seller-analytics-api.wildberries.ru':ok=m=='POST'and p=='/api/analytics/v3/sales-funnel/products'
-  if u.hostname=='advert-api.wildberries.ru':ok=m=='GET'and p in('/api/advert/v2/adverts','/api/advert/v1/config')or m=='POST'and p=='/api/advert/v1/bids/min'
+  if u.hostname=='advert-api.wildberries.ru':ok=m=='GET'and p in('/api/advert/v2/adverts','/api/advert/v1/config','/adv/v3/fullstats')or m=='POST'and p=='/api/advert/v1/bids/min'
   if u.hostname=='card.wb.ru':ok=m=='GET'and p in('/cards/v4/detail','/cards/v2/detail')
   if u.hostname=='dp-calendar-api.wildberries.ru':ok=m=='GET'and p in('/api/v1/calendar/promotions','/api/v1/calendar/promotions/nomenclatures')
   if u.hostname=='mcp.mpstats.io':
@@ -96,6 +96,9 @@ def main():
     except Exception as ex:result['unavailable'].append(dict(id=x['id'],reason=type(ex).__name__));result['coverage_complete']=False
    return result
   # No repeated broad promotions queries
+  latest=io.get('china_agent:hourly_sales_api:v1:latest');snapshot=io.get(latest['source_key']);scope=set(map(int,snapshot['advertising']['campaigns']));scope.add(42068265)
+  stage('campaign_coverage',lambda:get('advert-api.wildberries.ru','/api/advert/v2/adverts',dict(ids=','.join(map(str,sorted(scope))))))
+  stage('archive_candidate_stats',lambda:get('advert-api.wildberries.ru','/adv/v3/fullstats',dict(ids='42068265',beginDate='2026-11-20',endDate='2026-11-25')))
   out.update(status='complete_with_gaps'if out['errors']else'complete',completed_at=stamp());save();print(json.dumps(dict(status=out['status'],errors=out['errors'],wb_writes=0,telegram_calls=0,model_calls=0)))
  finally:requests.sessions.Session.request=original
 if __name__=='__main__':main()
