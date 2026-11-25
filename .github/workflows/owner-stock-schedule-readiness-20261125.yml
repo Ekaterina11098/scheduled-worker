@@ -1,0 +1,35 @@
+name: Stock schedule readiness25Nov2026
+on:
+  push:
+    paths: ['.github/workflows/owner-stock-schedule-readiness-20261125.yml']
+permissions:
+  actions: read
+  contents: read
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read actual workflow activation and deployed schedule
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import os,json,urllib.request,base64,re
+          root='https://api.github.com/repos/Ekaterina11098/scheduled-worker'
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'}
+          def get(path):
+           with urllib.request.urlopen(urllib.request.Request(root+path,headers=headers),timeout=30) as response:return json.load(response)
+          w=get('/actions/workflows/stock-daily-1630-prepared.yml')
+          f=get('/contents/.github/workflows/stock-daily-1630-prepared.yml')
+          source=base64.b64decode(f['content']).decode()
+          pin=re.search(r'ref: ([a-f0-9]{40})',source).group(1)
+          assert w['state']=='active'
+          assert pin=='d2d98425480a86da5225208931896dfd3cc5b078'
+          assert "cron: '0 17 * * *'" in source
+          assert "cron: '0 2 * * *'" in source
+          assert "STOCK_DAILY_ENABLED: 'true'" in source
+          assert "STOCK_CLOUD_EXECUTION_ENABLED: 'true'" in source
+          assert "cancel-in-progress: false" in source
+          print(json.dumps({'workflow_state':w['state'],'workflow_id':w['id'],'source_pin':pin,'morning_msk':'05:00','evening_msk':'20:00','automatic_retries':"cron: '10,20,30,40,50 17 * * *'" in source}))
+          PY
