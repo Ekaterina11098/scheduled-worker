@@ -1,0 +1,61 @@
+name: Read full MoySklad assortment661 including variants
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/ms661-assortment-search-20261125.yml']
+permissions: {}
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5
+      - env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        shell: python
+        run: |
+          import os,json,time,requests
+          from datetime import datetime,timezone
+          BASE='https://api.moysklad.ru/api/remap/1.2'
+          MH={'Authorization':'Bearer '+os.environ['MOYSKLAD_API_TOKEN'],'Accept-Encoding':'gzip','Content-Type':'application/json'}
+          SB=os.environ['SUPABASE_URL'].rstrip('/');SK=os.environ['SUPABASE_SECRET_KEY']
+          SH={'apikey':SK,'Authorization':'Bearer '+SK,'Content-Type':'application/json'}
+          KEY='julian_661:ms_assortment_full:20261125:v1'
+          
+          def now():return datetime.now(timezone.utc).isoformat()
+          def cache():
+           r=requests.get(SB+'/rest/v1/telegram_api_cache',headers=SH,params={'cache_key':'eq.'+KEY,'select':'payload'},timeout=50);r.raise_for_status();return r.json()
+          def save(e):
+           r=requests.post(SB+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**SH,'Prefer':'resolution=merge-duplicates,return=minimal'},json={'cache_key':KEY,'payload':e,'updated_at':now(),'expires_at':'2099-01-01T00:00:00Z'},timeout=50);r.raise_for_status()
+          def read(path,params=None):
+           for attempt in range(6):
+            time.sleep(2);r=requests.get(BASE+path,headers=MH,params=params,timeout=60)
+            if r.status_code==429:time.sleep(10+attempt*5);continue
+            r.raise_for_status();return r.json()
+           raise RuntimeError('MS read rate limited')
+          def all_products(params=None):
+           result=[];offset=0
+           for page in range(40):
+            j=read('/entity/assortment',{**(params or {}),'limit':1000,'offset':offset});rows=j.get('rows',[]);result.extend(rows)
+            if len(rows)<1000:return result
+            offset+=1000
+           raise RuntimeError('MS pagination incomplete')
+          
+          import re
+          out={'status':'reading','business_writes':0,'stock_filter':None,'matches':[],'counts':{}}
+          seen=set()
+          for archived in (False,):
+           params={'filter':'archived=true'} if archived else {}
+           rows=all_products(params);out['counts'][str(archived)]=len(rows)
+           for p in rows:
+            fields=[p.get(k,'') for k in ('article','code','name','externalCode')]+[str(a.get('value','')) for a in p.get('attributes',[])]
+            if any(re.search(r'(?<![0-9])0*661(?![0-9])',str(v)) for v in fields) and p['id'] not in seen:
+             seen.add(p['id']);out['matches'].append(p)
+          
+          out['status']='read_complete';out['completed_at']=now();save(out)
+          print('Read-only661search complete including products without stock and archived products')
+          
