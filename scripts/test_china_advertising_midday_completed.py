@@ -21,7 +21,7 @@ class CompletedMidday(unittest.TestCase):
  def test_pending_history_remains_private_and_not_recommended(self):
   r=self.review();r['campaigns'][0]['focus'][0].update(pending_first_day=True,done='Ставка снижена · 01.11')
   out=merge_completed(dict(day='2026-11-01',campaigns=[dict(id=1)]),r,'source')
-  self.assertEqual([],out['campaigns'][0]['attention']);self.assertEqual(['Нет новых действий.'],recommendations(out['campaigns'][0]));self.assertTrue(out['campaigns'][0]['completed_actions'])
+  self.assertEqual([],out['campaigns'][0]['attention']);self.assertEqual(['Новых действий по завершённым дням нет.'],recommendations(out['campaigns'][0]));self.assertTrue(out['campaigns'][0]['completed_actions'])
  def test_old_midday_source_is_archived_and_recollected(self):
   import copy
   from datetime import datetime,timedelta,timezone
