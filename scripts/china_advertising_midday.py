@@ -125,10 +125,13 @@ def completed_recommendation(r):
  return r['article']+': '+r['decision']
 
 def recommendations(c):
+ if c.get('owner_unchanged'):return ['Ничего не менять.']
  rows=[completed_recommendation(r)for r in c['attention']]
  rows+=c.get('addition_review_notes',[])
  # Unready research stays in the private analysis journal.
- return rows or [c.get('owner_review_note')or c.get('recommendation_review_note')or'Нет новых действий.']
+ if rows:return rows
+ if c.get('today')is None:return ['Нет данных WB; решение не готово.']
+ return [c.get('owner_review_note')or c.get('recommendation_review_note')or c.get('post_change_note')or'Новых действий по завершённым дням нет.']
 def covered_totals(campaigns):
  known=[c['today'] for c in campaigns if c.get('today') is not None]
  missing=[c['id'] for c in campaigns if c.get('today') is None and not c.get('draft')]
@@ -138,6 +141,10 @@ def render_midday(b):
  from china_archived_report_window import midday_view
  b=midday_view(b)
  b=dict(b,campaigns=[c for c in b['campaigns'] if not c.get('draft')])
+ from china_advertising_target import target_pct
+ target=target_pct(b)
+ def target_color(p):
+  return '#111111'if not p or not p.get('amount')else '#168447'if p['spend']/p['amount']*100<=target else '#bd303e'
  W=2400;H=6500;xs=[44,480,780,1050,1650,2356];files=[];green='#196b44'
  def wrap(d,s,w,n=27):
   out=[]
@@ -152,7 +159,7 @@ def render_midday(b):
  def canvas():
   im=Image.new('RGB',(W,H),'#edf7f0');d=ImageDraw.Draw(im);d.rectangle((0,0,W,205),fill=green)
   d.text((44,28),'Китай · промежуточный отчёт · 15:00',font=font(48,True),fill='white')
-  d.text((44,100),'Текущий день: '+b['day']+' · с 00:00 МСК · цель ДРР 5%',font=font(29,True),fill='white')
+  d.text((44,100),'Текущий день: '+b['day']+' · с 00:00 МСК · цель ДРР '+format(target,'g')+'%',font=font(29,True),fill='white')
   obs=datetime.fromisoformat(b['observed_at'].replace('Z','+00:00')).astimezone(MSK).strftime('%d.%m.%Y %H:%M МСК')
   if b.get('observation_from'):obs=datetime.fromisoformat(b['observation_from']).astimezone(MSK).strftime('%d.%m.%Y %H:%M')+'–'+datetime.fromisoformat(b['observed_at']).astimezone(MSK).strftime('%H:%M МСК')
   d.text((44,150),'Фактический срез: '+obs,font=font(24),fill='white')
@@ -179,7 +186,7 @@ def render_midday(b):
   if y+h>5500:finish(im,y,acts);im,d=canvas();y=390;acts=[]
   d.rounded_rectangle((24,y,W-24,y+h),18,fill='white')
   for i,lines in enumerate(ls):
-   for j,line in enumerate(lines):d.text((xs[i],y+18+j*35),line,font=font(27),fill=color(p) if i==2 else '#111111')
+   for j,line in enumerate(lines):d.text((xs[i],y+18+j*35),line,font=font(27),fill=target_color(p) if i==2 else '#111111')
   acts.extend(r['action'] for r in c['attention']);y+=h+12
  coverage=covered_totals([c for c in b.get('presentation_totals_campaigns',b['campaigns'])if not c.get('draft')]);total=coverage['total']
  d.rounded_rectangle((24,y+10,W-24,y+215),18,fill=green)
@@ -250,8 +257,3 @@ def run():
  r=deliver(io,day,files,telegram_sender(io),binder=lambda f,r:bind(io,f,r),delivery_key=key,expected_families={'drr'})
  print(json.dumps(dict(status=r['status'],day=day,wb_writes=0)))
 if __name__=='__main__':run()
-
-
-
-
-
