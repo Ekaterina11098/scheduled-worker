@@ -3,7 +3,7 @@ import copy,json,base64,hashlib,requests
 from urllib.parse import urlparse
 from datetime import datetime,timezone
 from china_advertising_state import AdvertisingIO
-ROOT='china_agent:owner_midday_fix:2026-11-25:v1'
+ROOT='china_agent:owner_midday_fix:2026-11-25:v2'
 def main():
  io=AdvertisingIO();old=io.get(ROOT+':preview')
  if old:print('Existing preview retained');return
