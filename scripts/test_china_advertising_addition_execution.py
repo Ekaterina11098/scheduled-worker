@@ -33,12 +33,13 @@ class AdditionExecutionTests(unittest.TestCase):
   p=dict(plan_id='addition-fixture',execution_kind='daily_ad_actions_v2',items=[item],plan_sha256=digest([item]),expires_at=(datetime.now(timezone.utc)+timedelta(hours=1)).isoformat())
   a=dict(plan_sha256=p['plan_sha256'])
   io.token='fixture'
-  with patch('requests.request',side_effect=request),patch('time.sleep'),patch('china_advertising_full_growth.validate_addition'),patch('china_execution_notice.deliver_result'):
+  with patch('requests.request',side_effect=request),patch('time.sleep'),patch('china_advertising_full_growth.validate_addition',return_value=dict(source='fixture_current_evidence',nm_id=2,campaign_id=7)),patch('china_execution_notice.deliver_result'):
    e=execute(io,a,p);again=execute(io,a,p)
   return e,again,writes,current
  def test_exact_add_then_bid_and_no_replay(self):
   e,again,writes,current=self.run_add()
   self.assertEqual(e['status'],'done');self.assertEqual(e['items'][0]['status'],'verified')
+  self.assertEqual(e['items'][0]['current_growth_evidence'],dict(source='fixture_current_evidence',nm_id=2,campaign_id=7))
   self.assertEqual(len(writes),2)
   self.assertEqual(current['nm_settings'][0]['bids_kopecks']['recommendations'],28)
   self.assertEqual(current['nm_settings'][1]['bids_kopecks']['recommendations'],30)
