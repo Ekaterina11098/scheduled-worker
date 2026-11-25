@@ -1,0 +1,188 @@
+name: Resume read-only CNY detail analysis
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/ms-cny-detail-resume-20261125.yml']
+permissions:
+  contents: read
+  actions: write
+concurrency:
+  group: ms-cny-detail-resume-20261125
+  cancel-in-progress: false
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Stop superseded read-only reader and retain checkpoints
+        shell: python
+        env:
+          GH_CONTROL_TOKEN: ${{ github.token }}
+        run: |
+          import os,json,time,urllib.request
+          base='https://api.github.com/repos/'+os.environ['GITHUB_REPOSITORY']+'/actions/runs/45572359938'
+          headers={'Authorization':'Bearer '+os.environ['GH_CONTROL_TOKEN'],'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'}
+          def request(url,method='GET'):
+           with urllib.request.urlopen(urllib.request.Request(url,headers=headers,method=method),timeout=30) as response:
+            raw=response.read()
+            return json.loads(raw) if raw else None
+          run=request(base)
+          if run['status']!='completed':request(base+'/cancel','POST')
+          for i in range(30):
+           if request(base)['status']=='completed':break
+           time.sleep(2)
+          else:raise RuntimeError('Previous reader has not stopped')
+          print('Previous read-only reader stopped; checkpoints retained.')
+          
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Resume missing pages only and verify full coverage
+        shell: python
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          import sys,time,collections,concurrent.futures
+          from decimal import Decimal,ROUND_HALF_UP
+          sys.path.insert(0,'scripts')
+          import fbs_document_chain as m
+          ROOT='ms_currency_cny_plan:20261125:detail:v1:'
+          TYPES=["cashin","cashout","commissionreportin","commissionreportout","customerorder","demand","enter","facturein","factureout","internalorder","invoicein","invoiceout","loss","move","paymentin","paymentout","prepayment","prepaymentreturn","purchaseorder","purchasereturn","retailsalesreturn","retaildemand","retaildrawercashin","retaildrawercashout","retireorder","salesreturn","supply"]
+          FIN={'cashin','cashout','paymentin','paymentout','prepayment','prepaymentreturn','retaildrawercashin','retaildrawercashout'}
+          class ReadOnly(m.Transport):
+           def request(self,base,path,method='GET',body=None,params=None):
+            if base==m.MS and method!='GET':raise m.Stop('Planning only; MS writes prohibited')
+            if base==m.WB:raise m.Stop('WB out of scope')
+            return super().request(base,path,method,body,params)
+          def D(v):return Decimal(str(v or 0))
+          def R(v):return v.quantize(Decimal('1'),rounding=ROUND_HALF_UP)
+          def save(db,key,value):
+           for i in range(5):
+            try:db.put(ROOT+key,value);return
+            except Exception:
+             try:
+              if db.get(ROOT+key)==value:return
+             except Exception:pass
+             if i==4:raise
+             time.sleep(2+i)
+          t=ReadOnly();db=m.Cache(t)
+          curr=t.request(m.MS,'entity/currency',params={'limit':1000})
+          codes={m.href(c):c.get('isoCode') for c in curr['rows']}
+          assert curr['meta']['size']==len(curr['rows'])
+          save(db,'currencies',curr)
+          save(db,'status',{'status':'running','started_at':m.now(),'ms_writes':0,'RUB_per_CNY':12})
+          
+          def process_docs(typ,docs):
+           t=ReadOnly();stat=collections.defaultdict(int);stat['sample_issues']=[]
+           source=Decimal(0);target=Decimal(0);diffsum=Decimal(0);output=[]
+           for d in docs:
+            old=D(d.get('sum'));goal=R(old/12);source+=old;target+=goal
+            iso=codes.get(m.href(d.get('rate',{}).get('currency',{})),'UNKNOWN')
+            stat['missing_currency']+=int(iso=='UNKNOWN')
+            stat['non_rub']+=int(iso not in ('RUB','UNKNOWN'))
+            stat['rounding_total_docs']+=int(old/12!=goal)
+            rec={'id':d['id'],'name':d.get('name'),'type':typ,'moment':d.get('moment'),'updated':d.get('updated'),'sum_minor':str(old),'proposed_sum_minor':str(goal),'currency':iso,'applicable':d.get('applicable'),'organization':m.href(d.get('organization',{})),'vatEnabled':d.get('vatEnabled'),'vatIncluded':d.get('vatIncluded'),'positions':0,'issues':[]}
+            pp=d.get('positions');positions=[]
+            if isinstance(pp,dict):
+             expected=pp.get('meta',{}).get('size')
+             if 'rows' in pp:positions=list(pp['rows'])
+             while expected is not None and len(positions)<expected:
+              extra=t.request(m.MS,'entity/'+typ+'/'+d['id']+'/positions',params={'limit':1000,'offset':len(positions)})
+              if not extra.get('rows'):raise m.Stop('Incomplete positions')
+              positions.extend(extra['rows'])
+             if expected is None or len(positions)!=expected:
+              stat['missing_positions_docs']+=1;rec['issues'].append('positions_unverified')
+            rec['positions']=len(positions);stat['positions']+=len(positions)
+            if positions:
+             orig=Decimal(0);new=Decimal(0);priceissues=[]
+             for p in positions:
+              price=D(p.get('price'));converted=R(price/12)
+              qty=D(p.get('quantity'));disc=D(p.get('discount'))
+              factor=(Decimal(100)-disc)/100
+              vatfactor=Decimal(1)
+              if d.get('vatEnabled') and not d.get('vatIncluded') and p.get('vatEnabled',True):vatfactor+=D(p.get('vat'))/100
+              orig+=R(price*qty*factor*vatfactor);new+=R(converted*qty*factor*vatfactor)
+              if price/12!=converted:
+               stat['rounding_price_positions']+=1
+               priceissues.append({'position_id':p.get('id'),'assortment':m.href(p.get('assortment',{})),'quantity':str(qty),'price_minor':str(price),'proposed_price_minor':str(converted),'discount':str(disc),'vat':p.get('vat')})
+             rec.update(original_model_minor=str(orig),proposed_lines_minor=str(new),line_vs_total_diff_minor=str(new-goal),rounding_positions=priceissues)
+             if orig!=old:stat['original_model_mismatch_docs']+=1;rec['issues'].append('original_line_model_differs')
+             if new!=goal:
+              stat['line_vs_total_diff_docs']+=1;diffsum+=new-goal
+              rec['issues'].append('rounded_lines_vs_rounded_document')
+            operations=d.get('operations')
+            if typ in FIN:
+             links=[]
+             for op in operations or []:
+              if 'linkedSum' not in op:stat['linked_sum_missing']+=1;continue
+              amount=D(op['linkedSum'])
+              links.append({'href':m.href(op),'linked_minor':str(amount),'proposed_linked_minor':str(R(amount/12))})
+             rec['payment_links']=links
+             stat['financial_links']+=len(links)
+             alloc=sum((D(x['linked_minor']) for x in links),Decimal(0));newalloc=sum((D(x['proposed_linked_minor']) for x in links),Decimal(0))
+             rec.update(allocated_minor=str(alloc),proposed_allocated_minor=str(newalloc),unallocated_minor=str(old-alloc),proposed_unallocated_minor=str(goal-newalloc),allocation_rounding_diff_minor=str(newalloc-R(alloc/12)))
+             if newalloc!=R(alloc/12):stat['financial_allocation_rounding_docs']+=1;rec['issues'].append('allocation_rounding')
+            for k in ('customerOrder','purchaseOrder','demand','supply','salesReturn','purchasereturn','invoiceIn','invoiceOut'):
+             if isinstance(d.get(k),dict):rec[k]=m.href(d[k])
+            if rec['issues'] and len(stat['sample_issues'])<10:stat['sample_issues'].append({'id':d['id'],'name':d.get('name'),'issues':rec['issues']})
+            output.append(rec)
+          
+           return output
+          inventory=db.get('ms_currency_cny_plan:20261125:inventory:v1')
+          expected={d['type']:d['count'] for d in inventory['documents']}
+          def sizecheck(typ):
+           tr=ReadOnly();d=tr.request(m.MS,'entity/'+typ,params={'limit':1})
+           if d['meta']['size']!=expected[typ]:raise m.Stop('Document count changed since inventory')
+           return typ
+          with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:list(pool.map(sizecheck,TYPES))
+          keys=t.request(db.base,'telegram_api_cache',params={'cache_key':'like.'+ROOT+'*:page:*','select':'cache_key','limit':1000})
+          assert len(keys)<1000
+          existing={k['cache_key'] for k in keys}
+          tasks=[(typ,off) for typ in TYPES for off in range(0,expected[typ],100)]
+          state={'status':'reading','started_at':m.now(),'pages_total':len(tasks),'pages_existing':len(existing),'pages_done':len(existing),'documents':0,'ms_writes':0}
+          save(db,'resumed_status',state)
+          def page(task):
+           typ,offset=task;key=ROOT+typ+':page:'+str(offset)
+           if key in existing:
+            tr=ReadOnly();return (typ,m.Cache(tr).get(key)['records'])
+           tr=ReadOnly();cache=m.Cache(tr)
+           params={'limit':100,'offset':offset,'order':'id,asc'}
+           if typ not in FIN:params['expand']='positions'
+           data=tr.request(m.MS,'entity/'+typ,params=params)
+           if data['meta']['size']!=expected[typ]:raise m.Stop('Document count changed during page collection')
+           if len(data['rows'])!=min(100,expected[typ]-offset):raise m.Stop('Incomplete page')
+           records=process_docs(typ,data['rows'])
+           save(cache,typ+':page:'+str(offset),{'type':typ,'offset':offset,'records':records,'read_at':m.now()})
+           return typ,records
+          all_records={typ:[] for typ in TYPES}
+          # Missing pages first; reuse all previously verified pages afterward.
+          tasks.sort(key=lambda x:ROOT+x[0]+':page:'+str(x[1]) in existing)
+          try:
+           with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
+            futuremap={pool.submit(page,task):task for task in tasks}
+            done=0
+            for f in concurrent.futures.as_completed(futuremap):
+             typ,records=f.result();all_records[typ].extend(records);done+=1
+             if done%10==0 or done==len(tasks):
+              state.update(pages_done=done,documents=sum(len(v) for v in all_records.values()),updated_at=m.now())
+              save(db,'resumed_status',state)
+           stats=[]
+           for typ in TYPES:
+            records=all_records[typ]
+            assert len(records)==expected[typ] and len({r['id'] for r in records})==expected[typ]
+            stat={'type':typ,'status':'complete','count':len(records),'total':expected[typ],'positions':sum(r['positions'] for r in records),'source_sum_minor':str(sum((D(r['sum_minor']) for r in records),Decimal(0))),'target_sum_minor':str(sum((D(r['proposed_sum_minor']) for r in records),Decimal(0))),'rounding_price_positions':sum(len(r.get('rounding_positions',[])) for r in records),'rounding_total_docs':sum(D(r['sum_minor'])/12!=D(r['proposed_sum_minor']) for r in records),'line_vs_total_diff_docs':sum(D(r.get('line_vs_total_diff_minor'))!=0 for r in records),'line_vs_total_diff_minor':str(sum((D(r.get('line_vs_total_diff_minor')) for r in records),Decimal(0))),'original_model_mismatch_docs':sum('original_line_model_differs' in r['issues'] for r in records),'missing_positions_docs':sum('positions_unverified' in r['issues'] for r in records),'financial_links':sum(len(r.get('payment_links',[])) for r in records),'financial_allocation_rounding_docs':sum(D(r.get('allocation_rounding_diff_minor'))!=0 for r in records),'missing_currency':sum(r['currency']=='UNKNOWN' for r in records),'non_rub':sum(r['currency'] not in ('RUB','UNKNOWN') for r in records),'finished_at':m.now()}
+            save(db,typ+':summary',stat);stats.append(stat)
+           after=t.request(m.MS,'entity/currency',params={'limit':1000})
+           assert {m.href(c):c.get('isoCode') for c in after['rows']}==codes
+           result={'status':'complete','types':stats,'documents':sum(s['count'] for s in stats),'positions':sum(s['positions'] for s in stats),'finished_at':m.now(),'ms_writes':0,'currencies_unchanged':True}
+           save(db,'result',result)
+           state.update(status='complete',finished_at=m.now());save(db,'resumed_status',state)
+           print('Read-only detailed analysis completed; private results verified.')
+          except Exception as e:
+           state.update(status='failed',error=str(e) if isinstance(e,m.Stop) else type(e).__name__,finished_at=m.now())
+           save(db,'resumed_status',state)
+           raise
+          
