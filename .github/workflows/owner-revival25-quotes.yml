@@ -50,4 +50,4 @@ jobs:
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
           CHINA_TELEGRAM_BOT_TOKEN: ""
-        run: PYTHONPATH=scripts:source python scripts/owner_revival25_quotes.py
+        run: PYTHONPATH=scripts:source python scripts/owner_revival25_quotes_v2.py
