@@ -8,13 +8,14 @@ FIELDS=('id','quantity','discount','vat','vatEnabled','pack','slot','things','co
 def save(db,key,obj):b.put(db,'document_rollout:'+key,obj)
 def rows(d):return d.get('positions',{}).get('rows',[]) if isinstance(d.get('positions'),dict) else []
 def currency(d):return m.href(d.get('rate',{}).get('currency',{})).split('?')[0]
+def number(x):return format(b.D(x).normalize(),'f')
 def psig(p):
- return {'id':p['id'],'quantity':str(b.D(p.get('quantity'))),'price':str(b.D(p.get('price'))),'assortment':m.href(p.get('assortment',{})),'discount':str(b.D(p.get('discount'))),'vat':str(b.D(p.get('vat'))),'vatEnabled':p.get('vatEnabled'),'pack':p.get('pack'),'slot':m.href(p.get('slot',{})),'things':p.get('things'),'country':m.href(p.get('country',{})),'gtd':p.get('gtd')}
+ return {'id':p['id'],'quantity':number(p.get('quantity')),'price':number(p.get('price')),'assortment':m.href(p.get('assortment',{})),'discount':number(p.get('discount')),'vat':number(p.get('vat')),'vatEnabled':p.get('vatEnabled'),'pack':p.get('pack'),'slot':m.href(p.get('slot',{})),'things':p.get('things'),'country':m.href(p.get('country',{})),'gtd':p.get('gtd')}
 def signature(d,typ):
- out={'positions':[psig(p) for p in rows(d)],'sum':str(b.D(d.get('sum'))),'currency':currency(d),'rate':str(b.D(d.get('rate',{}).get('value',1))),'applicable':d.get('applicable'),'vatEnabled':d.get('vatEnabled'),'vatIncluded':d.get('vatIncluded'),'overhead':d.get('overhead')}
+ out={'positions':[psig(p) for p in rows(d)],'sum':number(d.get('sum')),'currency':currency(d),'rate':number(d.get('rate',{}).get('value',1)),'applicable':d.get('applicable'),'vatEnabled':d.get('vatEnabled'),'vatIncluded':d.get('vatIncluded'),'overhead':d.get('overhead')}
  if typ in FIN:
-  out['vatSum']=str(b.D(d.get('vatSum')))
-  out['operations']=[{'href':m.href(o).split('?')[0],'linkedSum':str(b.D(o.get('linkedSum')))} for o in d.get('operations',[])]
+  out['vatSum']=number(d.get('vatSum'))
+  out['operations']=[{'href':m.href(o).split('?')[0],'linkedSum':number(o.get('linkedSum'))} for o in d.get('operations',[])]
  return out
 def prepare(source,typ,cny):
  plan=b.plan(source,rows(source));body={'id':source['id'],'rate':{'currency':m.meta(cny),'value':12}}
