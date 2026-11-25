@@ -1,0 +1,106 @@
+name: VESCHI one-time API read check
+on:
+  push:
+    branches: [codex/veschi-readonly-api-check-20261125]
+    paths: [.github/workflows/veschi-readonly-api-check-20261125.yml]
+permissions: {}
+jobs:
+  verify:
+    if: github.run_attempt == '1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Read one page per service and journal the result
+        env:
+          WB_TOKEN_1: ${{ secrets.WB_TOKEN_1 }}
+          WB_TOKEN_2: ${{ secrets.WB_TOKEN_2 }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import datetime
+          import gzip
+          import json
+          import os
+          import sys
+          import urllib.error
+          import urllib.request
+
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *args, **kwargs):
+                  return None
+
+          opener = urllib.request.build_opener(NoRedirect())
+
+          def read_json(url, headers, data=None):
+              headers = {"Accept": "application/json", "Accept-Encoding": "gzip", **headers}
+              body = None
+              if data is not None:
+                  headers["Content-Type"] = "application/json"
+                  body = json.dumps(data).encode()
+              request = urllib.request.Request(url, headers=headers, data=body)
+              with opener.open(request, timeout=18) as response:
+                  stream = gzip.GzipFile(fileobj=response) if response.headers.get("Content-Encoding") == "gzip" else response
+                  return response.status, json.loads(stream.read(4000001))
+
+          def check(secret, url, rows_key, body=None):
+              token = os.environ.get(secret)
+              if not token:
+                  return {"status": "missing_secret"}
+              auth = token if body is not None else "Bearer " + token
+              try:
+                  code, result = read_json(url, {"Authorization": auth}, body)
+                  if not isinstance(result, dict) or not isinstance(result.get(rows_key), list):
+                      return {"status": "unexpected_response", "http": code}
+                  return {"status": "ok", "http": code, "page_rows": len(result[rows_key])}
+              except urllib.error.HTTPError as error:
+                  return {"status": "http_error", "http": error.code}
+              except Exception:
+                  return {"status": "transport_or_response_error"}
+
+          card_query = {"settings": {"cursor": {"limit": 1}, "filter": {"withPhoto": -1}}}
+          checks = {}
+          for slot, domain in ((1, "ru"), (2, "ru"), (3, "cn")):
+              checks[f"wb_{slot}"] = check(
+                  f"WB_TOKEN_{slot}",
+                  f"https://content-api.wildberries.{domain}/content/v2/get/cards/list",
+                  "cards",
+                  card_query,
+              )
+          checks["moysklad"] = check(
+              "MOYSKLAD_API_TOKEN",
+              "https://api.moysklad.ru/api/remap/1.2/entity/product?limit=1",
+              "rows",
+          )
+          try:
+              key = os.environ["SUPABASE_SECRET_KEY"]
+              base = "https://abxgjoqlddhtcmjcjwxw.supabase.co"
+              if os.environ["SUPABASE_URL"].rstrip("/") != base or not key:
+                  sys.exit("Journal configuration unavailable")
+              now = datetime.datetime.now(datetime.timezone.utc)
+              journal_headers = {"apikey": key, "Prefer": "return=representation"}
+              if not key.startswith("sb_secret_"):
+                  journal_headers["Authorization"] = "Bearer " + key
+              cache_key = "veschi_readonly_api_check:20261125:codex_v1"
+              payload = {"checks": checks, "run_id": os.environ["GITHUB_RUN_ID"], "checked_at": now.isoformat()}
+              code, rows = read_json(
+                  base + "/rest/v1/telegram_api_cache",
+                  journal_headers,
+                  {
+                      "cache_key": cache_key,
+                      "payload": payload,
+                      "updated_at": now.isoformat(),
+                      "expires_at": (now + datetime.timedelta(days=30)).isoformat(),
+                  },
+              )
+              if code != 201 or not isinstance(rows, list) or len(rows) != 1 or rows[0].get("payload") != payload:
+                  sys.exit("Journal write was not confirmed")
+          except urllib.error.HTTPError as error:
+              sys.exit(f"Journal request failed: HTTP {error.code}")
+          except Exception:
+              sys.exit("Journal transport or response error")
+          print("Read check recorded in the private journal.")
+          PY
