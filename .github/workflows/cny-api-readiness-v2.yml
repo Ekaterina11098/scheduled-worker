@@ -1,0 +1,25 @@
+name: Audit CNY API readiness without mutations
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/cny-api-readiness-v2.yml']
+permissions:
+  contents: read
+concurrency:
+  group: cny-api-readiness
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Read currency and source changes only
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: python scripts/cny_api_readiness_v2.py
