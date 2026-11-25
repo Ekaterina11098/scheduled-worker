@@ -9,7 +9,7 @@ from china_price_apply import process,PREFIX,POLICY,day,plan
 from china_moysklad_read import Reader
 from china_advertising_economic_review import model_rows
 from china_morning_readiness import published_stock
-ROOT='china_agent:owner_catalog26_prices:v2'
+ROOT='china_agent:owner_catalog26_prices:v3'
 IDS=set()
 def stamp():return datetime.now(timezone.utc).isoformat()
 def digest(x):return hashlib.sha256(json.dumps(x,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
@@ -38,8 +38,8 @@ def main():
   elif u.hostname=='discounts-prices-api.wildberries.ru':
    ok=m=='GET'and path in('/ping','/api/v2/list/goods/filter','/api/v2/history/tasks','/api/v2/history/goods/task')
    if m=='POST':
-    ok=path=='/api/v2/upload/task'and isinstance(b,dict)and set(b)=={'data'}and 1<=len(b['data'])<=141 and len({x['nmID']for x in b['data']})==len(b['data'])and all(expected.get(x['nmID'])==x for x in b['data'])
-    assert ok,'Outside six exact approved seller prices';authority();assert not e.get('submitted_at'),'No repeated upload';e['submitted_at']=stamp();e['submitted_body']=b;save()
+    ok=path=='/api/v2/upload/task'and isinstance(b,dict)and set(b)=={'data'}and 1<=len(b['data'])<=100 and len({x['nmID']for x in b['data']})==len(b['data'])and all(expected.get(x['nmID'])==x for x in b['data'])
+    assert ok,'Outside six exact approved seller prices';authority();used={z['nmID']for oldbody in e.get('submitted_bodies',[])for z in oldbody['data']};assert not used.intersection(z['nmID']for z in b['data']),'No repeated SKU upload';e['submitted_at']=stamp();e.setdefault('submitted_bodies',[]).append(b);save()
   else:ok=False
   assert ok,'Outside exact owner price scope '+m+' '+str(u.hostname)+path
   return original(session,method,url,*args,**kw)
@@ -82,9 +82,15 @@ def main():
   # Read-only published availability against exact current price size IDs.
   normalized=dict(rows=[dict(nm_id=int(nm),size_ids=[s['sizeID']for s in g['sizes']])for nm,g in goods.items()]);pub=published_stock(io,normalized,sorted(IDS));assert not pub['missing_nm_ids']and all(pub['amounts'][str(n)]>0 for n in IDS)
   e.update(preflight_stock=stock,target_economics=econ,published=pub,baseline=p['baseline_key'],baseline_observed_at=stamp());save()
-  key=PREFIX+'-1004342917488:0:5122667182:'+digest(selections);approval=dict(schema_version=2,execution_authorized=True,execution_policy=POLICY,approval_policy='all_current_human_group_members',decision='approved_recommendation',chat_id=-1004342917488,bot_id=8780468043,report_job_id=0,report_date=day(),actor_user_id=5122667182,created_at=stamp(),selections=selections,owner_approval_key=ROOT+':approval',basis='explicit_owner_catalogue_prices26',telegram_notifications=False)
-  assert io.create(key,approval),'Price approval already exists; inspect without replay';e.update(status='running',price_approval_key=key,price_execution_key='china_agent:price_execution:v1:'+key[len(PREFIX):]);save()
-  pe=process(io,key,polls=12);e.update(price_result=pe,wb_writes=int(bool(pe.get('upload_id'))));save()
+  results=[]
+  for batch in ([x for x in selections if x['action']=='Снижение'],[x for x in selections if x['action']=='Повышение']):
+   assert 1<=len(batch)<=100;io.selections=batch
+   key=PREFIX+'-1004342917488:0:5122667182:'+digest(batch);approval=dict(schema_version=2,execution_authorized=True,execution_policy=POLICY,approval_policy='all_current_human_group_members',decision='approved_recommendation',chat_id=-1004342917488,bot_id=8780468043,report_job_id=0,report_date=day(),actor_user_id=5122667182,created_at=stamp(),selections=batch,owner_approval_key=ROOT+':approval',basis='explicit_owner_catalogue_prices26',telegram_notifications=False)
+   assert io.create(key,approval),'Existing batch approval; inspect without replay'
+   e.update(status='running',price_approval_key=key,price_execution_key='china_agent:price_execution:v1:'+key[len(PREFIX):]);save()
+   result=process(io,key,polls=12);results.append(result);e.update(batch_results=results,price_result=result,wb_writes=sum(bool(x.get('upload_id'))for x in results));save()
+   assert result['status']=='done'and all(x['status']in('applied','already_at_target')for x in result['items']),'Batch not verified; no continuation'
+  pe=dict(status='done',items=[x for result in results for x in result['items']],upload_id=[result.get('upload_id')for result in results]);e['price_result']=pe;save()
   assert pe['status']=='done'and len(pe['items'])==141 and all(x['status']in('applied','already_at_target')for x in pe['items']),'WB readback not complete; no replay'
   after=io.prices(sorted(IDS))
   for i in p['items']:
