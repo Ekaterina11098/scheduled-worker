@@ -1,0 +1,22 @@
+name: Verify full CNY conversion baseline and plan
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/ms-cny-verify-plan-20261125.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Verify baseline hashes, quantities and monetary calculations
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: python scripts/cny_migration_plan_verify_20261125.py
