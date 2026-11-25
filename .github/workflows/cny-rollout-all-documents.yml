@@ -1,0 +1,83 @@
+name: Convert all authorized MS documents to CNY
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/cny-rollout-all-documents.yml']
+permissions:
+  contents: read
+concurrency:
+  group: ms-cny-document-rollout
+  cancel-in-progress: false
+env:
+  MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+jobs:
+  operations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        type: [invoicein, supply, purchasereturn, enter, loss, move, paymentout, cashout]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Check completed purchase-order section
+        run: |
+          PYTHONPATH=scripts python - <<'PY'
+          import cny_migration_backup_20261125 as b
+          assert b.m.Cache(b.ReadOnly()).get(b.ROOT+'document_rollout:result:purchaseorder:0')['status']=='complete'
+          PY
+      - name: Convert one document category with private checkpoints
+        run: python scripts/cny_document_rollout.py ${{ matrix.type }}
+  incoming_payments:
+    needs: operations
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - start: 0
+            end: 2000
+          - start: 2000
+            end: 4000
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Convert one payment range without replay
+        run: python scripts/cny_document_rollout.py paymentin --start ${{ matrix.start }} --end ${{ matrix.end }}
+  sales_documents:
+    needs: incoming_payments
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include: [{"type":"customerorder","start":0,"end":2000},{"type":"customerorder","start":2000,"end":4000},{"type":"customerorder","start":4000,"end":6000},{"type":"customerorder","start":6000,"end":8000},{"type":"customerorder","start":8000,"end":10000},{"type":"customerorder","start":10000,"end":12000},{"type":"customerorder","start":12000,"end":14000},{"type":"customerorder","start":14000,"end":16000},{"type":"customerorder","start":16000,"end":18000},{"type":"customerorder","start":18000,"end":20000},{"type":"customerorder","start":20000,"end":22000},{"type":"customerorder","start":22000,"end":24000},{"type":"customerorder","start":24000,"end":26000},{"type":"customerorder","start":26000,"end":28000},{"type":"customerorder","start":28000,"end":30000},{"type":"customerorder","start":30000,"end":32000},{"type":"customerorder","start":32000,"end":34000},{"type":"customerorder","start":34000,"end":36000},{"type":"customerorder","start":36000,"end":38000},{"type":"customerorder","start":38000,"end":40000},{"type":"demand","start":0,"end":2000},{"type":"demand","start":2000,"end":4000},{"type":"demand","start":4000,"end":6000},{"type":"demand","start":6000,"end":8000},{"type":"demand","start":8000,"end":10000},{"type":"demand","start":10000,"end":12000},{"type":"demand","start":12000,"end":14000},{"type":"demand","start":14000,"end":16000},{"type":"demand","start":16000,"end":18000},{"type":"demand","start":18000,"end":20000},{"type":"demand","start":20000,"end":22000},{"type":"demand","start":22000,"end":24000},{"type":"demand","start":24000,"end":26000},{"type":"demand","start":26000,"end":28000},{"type":"demand","start":28000,"end":30000},{"type":"demand","start":30000,"end":32000},{"type":"demand","start":32000,"end":34000},{"type":"demand","start":34000,"end":36000},{"type":"demand","start":36000,"end":38000},{"type":"demand","start":38000,"end":40000},{"type":"salesreturn","start":0,"end":2000},{"type":"salesreturn","start":2000,"end":4000},{"type":"salesreturn","start":4000,"end":6000},{"type":"salesreturn","start":6000,"end":8000},{"type":"salesreturn","start":8000,"end":10000},{"type":"salesreturn","start":10000,"end":12000}]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Convert one authorized document range and read back
+        run: python scripts/cny_document_rollout.py ${{ matrix.type }} --start ${{ matrix.start }} --end ${{ matrix.end }}
+  issued_invoice:
+    needs: sales_documents
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Convert derived invoice after its source documents
+        run: python scripts/cny_document_rollout.py factureout
