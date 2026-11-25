@@ -51,4 +51,4 @@ jobs:
           WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
           MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
           CHINA_TELEGRAM_BOT_TOKEN: ""
-        run: PYTHONPATH=scripts:source python scripts/owner_revival25_apply.py
+        run: PYTHONPATH=scripts:source python scripts/owner_revival25_apply_v2.py
