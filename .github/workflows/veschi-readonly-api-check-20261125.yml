@@ -12,9 +12,6 @@ jobs:
     steps:
       - name: Read one page per service and journal the result
         env:
-          WB_TOKEN_1: ${{ secrets.WB_TOKEN_1 }}
-          WB_TOKEN_2: ${{ secrets.WB_TOKEN_2 }}
-          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
           MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
@@ -36,7 +33,7 @@ jobs:
           opener = urllib.request.build_opener(NoRedirect())
 
           def read_json(url, headers, data=None):
-              headers = {"Accept": "application/json", "Accept-Encoding": "gzip", **headers}
+              headers = {"Accept-Encoding": "gzip", **headers}
               body = None
               if data is not None:
                   headers["Content-Type"] = "application/json"
@@ -57,22 +54,21 @@ jobs:
                       return {"status": "unexpected_response", "http": code}
                   return {"status": "ok", "http": code, "page_rows": len(result[rows_key])}
               except urllib.error.HTTPError as error:
-                  return {"status": "http_error", "http": error.code}
+                  details = []
+                  try:
+                      stream = gzip.GzipFile(fileobj=error) if error.headers.get("Content-Encoding") == "gzip" else error
+                      records = json.loads(stream.read(8192)).get("errors", [])
+                      details = [e["code"] for e in records if isinstance(e, dict) and type(e.get("code")) is int]
+                  except Exception:
+                      pass
+                  return {"status": "http_error", "http": error.code, "api_codes": details}
               except Exception:
                   return {"status": "transport_or_response_error"}
 
-          card_query = {"settings": {"cursor": {"limit": 1}, "filter": {"withPhoto": -1}}}
           checks = {}
-          for slot, domain in ((1, "ru"), (2, "ru"), (3, "cn")):
-              checks[f"wb_{slot}"] = check(
-                  f"WB_TOKEN_{slot}",
-                  f"https://content-api.wildberries.{domain}/content/v2/get/cards/list",
-                  "cards",
-                  card_query,
-              )
           checks["moysklad"] = check(
               "MOYSKLAD_API_TOKEN",
-              "https://api.moysklad.ru/api/remap/1.2/entity/product?limit=1",
+              "https://api.moysklad.ru/api/remap/1.2/entity/product?limit=1&offset=0",
               "rows",
           )
           try:
@@ -84,7 +80,7 @@ jobs:
               journal_headers = {"apikey": key, "Prefer": "return=representation"}
               if not key.startswith("sb_secret_"):
                   journal_headers["Authorization"] = "Bearer " + key
-              cache_key = "veschi_readonly_api_check:20261125:codex_v1"
+              cache_key = "veschi_readonly_api_check:20261125:codex_ms_v2"
               payload = {"checks": checks, "run_id": os.environ["GITHUB_RUN_ID"], "checked_at": now.isoformat()}
               code, rows = read_json(
                   base + "/rest/v1/telegram_api_cache",
