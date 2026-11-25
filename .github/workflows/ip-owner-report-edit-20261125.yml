@@ -1,0 +1,88 @@
+name: Owner approved report photo replacement
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/ip-owner-report-edit-20261125.yml]
+permissions: {contents: read}
+concurrency: {group: ip-owner-report-photo-edit, cancel-in-progress: false}
+jobs:
+  edit:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/owner_ad_tests23.py
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5 > /dev/null 2>&1
+      - shell: python
+        env:
+          PYTHONPATH: scripts
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          ADVERTISING_TELEGRAM_BOT_TOKEN: ${{ secrets.ADVERTISING_TELEGRAM_BOT_TOKEN }}
+        run: |
+          import sys
+          sys.path.insert(0,'scripts')
+          """Replace one approved report photo; no sends, WB, source calls or model."""
+          import os,json,base64,hashlib,datetime,requests
+          from owner_ad_tests23 import State,stamp
+          ROOT='advertising:ip:owner-edit:2026-11-25:recommendations:v1'
+          def run():
+           db=State();p=db.get(ROOT)
+           if not p or p.get('status')!='approved' or p.get('operation')!='editMessageMedia' or p.get('kind')!='drr':raise PermissionError('Exact image-edit approval missing')
+           if any(p.get(k)is not False for k in ('wb_writes','new_messages','edit_budget')):raise PermissionError('Capability expansion')
+           prior=db.get(ROOT+':execution')
+           if prior:
+            print(json.dumps({'status':prior.get('status'),'message_id':prior.get('message_id'),'repeated':False}));return
+           claim=db.get(p['delivery_claim'])or{}
+           if claim.get('status')!='confirmed'or claim.get('message_id')!=p['message_id']or claim.get('chat_id')!=p['chat_id']or claim.get('kind')!='drr'or claim.get('media_sha256')!=p['expected_prior_sha256']:raise PermissionError('Exact existing confirmed report changed')
+           data=base64.b64decode(p['data'],validate=True)
+           if len(data)!=p['size']or hashlib.sha256(data).hexdigest()!=p['sha256']or not data.startswith(b'\x89PNG\r\n\x1a\n'):raise ValueError('Approved PNG integrity failed')
+           binding_key='advertising:ip:png-message:v1:'+str(p['chat_id'])+':'+str(p['message_id'])
+           binding=db.get(binding_key)or{}
+           plan=db.get(binding.get('plan_key',''))or{}
+           if plan.get('actions')!=[]or plan.get('message_id')!=p['message_id']:raise PermissionError('Executable binding is not the empty approved report')
+           token=os.environ['ADVERTISING_TELEGRAM_BOT_TOKEN']
+           host='https://api.telegram.org/bot'+token+'/'
+           me=requests.get(host+'getMe',timeout=(10,40),allow_redirects=False).json()
+           if not me.get('ok')or me['result'].get('id')!=p['bot_id']:raise PermissionError('Sender identity mismatch')
+           state={'status':'prepared','chat_id':p['chat_id'],'message_id':p['message_id'],'media_sha256':p['sha256'],'wb_writes':0,'new_messages':0,'budget_edits':0,'at':stamp()}
+           if not db.put(ROOT+':execution',state,once=True):raise RuntimeError('Edit already claimed')
+           state['status']='submitting';db.put(ROOT+':execution',state)
+           if db.get(ROOT)!=p:raise PermissionError('Approval changed before edit')
+           try:
+            r=requests.post(host+'editMessageMedia',data={'chat_id':str(p['chat_id']),'message_id':str(p['message_id']),'media':json.dumps({'type':'photo','media':'attach://photo','caption':p['caption']},ensure_ascii=False)},files={'photo':('report.png',data,'image/png')},timeout=(15,90),allow_redirects=False)
+            result=r.json()
+           except (requests.RequestException,ValueError):
+            state.update(status='uncertain',finished_at=stamp());db.put(ROOT+':execution',state);print('Edit result uncertain; not repeated.');return
+           if not result.get('ok'):
+            state.update(status='rejected'if r.status_code<500 else'uncertain',http=r.status_code,detail=result.get('description'),finished_at=stamp());db.put(ROOT+':execution',state);print(json.dumps({'status':state['status'],'http':r.status_code}));return
+           msg=result.get('result',{});photos=msg.get('photo',[])
+           if msg.get('message_id')!=p['message_id']or msg.get('chat',{}).get('id')!=p['chat_id']or not photos:
+            state.update(status='uncertain',detail='Unexpected edit response identity',finished_at=stamp());db.put(ROOT+':execution',state);return
+           unique=photos[-1]['file_unique_id']
+           state.update(status='confirmed',photo_file_unique_id=unique,edit_date=msg.get('edit_date'),confirmed_at=stamp())
+           db.put(ROOT+':execution',state)
+           try:
+            # Preserve original delivery identity and approval plan; only its displayed media changes.
+            db.put(ROOT+':prior_delivery_claim',claim,once=True)
+            claim.update(media_sha256=p['sha256'],photo_file_unique_id=unique,owner_edit_receipt=ROOT+':execution',edited_at=state['confirmed_at'])
+            db.put(p['delivery_claim'],claim)
+            binding.update(file_unique_id=unique,media_sha256=p['sha256'],owner_edit_receipt=ROOT+':execution')
+            db.put(binding_key,binding)
+            ak='advertising:ip:report_clock:v1:artifact:2026-11-25:morning';art=db.get(ak)or{}
+            if art.get('images')and art['images'][0].get('kind')=='drr':
+             art['images'][0].update(data=p['data'],sha256=p['sha256']);art.update(owner_edit_receipt=ROOT+':execution',new_actions=0)
+             db.put(ak,art)
+           except Exception as e:
+            state['metadata_repair_error']=type(e).__name__;db.put(ROOT+':execution',state)
+           print(json.dumps({'status':state['status'],'message_id':state['message_id'],'new_messages':0,'budget_edits':0,'wb_writes':0}))
+          if __name__=='__main__':run()
+          
