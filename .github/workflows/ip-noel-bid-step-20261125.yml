@@ -1,7 +1,5 @@
 name: Owner scoped Noel bid step
 on:
-  push:
-    paths: [.github/workflows/ip-noel-bid-step-20261125.yml]
   workflow_dispatch:
 permissions: {contents: read}
 concurrency: {group: ip-noel-bid-step-20261125, cancel-in-progress: false}
