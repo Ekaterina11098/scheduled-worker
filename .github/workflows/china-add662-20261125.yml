@@ -1,0 +1,129 @@
+name: Add China card662 to group4 20261125
+on:
+  push:
+    branches: ['apply/china-add662-20261125']
+    paths: ['.github/workflows/china-add662-20261125.yml']
+permissions: {}
+concurrency:
+  group: china-add662-20261125
+  cancel-in-progress: false
+jobs:
+  apply:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5 cryptography
+      - name: Add exact card662 to group4 and verify
+        shell: python
+        env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+        run: |
+          import os,json,time,requests,hashlib,gzip,base64,secrets,traceback
+          from datetime import datetime,timezone
+          from cryptography.hazmat.primitives import serialization,hashes
+          from cryptography.hazmat.primitives.asymmetric import padding
+          from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+          PLAN=[]
+          PUBLIC_KEY="-----BEGIN PUBLIC KEY-----\nMIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAqZNUrOvZ4UeO29b+p61F\niH/TYX0CFHtnqndnmHR4leDh/pqkTFqC+EryTPqjLJBylfgeqPqc0Bywo7WeHNxe\nvbOmih5rb9wRTYgJRBx7ruUJaWiJLP0yp2KwLMf8Vc0tRxRBIfXV/CHQjVIIc0rY\nOEW8+gwrAgsqFgs0944OpliDwm0aI9UX+j4gCTCmktk5swzFuqyxcDUH7fOUDKe1\nOOSqDB/lODw3333K6mjuHxRcDUD69EdTOS+hJb+ZqQOCT9JGtE2b6H9+Uf6B9cYs\nKu7JDPUD/5ETgxz3Oa3YgM7XPWwamcn5MYq8HMJ2e4F2B1x/mxSpUk6RFDR8hW/W\nFpqmg+JxpZpKwuSgBhegRpWwJ1+gS0z0h31a58XweTDtA8nd7WJjhiegbmSwItLM\npC3FVE8HzAeP6h8C+7l2r/Vl81y59CE+VHvgSmUobNRmHdY+laFAU2v8PfuebV5C\nDku+Uuz+AjUYKOtflqUc8HQQHGldtkkXG1iafKKIpZyTAgMBAAE=\n-----END PUBLIC KEY-----\n"
+          out={'status':'started','verified':False,'requests':[],'startedAt':datetime.now(timezone.utc).isoformat()}
+          token=os.environ['WB_TOKEN_3']
+          def digest(value):
+              return hashlib.sha256(json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+          def content(c):
+              fields=('nmID','nmUUID','subjectID','subjectName','vendorCode','brand','title','description','sizes','photos','video','characteristics','dimensions','kizMarked','needKiz')
+              v={k:c.get(k) for k in fields}
+              v['characteristics']=sorted(v.get('characteristics') or [],key=lambda x:x.get('id',0))
+              v['sizes']=sorted(v.get('sizes') or [],key=lambda x:x.get('chrtID',0))
+              if isinstance(v.get('dimensions'),dict):v['dimensions']={k:x for k,x in v['dimensions'].items() if k!='isValid'}
+              return digest(v)
+          def request(path,body,write=False):
+              for retry in range(4):
+                  time.sleep(1.2)
+                  try:r=requests.post('https://content-api.wildberries.cn'+path,headers={'Authorization':token},json=body,timeout=90)
+                  except requests.RequestException:
+                      if write:raise RuntimeError('Write response unknown; do not retry automatically')
+                      if retry==3:raise
+                      time.sleep(5);continue
+                  if r.status_code==429:
+                      wait=int(float(r.headers.get('X-Ratelimit-Retry') or r.headers.get('Retry-After') or 65))+3
+                      assert wait<=180,'Cooldown exceeds run budget'
+                      time.sleep(wait);continue
+                  if write:
+                      record={'payload':body,'http':r.status_code,'at':datetime.now(timezone.utc).isoformat()}
+                      out['requests'].append(record)
+                  assert r.ok,'API HTTP '+str(r.status_code)
+                  data=r.json()
+                  if write:
+                      record['response']=data
+                      assert data.get('error') is not True,'WB rejected membership request'
+                      record['status']='accepted'
+                  return data
+              raise RuntimeError('Rate limit retry exhausted')
+          def scan():
+              cards=[];cursor={'limit':100};seen=set()
+              for page in range(50):
+                  data=request('/content/v2/get/cards/list',{'settings':{'sort':{'ascending':True},'cursor':cursor,'filter':{'withPhoto':-1}}})
+                  if not isinstance(data.get('cards'),list):data=data.get('data',{})
+                  assert isinstance(data.get('cards'),list) and isinstance(data.get('cursor'),dict),'Bad catalog schema'
+                  cards.extend(data['cards'])
+                  if len(data['cards'])<100:break
+                  marker=(data['cursor'].get('updatedAt'),data['cursor'].get('nmID'))
+                  assert all(marker) and marker not in seen,'Bad pagination cursor'
+                  seen.add(marker);cursor={'limit':100,'updatedAt':marker[0],'nmID':marker[1]}
+              else:raise RuntimeError('Catalog pagination limit')
+              # Retain newest duplicate only during post-write verification, and require exact expected set below.
+              by={}
+              for c in cards:
+                  if c['nmID'] not in by or c.get('updatedAt','')>=by[c['nmID']].get('updatedAt',''):by[c['nmID']]=c
+              return by,len(cards)==len(by)
+          def signature(by):return digest([[n,c['imtID'],content(c)] for n,c in sorted(by.items())])
+          def read_before():
+              previous=None
+              for attempt in range(7):
+                  by,unique=scan()
+                  if unique and by:
+                      sig=signature(by)
+                      if sig==previous:return by
+                      previous=sig
+                  time.sleep(5)
+              raise RuntimeError('Preflight catalog did not stabilize')
+          def members(by,imt):return {n for n,c in by.items() if c['imtID']==imt}
+          def compact(by):
+              return [{k:c.get(k) for k in ('nmID','imtID','vendorCode','subjectID','subjectName','title')} for n,c in sorted(by.items())]
+          try:
+              assert token
+              before=read_before();nm=2342977696;target=4559526388
+              assert nm in before and before[nm]['vendorCode']=='662-CelineaBag-blue','Exact card missing'
+              old_imt=before[nm]['imtID'];assert old_imt!=target,'662 already belongs to group 4';assert len(members(before,target))<30,'Group 4 is full';assert before[nm]['subjectID']==next(c['subjectID'] for c in before.values() if c['imtID']==target)
+              before_size=len(members(before,target));out['beforeGroupSize']=before_size
+              out['membershipBefore']=compact(before);out['beforeCount']=len(before)
+              out['article']=before[nm]['vendorCode'];out['nmID']=nm;out['fromIMT']=old_imt
+              request('/content/v2/cards/moveNm',{'nmIDs':[nm],'targetIMT':target},write=True)
+              for attempt in range(12):
+                  time.sleep(10)
+                  after,unique=scan()
+                  if set(after)!=set(before):continue
+                  detached=after[nm]['imtID']==target and members(after,target)==members(before,target)|{nm}
+                  other_ok=all(before[n]['imtID']==after[n]['imtID'] for n in before if n!=nm)
+                  content_ok=all(content(before[n])==content(after[n]) for n in before)
+                  tags_ok=all(sorted((x['id'] for x in before[n].get('tags',[])))==sorted((x['id'] for x in after[n].get('tags',[]))) for n in before)
+                  if detached and other_ok and content_ok and tags_ok:
+                      out.update(status='complete',verified=True,onlyOneCardMoved=True,contentEqual=True,tagsPreserved=True,allCardsPreserved=True,afterCount=len(after),toIMT=after[nm]['imtID'],afterGroupSize=len(members(after,target)),membershipAfter=compact(after))
+                      assert out['afterGroupSize']==before_size+1
+                      break
+              else:raise RuntimeError('Group4 addition verification incomplete')
+          except Exception as exc:
+              out['status']='incomplete';out['error']={'type':type(exc).__name__,'message':str(exc),'trace':traceback.format_exc()}
+          finally:
+              out['finishedAt']=datetime.now(timezone.utc).isoformat()
+              raw=gzip.compress(json.dumps(out,ensure_ascii=False).encode());key=secrets.token_bytes(32);nonce=secrets.token_bytes(12)
+              pub=serialization.load_pem_public_key(PUBLIC_KEY.encode());b=lambda v:base64.b64encode(v).decode()
+              env={'key':b(pub.encrypt(key,padding.OAEP(mgf=padding.MGF1(hashes.SHA256()),algorithm=hashes.SHA256(),label=None))),'nonce':b(nonce),'ciphertext':b(AESGCM(key).encrypt(nonce,raw,None))}
+              encoded=b(json.dumps(env).encode())
+              for i in range(0,len(encoded),18000):print('ADD662_ENCRYPTED '+str(i//18000)+' '+encoded[i:i+18000],flush=True)
+              print('ADD662_FINISHED',flush=True)
+          
+          
