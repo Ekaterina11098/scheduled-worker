@@ -1,0 +1,97 @@
+name: WB China card audit
+on:
+  push:
+    branches: [wb-samanta-audit-20261125-v2]
+    paths: ['.github/workflows/wb-samanta-audit-20261125-v2.yml']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests==2.32.5
+      - name: Read current cards and store private report
+        env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          python - <<'PY'
+          import datetime as dt
+          import os
+          import time
+          import requests
+
+          WB = "https://content-api.wildberries.cn/content/v2/get/cards/list"
+          CACHE = "https://abxgjoqlddhtcmjcjwxw.supabase.co/rest/v1/telegram_api_cache"
+          REPORT = "wb_card_audit:20261125:review-v2"
+
+          def catalog(token):
+              cursor = {"limit": 100}
+              seen = set()
+              for _ in range(80):
+                  response = requests.post(
+                      WB, headers={"Authorization": token},
+                      json={"settings": {"sort": {"ascending": True}, "cursor": cursor,
+                                         "filter": {"withPhoto": -1}}},
+                      timeout=60, allow_redirects=False,
+                  )
+                  if response.status_code != 200:
+                      raise RuntimeError(f"catalog_http_{response.status_code}")
+                  result = response.json()
+                  page = result.get("data", result)
+                  cards = page["cards"]
+                  yield from cards
+                  if len(cards) < 100:
+                      return
+                  marker = (page["cursor"]["updatedAt"], page["cursor"]["nmID"])
+                  if marker in seen:
+                      raise RuntimeError("repeated_cursor")
+                  seen.add(marker)
+                  cursor = {"limit": 100, "updatedAt": marker[0], "nmID": marker[1]}
+                  time.sleep(1)
+              raise RuntimeError("pagination_limit")
+
+
+          def save_report(report):
+              secret = os.environ["SUPABASE_SECRET_KEY"]
+              headers = {"apikey": secret, "Prefer": "resolution=merge-duplicates"}
+              if not secret.startswith("sb_secret_"):
+                  headers["Authorization"] = "Bearer " + secret
+              now = dt.datetime.now(dt.timezone.utc)
+              body = {"cache_key": REPORT, "payload": report, "updated_at": now.isoformat(),
+                      "expires_at": (now + dt.timedelta(days=7)).isoformat()}
+              response = requests.post(CACHE, params={"on_conflict": "cache_key"}, headers=headers,
+                                       json=body, timeout=30, allow_redirects=False)
+              if response.status_code not in (200, 201, 204):
+                  raise RuntimeError("report_write_failed")
+              check = requests.get(CACHE, params={"cache_key": "eq." + REPORT, "select": "payload"},
+                                   headers=headers, timeout=30, allow_redirects=False)
+              if check.status_code != 200 or check.json() != [{"payload": report}]:
+                  raise RuntimeError("report_readback_failed")
+
+
+          token = os.environ["WB_TOKEN_3"]
+          ids = {2129309885, 2361542982, 2361543285, 2361543194}
+          articles = {"161-SamantaBag-black", "366-SamantaBag-black", "367-SamantaBag-coffee", "368-SamantaBag-darkred"}
+          fields = ("nmID", "imtID", "vendorCode", "subjectID", "title", "description", "brand", "dimensions", "characteristics", "createdAt", "updatedAt")
+          report = {"run_id": os.environ["GITHUB_RUN_ID"], "status": "reading"}
+          try:
+              cards = [
+                  {k: card.get(k) for k in fields}
+                  for card in catalog(token) if card.get("vendorCode") in articles and card.get("nmID") in ids
+              ]
+              report.update(status="complete", cards=cards)
+          except (RuntimeError, ValueError, KeyError, requests.RequestException) as exc:
+              reason = str(exc) if type(exc) is RuntimeError else type(exc).__name__
+              report.update(status="failed", reason=reason)
+          try:
+              save_report(report)
+          except Exception:
+              raise SystemExit("Private audit report could not be saved") from None
+          if report["status"] != "complete":
+              raise SystemExit("WB read did not complete")
+          PY
