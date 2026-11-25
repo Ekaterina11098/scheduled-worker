@@ -1,0 +1,53 @@
+name: Back up supplementary currency sections read-only
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/ms-cny-extra-backup-20261125.yml']
+permissions:
+  contents: read
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Save inventories and supplementary financial sources
+        shell: python
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          import sys,hashlib,json,concurrent.futures
+          sys.path.insert(0,'scripts')
+          import cny_migration_backup_20261125 as b
+          t=b.ReadOnly();db=b.m.Cache(t)
+          root=b.ROOT
+          out=[]
+          for typ in ('inventory','contract','discount'):
+           expected=db.get(root+'scope_extra:'+typ)['count']
+           for offset in range(0,expected,100):
+            key='backup_extra:'+typ+':'+str(offset)
+            prior=db.get(root+key)
+            if prior and prior.get('status')=='complete':out.append({'type':typ,'offset':offset,'count':len(prior['rows'])});continue
+            pp={'limit':100,'offset':offset}
+            if typ!='discount':pp['order']='id,asc'
+            if typ=='inventory':pp['expand']='positions'
+            d=t.request(b.m.MS,'entity/'+typ,params=pp)
+            assert d['meta']['size']==expected
+            for doc in d['rows']:
+             if isinstance(doc.get('positions'),dict):
+              positions=doc['positions'].get('rows',[])
+              size=doc['positions']['meta']['size']
+              while len(positions)<size:
+               extra=t.request(b.m.MS,'entity/'+typ+'/'+doc['id']+'/positions',params={'limit':1000,'offset':len(positions)})
+               assert extra['rows'];positions+=extra['rows']
+              assert len(positions)==size
+              doc['positions']['rows']=positions
+            b.put(db,key,{'status':'complete','rows':d['rows'],'sha256':b.digest(d['rows']),'at':b.m.now()})
+            out.append({'type':typ,'offset':offset,'count':len(d['rows'])})
+          b.put(db,'backup_extra_result:v1',{'status':'complete','pages':out,'at':b.m.now(),'ms_writes':0})
+          print('Supplementary full backup verified privately; MS unchanged.')
