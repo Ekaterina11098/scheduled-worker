@@ -49,6 +49,8 @@ def apply(bundle,source,minima):
  """A high completed-day DRR at minimum CPC is reviewed now, not postponed indefinitely."""
  from china_completed_cost_scan import expand
  from china_advertising_decision_contract import normalize
+ from china_advertising_target import target_pct
+ target=target_pct(bundle,source)
  out=normalize(expand(bundle,source,minima),source);states={c['id']:c for b in source['batches'].values() for c in b['campaigns']['adverts']}
  economics=source.get('economics',{}).get('rows',{});clock=datetime.now(timezone.utc)
  def dated(at,hours):
@@ -68,7 +70,7 @@ def apply(bundle,source,minima):
    p=(r.get('comparison') or {}).get('after') or r['period'];spend=p['spend'];orders=p['orders'];amount=p['amount']
    candidate_model=economics.get(str(r['nm']),{})
    margin=candidate_model.get('expected_margin_before_ads_cny')
-   risk=spend>0 and (orders==0 or amount<=0 or spend/amount>.05 or finite(margin) and orders*margin<spend)
+   risk=spend>0 and (orders==0 or amount<=0 or spend/amount>target/100 or finite(margin) and orders*margin<spend)
    existing=r.get('action')or{}
    cost_action=existing.get('kind')=='ad_exclude_sku' or (existing.get('kind')=='ad_set_bid' and existing.get('target_minor',0)<existing.get('old_minor',0))
    if not risk and not cost_action:continue
@@ -122,7 +124,7 @@ def apply(bundle,source,minima):
    latest_zero_loss=own_model and latest['orders']==0 and latest['clicks']>=100 and latest['spend']>=max(model_before,e['seller_price_cny']*.05)
    zero_order_overrun=own_model and len(decision_days)>=2 and orders==0 and p['clicks']>=100 and spend>=e['seller_price_cny']*.05
    latest_drr=100*latest['spend']/latest['amount']if latest['amount']>0 else None
-   deterioration=own_model and old>minimum and latest['clicks']>=100 and latest_drr is not None and drr is not None and latest_drr>max(5,drr*1.2)
+   deterioration=own_model and old>minimum and latest['clicks']>=100 and latest_drr is not None and drr is not None and latest_drr>max(target,drr*1.2)
    if latest_zero_loss or zero_order_overrun or deterioration:
     r['completed_cost_guard']=dict(latest_day=last_day,latest=latest,zero_order_overrun=zero_order_overrun,latest_zero_loss=latest_zero_loss,deterioration=deterioration)
     r['reason']+=' Последний завершённый день: '+f"{latest['spend']:.2f} ¥; {int(latest['clicks'])} кликов; {int(latest['orders'])} прямых заказов."
@@ -168,12 +170,12 @@ def apply(bundle,source,minima):
    elif old>minimum and (meaningful or bounded_loss or deterioration or latest_zero_loss or zero_order_overrun):
     r['action']=dict(base,kind='ad_set_bid',target_minor=minimum)
     r['decision']=f'Снизить {old/100:g} → {minimum/100:g} ¥ (минимум WB).'
-   elif old==minimum and orders>0 and drr is not None and 5<drr<=6 and r['model_profit_for_attributed_orders_cny']>0:
+   elif old==minimum and orders>0 and drr is not None and target<drr<=target*1.2 and r['model_profit_for_attributed_orders_cny']>0:
     r['action']=None
     limit=round(min(model_before,e['seller_price_cny']*.05),2)
     r['test_proposal']=dict(days=1,max_additional_spend_cny=limit,requires_separate_approval=True,execution_authorized=False)
     r['decision']=f'Оставить минимум {old/100:g} ¥ только как отдельно согласованный тест на 1 полный день; лимит допрасхода {limit:g} ¥; без пополнения.'
-    r['reason']+=' Цель5% превышена незначительно; это предложение исключения из лимита на один день, не разрешение продолжать автоматически.'
+    r['reason']+=' Цель '+format(target,'g')+'% превышена незначительно; это предложение исключения из лимита на один день, не разрешение продолжать автоматически.'
    elif old==minimum and (meaningful or bounded_loss or latest_zero_loss or zero_order_overrun) and len(state['nm_settings'])>1 and state.get('restrictions',{}).get('can_change_nms') is True:
     r['action']=dict(base,kind='ad_exclude_sku');r['decision']='Исключить из этой РК: ставка уже на минимуме WB.'
    elif old==minimum and (meaningful or bounded_loss or latest_zero_loss or zero_order_overrun) and len(state['nm_settings'])==1:
@@ -224,11 +226,3 @@ def completed_zero_exposure(source,state,nm,report_day):
  return dict(days=sorted(totals),completed_days=len(totals)+older.get('day_count',0),
              **{k:sum(v[k]for v in totals.values())+older.get(k,0)for k in('spend','clicks','orders')},
              changed_day=changed,coverage_from=older.get('first',min(totals)))
-
-
-
-
-
-
-
-
