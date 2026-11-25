@@ -48,7 +48,7 @@ jobs:
         run: |
           python -m unittest scripts.test_china_midday_growth_preservation25
           python -m unittest scripts.test_china_advertising_midday scripts.test_china_advertising_midday_completed
-      - name: Replay corrected saved midday evidence
+      - name: Render verified brief-format preview
         env:
           PYTHONPATH: scripts:source
           OPENAI_API_KEY: ""
