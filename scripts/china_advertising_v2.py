@@ -37,7 +37,7 @@ def http(io,path,method='GET',body=None):
   return r.json() if r.content else {}
 def compact_execution_records(records):
  """Keep exactly the receipt fields consumed by history() and verified funding summaries."""
- fields=('id','status','kind','amount_cny','before','after','verified_at','completed_at','items','groups','campaigns','readback','selection','request','cid','nm','old','target','steps','manual_continuation','keep_existing_bids','selected_test')
+ fields=('id','status','kind','amount_cny','before','after','verified_at','completed_at','items','groups','campaigns','readback','selection','request','cid','nm','old','target','steps','manual_continuation','keep_existing_bids','selected_test','nmID','article','old_cny','target_cny')
  def shrink(value):
   if isinstance(value,list):return [shrink(x) for x in value]
   if not isinstance(value,dict):return value
@@ -320,6 +320,8 @@ def history(records):
   # Current price worker keeps the approved before value in selection and an exact WB readback.
   if status=='applied' and root.get('status') in verified|{'done','partial'} and at and before is None and isinstance(price_after,dict):
    selection=x.get('selection') or {};request=x.get('request') or {};nm=request.get('nmID')
+   if not selection and x.get('nmID')==nm and x.get('old_cny')is not None and x.get('target_cny')is not None:
+    selection=dict(nm_id=str(nm),current_cny=x['old_cny'],target_cny=x['target_cny'])
    try:
     old=Decimal(str(selection['current_cny']));target=Decimal(str(selection['target_cny']))
     sizes=price_after.get('sizes') or []
@@ -675,12 +677,3 @@ def prepare(io,day):
  from china_advertising_decision_contract import finalize
  result=finalize(io,result,s,minimums)
  return financial_review(io,attach_new_campaign_reporting(io,result),s,minimums)
-
-
-
-
-
-
-
-
-
