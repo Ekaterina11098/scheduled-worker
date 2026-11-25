@@ -1,0 +1,115 @@
+name: MAYA3 approved nine MoySklad products25Nov
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/maya3-ms-create-20261125.yml']
+permissions: {}
+concurrency:
+  group: maya3-ms-create-20261125
+  cancel-in-progress: false
+jobs:
+  create:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5
+      - name: Create only approved missing products and verify
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        shell: python
+        run: |
+          import os,json,time,requests,hashlib
+          from datetime import datetime,timezone
+          SB=os.environ['SUPABASE_URL'].rstrip('/')
+          SK=os.environ['SUPABASE_SECRET_KEY']
+          SH={'apikey':SK,'Authorization':'Bearer '+SK,'Content-Type':'application/json'}
+          MH={'Authorization':'Bearer '+os.environ['MOYSKLAD_API_TOKEN'],'Accept-Encoding':'gzip','Content-Type':'application/json'}
+          BASE='https://api.moysklad.ru/api/remap/1.2'
+          KEY='maya3_stage3:ms_create:20261125:v1'
+          SPECS=[{"article":"366-ReginaBag-black","color":"черный","model":"Regina","supplier":"Y-540#","row":"2","number":"366"},{"article":"367-ReginaBag-coffee","color":"кофейный","model":"Regina","supplier":"Y-540#","row":"3","number":"367"},{"article":"368-ReginaBag-darkred","color":"бордовый","model":"Regina","supplier":"Y-540#","row":"4","number":"368"},{"article":"369-PamelaBag-black","color":"черный","model":"Pamela","supplier":"Y-541#","row":"5","number":"369"},{"article":"370-PamelaBag-coffee","color":"кофейный","model":"Pamela","supplier":"Y-541#","row":"6","number":"370"},{"article":"371-PamelaBag-darkred","color":"бордовый","model":"Pamela","supplier":"Y-541#","row":"7","number":"371"},{"article":"372-LeonieBag-black","color":"черный","model":"Leonie","supplier":"Y-352","row":"9","number":"372"},{"article":"373-LeonieBag-darkred","color":"бордовый","model":"Leonie","supplier":"Y-352","row":"10","number":"373"},{"article":"374-LeonieBag-green","color":"зеленый","model":"Leonie","supplier":"Y-352","row":"11","number":"374"}]
+          def now():return datetime.now(timezone.utc).isoformat()
+          def get_cache():
+           r=requests.get(SB+'/rest/v1/telegram_api_cache',headers=SH,params={'cache_key':'eq.'+KEY,'select':'payload'},timeout=40);r.raise_for_status()
+           return r.json()
+          def save(e):
+           r=requests.post(SB+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**SH,'Prefer':'resolution=merge-duplicates,return=minimal'},json={'cache_key':KEY,'payload':e,'updated_at':now(),'expires_at':'2099-01-01T00:00:00Z'},timeout=40);r.raise_for_status()
+          def read(path,params=None):
+           r=requests.get(BASE+path,headers=MH,params=params,timeout=60);r.raise_for_status();return r.json()
+          def all_products(params=None):
+           rows=[];offset=0
+           for page in range(40):
+            j=read('/entity/product',{**(params or {}),'limit':1000,'offset':offset});part=j.get('rows',[]);rows.extend(part)
+            if len(part)<1000:return rows
+            offset+=1000;time.sleep(.25)
+           raise RuntimeError('Product pagination incomplete')
+          def find_article(a):
+           rows=read('/entity/product',{'filter':'article='+a,'limit':100})['rows']
+           return [p for p in rows if p.get('article')==a]
+          def attributes(p):return {a['name']:a.get('value') for a in p.get('attributes',[])}
+          def validate(p,s):
+           expected={'Цвет':s['color'],'ВендорКод':s['number'],'Категория товара':'Сумка'}
+           assert p.get('article')==s['article'] and p.get('code')==s['number']+'с'
+           assert p.get('name')=='Сумка кожа '+s['number']+' '+s['model']+' '+s['color']+' кроко'
+           assert not p.get('archived',False)
+           actual=attributes(p)
+           assert all(actual.get(k)==v for k,v in expected.items()),'Attribute mismatch'
+           assert p.get('externalCode')=='maya3-d4287236-row'+s['row'].zfill(2),'Source identity mismatch'
+           return True
+          if get_cache():raise SystemExit('Existing execution: inspect private journal; no replay')
+          rows=all_products()
+          archived=all_products({'filter':'archived=true'})
+          index={p['id']:p for p in rows+archived};rows=list(index.values())
+          reorder=read('/entity/product/762a7b63-d3cf-11ef-0a80-0e8500025f22')
+          assert reorder.get('article')=='143-ReginaBag-black'
+          assert {'code128':'2042639118433'} in reorder.get('barcodes',[]),'Reorder barcode mismatch'
+          meta=read('/entity/product/metadata/attributes')
+          defs=meta.get('rows',[]) if isinstance(meta,dict) else meta
+          mapping={}
+          for name in ('Цвет','ВендорКод','Категория товара'):
+           found=[a for a in defs if a.get('name')==name]
+           assert len(found)==1 and found[0].get('type')=='string','Required attribute metadata missing'
+           mapping[name]=found[0]['meta']
+          for s in SPECS:
+           collisions=[p for p in rows if p.get('article')==s['article'] or p.get('code') in (s['number']+'с',s['number']+'c') or str(p.get('article','')).split('-')[0].lstrip('0')==s['number']]
+           assert not collisions,'Number/article/code already exists; inspect before any write'
+          e={'status':'preparing','source_sha256':'d4287236a92112ecc2967f38791cc5c90954ecc26bddae62c08b700fcd717468','approved_at':'2026-11-25','wb_writes':0,'ms_create_attempts':0,'ms_update_writes':0,'created':[],'started_at':now(),'reorder_before':reorder,'requested':SPECS}
+          r=requests.post(SB+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**SH,'Prefer':'resolution=ignore-duplicates,return=representation'},json={'cache_key':KEY,'payload':e,'updated_at':now(),'expires_at':'2099-01-01T00:00:00Z'},timeout=40);r.raise_for_status();assert len(r.json())==1,'Already claimed'
+          try:
+           for s in SPECS:
+            assert not find_article(s['article']),'Article appeared during execution'
+            assert not read('/entity/product',{'filter':'code='+s['number']+'с','limit':100})['rows'],'Code appeared during execution'
+            vals={'Цвет':s['color'],'ВендорКод':s['number'],'Категория товара':'Сумка'}
+            body={'name':'Сумка кожа '+s['number']+' '+s['model']+' '+s['color']+' кроко','article':s['article'],'code':s['number']+'с','externalCode':'maya3-d4287236-row'+s['row'].zfill(2),'attributes':[{'meta':mapping[k],'value':v} for k,v in vals.items()]}
+            e.update(status='creating',pending_article=s['article'],pending_body=body,ms_create_attempts=e['ms_create_attempts']+1);save(e)
+            try:
+             r=requests.post(BASE+'/entity/product',headers=MH,json=body,timeout=60)
+             if not r.ok:
+              e['last_http_status']=r.status_code
+              raise RuntimeError('Create rejected or uncertain')
+             created=r.json()
+            except Exception:
+             matches=find_article(s['article'])
+             if len(matches)!=1:
+              e['status']='uncertain_create';save(e);raise
+             created=matches[0]
+            actual=read('/entity/product/'+created['id']);validate(actual,s)
+            matches=find_article(s['article']);assert len(matches)==1 and matches[0]['id']==actual['id'],'Duplicate source article'
+            e['created'].append({'article':s['article'],'id':actual['id'],'code':actual['code'],'name':actual['name'],'attributes':actual.get('attributes',[]),'barcodes':actual.get('barcodes',[]),'after':actual,'verified':True})
+            e.update(status='in_progress',pending_article=None,pending_body=None);save(e)
+            time.sleep(.4)
+           after143=read('/entity/product/'+reorder['id'])
+           # Ignore only server timestamp, no writes to the reorder were made.
+           e['reorder_unchanged']={k:v for k,v in reorder.items() if k!='updated'}=={k:v for k,v in after143.items() if k!='updated'}
+           assert e['reorder_unchanged'],'Existing reorder changed externally'
+           assert len(e['created'])==9 and all(p['verified'] for p in e['created'])
+           e.update(status='verified',completed_at=now());save(e)
+           print('Nine product creations verified; reorder preserved; no WB/catalog/stock/price/document writes')
+          except Exception as ex:
+           if e.get('status') not in ('uncertain_create',):e['status']='stopped_review_required'
+           e['error_type']=type(ex).__name__;save(e)
+           raise SystemExit('Stopped; inspect private journal before any retry')
