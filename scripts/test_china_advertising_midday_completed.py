@@ -50,7 +50,7 @@ class CompletedMidday(unittest.TestCase):
   out=merge_completed(dict(day='2026-11-01',campaigns=[dict(id=1)]),r,'source')
   self.assertEqual(4,len(out['recommendation_directions']))
   self.assertEqual(1,len(out['campaigns'][0]['attention']))
-  self.assertIn('отдельный точный план',recommendations(out['campaigns'][0])[-1])
+  self.assertNotIn('отдельный точный план',' '.join(recommendations(out['campaigns'][0])))
 
 if __name__=='__main__':unittest.main()
 
