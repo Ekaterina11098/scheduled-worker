@@ -1,8 +1,6 @@
 name: Scoped IP saved-day detail read
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/ip-test-read-20261125.yml']
+  workflow_dispatch:
 permissions: {contents: read}
 concurrency: {group: mpstats-owner-ip-scoped-day, cancel-in-progress: false}
 jobs:
