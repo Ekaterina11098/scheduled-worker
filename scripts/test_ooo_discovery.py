@@ -32,7 +32,7 @@ class Discovery(unittest.TestCase):
    for n in tree.body:
     if isinstance(n,ast.Assign)and any(isinstance(x,ast.Name)and x.id=='names'for x in n.targets):nodes.append(n)
     elif isinstance(n,ast.Expr)and isinstance(n.value,ast.Call)and ast.unparse(n.value.func)=='names.update':nodes.append(n)
-   ns={var:{'configurations':{'42139012':{'status':9,'settings':{'name':'New campaign'}}}}}
+   ns={var:{'configurations':{'42139012':{'status':9,'settings':{'name':'New campaign'if key=='renderer'else'Old morning name'}}}},'source':{'current_configurations':{'42139012':{'settings':{'name':'New campaign'}}}}}
    exec(compile(ast.Module(body=nodes,type_ignores=[]),'names','exec'),ns)
    self.assertEqual(ns['names'][42139012],'New campaign')
  def test_every_template_compiles(self):
