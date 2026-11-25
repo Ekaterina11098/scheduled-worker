@@ -1,0 +1,135 @@
+name: Read-only detailed CNY conversion planning
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/ms-cny-detail-plan-20261125.yml']
+permissions:
+  contents: read
+concurrency:
+  group: ms-cny-detail-plan-20261125
+  cancel-in-progress: false
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Read positions, sums and payment allocations without MS writes
+        shell: python
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          import sys,time,collections,concurrent.futures
+          from decimal import Decimal,ROUND_HALF_UP
+          sys.path.insert(0,'scripts')
+          import fbs_document_chain as m
+          ROOT='ms_currency_cny_plan:20261125:detail:v1:'
+          TYPES=["cashin","cashout","commissionreportin","commissionreportout","customerorder","demand","enter","facturein","factureout","internalorder","invoicein","invoiceout","loss","move","paymentin","paymentout","prepayment","prepaymentreturn","purchaseorder","purchasereturn","retailsalesreturn","retaildemand","retaildrawercashin","retaildrawercashout","retireorder","salesreturn","supply"]
+          FIN={'cashin','cashout','paymentin','paymentout','prepayment','prepaymentreturn','retaildrawercashin','retaildrawercashout'}
+          class ReadOnly(m.Transport):
+           def request(self,base,path,method='GET',body=None,params=None):
+            if base==m.MS and method!='GET':raise m.Stop('Planning only; MS writes prohibited')
+            if base==m.WB:raise m.Stop('WB out of scope')
+            return super().request(base,path,method,body,params)
+          def D(v):return Decimal(str(v or 0))
+          def R(v):return v.quantize(Decimal('1'),rounding=ROUND_HALF_UP)
+          def save(db,key,value):
+           for i in range(5):
+            try:db.put(ROOT+key,value);return
+            except Exception:
+             try:
+              if db.get(ROOT+key)==value:return
+             except Exception:pass
+             if i==4:raise
+             time.sleep(2+i)
+          t=ReadOnly();db=m.Cache(t)
+          curr=t.request(m.MS,'entity/currency',params={'limit':1000})
+          codes={m.href(c):c.get('isoCode') for c in curr['rows']}
+          assert curr['meta']['size']==len(curr['rows'])
+          save(db,'currencies',curr)
+          save(db,'status',{'status':'running','started_at':m.now(),'ms_writes':0,'RUB_per_CNY':12})
+          def analyze(typ):
+           t=ReadOnly();db=m.Cache(t)
+           previous=db.get(ROOT+typ+':summary')
+           if previous and previous.get('status')=='complete':return previous
+           stat={'type':typ,'status':'reading','count':0,'positions':0,'pages':0,'total':None,'source_sum_minor':'0','target_sum_minor':'0','non_rub':0,'missing_currency':0,'rounding_price_positions':0,'rounding_total_docs':0,'line_vs_total_diff_docs':0,'line_vs_total_diff_minor':'0','original_model_mismatch_docs':0,'missing_positions_docs':0,'financial_links':0,'financial_allocation_rounding_docs':0,'linked_sum_missing':0,'sample_issues':[],'started_at':m.now()}
+           offset=0;total=None;source=Decimal(0);target=Decimal(0);diffsum=Decimal(0)
+           save(db,typ+':summary',stat)
+           try:
+            while True:
+             data=t.request(m.MS,'entity/'+typ,params={'limit':100,'offset':offset,'order':'id,asc','expand':'positions'} if typ not in FIN else {'limit':100,'offset':offset,'order':'id,asc'})
+             if total is None:total=data['meta']['size']
+             if total!=data['meta']['size']:raise m.Stop('Collection size changed during reading; repeat required')
+             output=[]
+             for d in data['rows']:
+              old=D(d.get('sum'));goal=R(old/12);source+=old;target+=goal
+              iso=codes.get(m.href(d.get('rate',{}).get('currency',{})),'UNKNOWN')
+              stat['missing_currency']+=int(iso=='UNKNOWN')
+              stat['non_rub']+=int(iso not in ('RUB','UNKNOWN'))
+              stat['rounding_total_docs']+=int(old/12!=goal)
+              rec={'id':d['id'],'name':d.get('name'),'type':typ,'moment':d.get('moment'),'updated':d.get('updated'),'sum_minor':str(old),'proposed_sum_minor':str(goal),'currency':iso,'applicable':d.get('applicable'),'organization':m.href(d.get('organization',{})),'vatEnabled':d.get('vatEnabled'),'vatIncluded':d.get('vatIncluded'),'positions':0,'issues':[]}
+              pp=d.get('positions');positions=[]
+              if isinstance(pp,dict):
+               expected=pp.get('meta',{}).get('size')
+               if 'rows' in pp:positions=list(pp['rows'])
+               while expected is not None and len(positions)<expected:
+                extra=t.request(m.MS,'entity/'+typ+'/'+d['id']+'/positions',params={'limit':1000,'offset':len(positions)})
+                if not extra.get('rows'):raise m.Stop('Incomplete positions')
+                positions.extend(extra['rows'])
+               if expected is None or len(positions)!=expected:
+                stat['missing_positions_docs']+=1;rec['issues'].append('positions_unverified')
+              rec['positions']=len(positions);stat['positions']+=len(positions)
+              if positions:
+               orig=Decimal(0);new=Decimal(0);priceissues=[]
+               for p in positions:
+                price=D(p.get('price'));converted=R(price/12)
+                qty=D(p.get('quantity'));disc=D(p.get('discount'))
+                factor=(Decimal(100)-disc)/100
+                vatfactor=Decimal(1)
+                if d.get('vatEnabled') and not d.get('vatIncluded') and p.get('vatEnabled',True):vatfactor+=D(p.get('vat'))/100
+                orig+=R(price*qty*factor*vatfactor);new+=R(converted*qty*factor*vatfactor)
+                if price/12!=converted:
+                 stat['rounding_price_positions']+=1
+                 priceissues.append({'position_id':p.get('id'),'assortment':m.href(p.get('assortment',{})),'quantity':str(qty),'price_minor':str(price),'proposed_price_minor':str(converted),'discount':str(disc),'vat':p.get('vat')})
+               rec.update(original_model_minor=str(orig),proposed_lines_minor=str(new),line_vs_total_diff_minor=str(new-goal),rounding_positions=priceissues)
+               if orig!=old:stat['original_model_mismatch_docs']+=1;rec['issues'].append('original_line_model_differs')
+               if new!=goal:
+                stat['line_vs_total_diff_docs']+=1;diffsum+=new-goal
+                rec['issues'].append('rounded_lines_vs_rounded_document')
+              operations=d.get('operations')
+              if typ in FIN:
+               links=[]
+               for op in operations or []:
+                if 'linkedSum' not in op:stat['linked_sum_missing']+=1;continue
+                amount=D(op['linkedSum'])
+                links.append({'href':m.href(op),'linked_minor':str(amount),'proposed_linked_minor':str(R(amount/12))})
+               rec['payment_links']=links
+               stat['financial_links']+=len(links)
+               alloc=sum((D(x['linked_minor']) for x in links),Decimal(0));newalloc=sum((D(x['proposed_linked_minor']) for x in links),Decimal(0))
+               rec.update(allocated_minor=str(alloc),proposed_allocated_minor=str(newalloc),unallocated_minor=str(old-alloc),proposed_unallocated_minor=str(goal-newalloc),allocation_rounding_diff_minor=str(newalloc-R(alloc/12)))
+               if newalloc!=R(alloc/12):stat['financial_allocation_rounding_docs']+=1;rec['issues'].append('allocation_rounding')
+              for k in ('customerOrder','purchaseOrder','demand','supply','salesReturn','purchasereturn','invoiceIn','invoiceOut'):
+               if isinstance(d.get(k),dict):rec[k]=m.href(d[k])
+              if rec['issues'] and len(stat['sample_issues'])<10:stat['sample_issues'].append({'id':d['id'],'name':d.get('name'),'issues':rec['issues']})
+              output.append(rec)
+             save(db,typ+':page:'+str(offset),{'type':typ,'offset':offset,'records':output,'read_at':m.now()})
+             offset+=len(data['rows'])
+             stat.update(count=offset,total=total,pages=stat['pages']+1,source_sum_minor=str(source),target_sum_minor=str(target),line_vs_total_diff_minor=str(diffsum),updated_at=m.now())
+             save(db,typ+':summary',stat)
+             if offset==total:break
+             if not data['rows']:raise m.Stop('Incomplete document pagination')
+            stat.update(status='complete',finished_at=m.now())
+           except Exception as e:stat.update(status='failed',error=str(e) if isinstance(e,m.Stop) else type(e).__name__,finished_at=m.now())
+           save(db,typ+':summary',stat)
+           return stat
+          with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:stats=list(pool.map(analyze,TYPES))
+          result={'status':'complete' if all(x['status']=='complete' for x in stats) else 'incomplete','types':stats,'finished_at':m.now(),'ms_writes':0,'note':'Per-type totals must not be added across document types; monetary models are planning estimates, not MS recalculation verification.'}
+          save(db,'result',result)
+          save(db,'status',{'status':result['status'],'finished_at':m.now(),'ms_writes':0})
+          print('Detailed read-only conversion planning pass ended; private results saved.')
+          
