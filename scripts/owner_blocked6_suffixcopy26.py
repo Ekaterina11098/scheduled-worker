@@ -8,6 +8,11 @@ from owner_blocked6_clone26_apply import canonical,upload
 ROOT='china_agent:owner_blocked6_suffixcopy26:v1'
 SOURCE='china_agent:owner_blocked6_clone26:v1:discovery'
 def stamp():return datetime.now(timezone.utc).isoformat()
+def creation_errors(response,vendor):
+ data=response.get('data',[])if isinstance(response,dict)else[]
+ if isinstance(data,dict):data=data.get('items',[])
+ if not isinstance(data,list):return []
+ return [x for x in data if isinstance(x,dict)and (vendor in x.get('vendorCodes',[])or vendor in x.get('errors',{}))]
 def main():
  io=AdvertisingIO();a=io.get(ROOT+':approval');d=io.get(SOURCE);assert a['status']=='approved'and a['owner_id']==5122667182 and d['status']=='complete';assert set(map(int,d['cards']))==set(a['nm_ids']);validate_identity(Cache(),WB())
  def authority():assert io.get(ROOT+':approval')==a and datetime.now(timezone.utc)<datetime.fromisoformat(a['expires_at'])
@@ -48,10 +53,8 @@ def main():
    for _ in range(24):
     found=[x for x in read(name)if x['vendorCode']==name and x['nmID']!=nm];assert len(found)<=1,'Multiple suffix copies; no repeated POST'
     if found:new=found[0];break
-    err=errors();item['last_error_list']=err;save();data=err['response'].get('data',[])if isinstance(err['response'],dict)else[]
-    if isinstance(data,list):
-     matches=[x for x in data if name in json.dumps(x,ensure_ascii=False)]
-     if matches:item.update(status='rejected',creation_errors=matches);e.update(status='blocked_creation_error',reason=matches);save();return
+    err=errors();item['last_error_list']=err;save();matches=creation_errors(err['response'],name)
+    if matches:item.update(status='rejected',creation_errors=matches);e.update(status='blocked_creation_error',reason=matches);save();return
     time.sleep(5)
    assert new is not None,'Creation pending; do not repeat request'
    assert canonical(new)==canonical(before,name)and not(new.get('photos')or new.get('video')),'Copy fields differ'
