@@ -24,3 +24,4 @@ jobs:
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
         run: python scripts/cny_one_chain_align_test.py
 # Inspect preflight diagnostics before any write.
+# Zero-tax preflight reconciled; single-chain scope unchanged.
