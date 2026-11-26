@@ -66,7 +66,14 @@ jobs:
           python warehouse_id_patch.py private-source
           python -c "import stock_deploy_support, stock_regular_job"
           python - <<'PY'
-          import stock_deploy_support,stock_unposted_source as m,runpy,json
+          import stock_deploy_support,stock_unposted_source as m,runpy,json,time
+          time.sleep(45)
+          original_headers=m.ms_headers
+          def header_scope(g,since,date_field='moment'):
+              value=original_headers(g,since,date_field)
+              print('MS_HEADER_SCOPE '+json.dumps(dict(since=since,date_field=date_field,store=value[1],documents=len(value[0]))),flush=True)
+              return value
+          m.ms_headers=header_scope
           from stock_operation_store import Stopped
           original=m.referenced_customer_orders
           def detailed(g,headers,known):
