@@ -81,7 +81,7 @@ def render_ip(view,contract,outdir):
   name=raw.get('campaign_name') or label.get('name') or 'Название не сохранено'
   pay=raw.get('payment_type') or label.get('payment')
   name+=' · '+('CPC — оплата за клики' if pay=='cpc' else 'CPM — оплата за показы' if pay=='cpm' else 'тип оплаты не сохранён')
-  campaigns.append(dict(id=cid,name=name,status=raw.get('status_id'),last=metrics(raw),period=period,period_count=len(days),attention=[{'action':a} for a in current],focus=[],direction_recommendations=rec,no_order_count=raw.get('no_order_count'),no_order_spend=raw.get('no_order_spend')))
+  campaigns.append(dict(id=cid,name=name,priority=cid in view.get('priority_campaign_ids',[]),status=raw.get('status_id'),last=metrics(raw),period=period,period_count=len(days),attention=[{'action':a} for a in current],focus=[],direction_recommendations=rec,no_order_count=raw.get('no_order_count'),no_order_spend=raw.get('no_order_spend')))
  bundle=dict(days=days,campaigns=campaigns,source_observed_at='Сохранённые данные: '+str(sum(c.get('metrics_complete') is True for c in view['campaigns']))+'/'+str(total)+' РК за '+view['period']+' · в команде только новые действия')
  bundle['review_coverage']=contract.get('review_coverage') or {}
  bundle['analysis_notice']=contract.get('analysis_notice')
@@ -94,7 +94,7 @@ def visible_campaigns(campaigns):
  return [c for c in campaigns if c.get('status')==9 and not c.get('never_started')]
 
 def render_campaign_table(bundle):
- bundle=dict(bundle,campaigns=sorted([c for c in bundle['campaigns'] if not c.get('never_started')],key=lambda c:not any(r.get('action') for r in c.get('attention',[]))))
+ bundle=dict(bundle,campaigns=sorted([c for c in bundle['campaigns'] if not c.get('never_started')],key=lambda c:(not c.get('priority',False),not any(r.get('action') for r in c.get('attention',[])))))
  counts={status:sum(c.get('status')==status for c in bundle['campaigns'])for status in(9,11,7)}
  bundle['analysis_notice']=(bundle.get('analysis_notice')or'')+' Рабочие строки: '+str(counts[9])+' активных РК. Не показаны: '+str(counts[11])+' приостановленных и '+str(counts[7])+' архивных; их сохранённые расходы включены в общий итог. Неизвестный статус не считается активным.'
  W=2400;H=6500;xs=[44,355,650,870,1090,1700,2356];files=[]
