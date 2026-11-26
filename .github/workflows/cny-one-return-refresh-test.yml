@@ -27,3 +27,5 @@ jobs:
 # Reinspect the same single return; prior run stopped before any write intent.
 
 # Exactly one empty PUT is permitted; previous observations made no mutation.
+
+# Snapshot JSON roundtrip corrected; confirmed no return write intent exists yet.
