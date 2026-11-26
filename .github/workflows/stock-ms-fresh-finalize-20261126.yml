@@ -94,6 +94,10 @@ jobs:
                       data.update(generation=data['generation']+1,status='collecting',msk_execution_complete=False,execution_complete=False,delivery_done=False)
                       db.execute('UPDATE stock_runs SET snapshot=%s,plan=%s,digest=%s WHERE id=%s',(canonical(data),'{}',digest({}),root))
                       print('Reopened only expired zero-operation plan; confirmed claims preserved',flush=True)
+          delay=data.get('retry_not_before',0)-time.time()
+          if 0<delay<=180:
+              print('Honouring current stock retry pause before fresh execution',flush=True)
+              time.sleep(delay+1)
           observation=dict(kind='ms-stock-repair-progress-v1',stage='starting',counts={},api_counts={},api_seconds={})
           def save_observation():
               observation['at']=time.time()
