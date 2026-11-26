@@ -67,6 +67,12 @@ def run():
   rows.sort(key=lambda x:(x['date'],x['article']));out=dict(status='complete',asof=stamp(),day=str(day),first=prior['request']['params']['startDate'],last=str(day),rows=rows,ads=adrows,catalogue=[dict(nm=g['nmID'],article=g['vendorCode'],price=prices.get(g['nmID']))for g in goods],general_impressions_available=prior['general_impressions_available'],csv_headers=prior['headers'],source_report_id=prior['report_id'],advertising_asof=hour.get('observed_at'),advertising_scope='returned campaign rows only; missing is unknown',wb_writes=0,telegram_calls=0)
   c.put(ROOT+':data',out);prior.update(status='complete',rows=len(rows),completed_at=stamp());c.put(key,prior);print(json.dumps(dict(status='complete',rows=len(rows),impressions=out['general_impressions_available'])))
  finally:requests.sessions.Session.request=original
-if __name__=='__main__':run()
+if __name__=='__main__':
+ run()
+ # Existing two-hour collector remains the only cadence; details refresh once per completed slot.
+ c=Cache(); d=c.get(ROOT+':data')or{};x=c.get(ROOT+':details')or{}
+ if d.get('asof') and x.get('source_dataset_asof')!=d['asof']:
+  from china_sheet_details import refresh
+  refresh();x=c.get(ROOT+':details');x['source_dataset_asof']=d['asof'];c.put(ROOT+':details',x)
 
 
