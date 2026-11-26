@@ -37,6 +37,7 @@ jobs:
           """Addressed catalog coverage repair using existing MPStats readers; never WB/TG."""
           import copy,datetime,json,os,sys,requests
           from urllib.parse import urlsplit
+          sys.path.insert(0,os.getcwd())
           import ip_scheduled_source as m
           ROOT='advertising:ip:catalog_scope_repair:v1:2026-11-26'
           if(m.get(ROOT)or{}).get('status')=='complete':print('Saved repair reused');raise SystemExit(0)
