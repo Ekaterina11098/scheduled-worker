@@ -32,21 +32,47 @@ def write(db,typ,bodies,key):
   except Exception:detail={'status':e.code}
   save(db,key+':response',{'at':m.now(),'http_status':e.code,'detail':detail})
  except (TimeoutError,urllib.error.URLError):save(db,key+':response',{'at':m.now(),'uncertain':True})
+def related_inv(old,new):
+ aa=copy.deepcopy(old);bb=copy.deepcopy(new)
+ for k in ('returns','payments','demands','losses'):
+  aa[k]=sorted(aa.get(k,[]),key=m.href);bb[k]=sorted(bb.get(k,[]),key=m.href)
+  assert aa[k]==bb[k],'Related references or payment allocations changed'
+ a.invariants(aa,bb)
 def main():
  t=b.ReadOnly();db=m.Cache(t);auth=db.get(b.ROOT+P+'authorization:v1')
  assert auth['authorized'] and auth['preserve_quantities'] and not auth['outside_ms_changes'] and auth['rub_per_cny']==12
  pf=db.get(b.ROOT+P+'preflight:v1');assert pf['status']=='complete'
  assert not pf['issues'],'Preflight issues require resolution before any mutation'
- assert not db.get(b.ROOT+P+'apply_started:v1'),'Prior execution; reconcile journal before replay'
+ prior_start=db.get(b.ROOT+P+'apply_started:v1')
  docs=read_docs(t,pf,db);cc=b.fullrows(t,'entity/currency');base=next(c for c in cc if c.get('default'))
  assert base['id']==pf['base']['id'] and base['isoCode']=='CNY' and b.D(base['rate'])==1
- wh0=warehouse(t);save(db,'apply_started:v1',{'at':m.now(),'warehouse_quantities':wh0,'currencies':cc})
+ if prior_start:
+  wh0=prior_start['warehouse_quantities'];assert warehouse(t)==wh0,'Stock changed during checkpoint pause'
+  assert h.ccstate(cc)==h.ccstate(prior_start['currencies'])
+ else:
+  wh0=warehouse(t);save(db,'apply_started:v1',{'at':m.now(),'warehouse_quantities':wh0,'currencies':cc})
  counts={};done=0
  for typ,ss in pf['summary'].items():
   heads=b.fullrows(t,'entity/'+typ);assert {d['id'] for d in heads}==set(docs[typ]),'Incoming document set changed'
   ids=ss['ready'];counts[typ]=0
   for o in range(0,len(ids),25):
    chunk=ids[o:o+25];key='batch:'+typ+':'+str(o)
+   previous=db.get(b.ROOT+P+key+':snapshot')
+   intent=db.get(b.ROOT+P+key+':intent')
+   if previous:
+    assert intent,'Snapshot without intent requires explicit reconciliation'
+    current=r.live(t,typ,chunk)
+    for i,d in current.items():
+     h.inv(previous['before'][i],d);assert r.signature(d,typ)==r.signature(previous['goals'][i],typ),'Unsettled prior mutation; no replay'
+    for rt,ds in previous['linked_before'].items():
+     for i,d in r.live(t,rt,list(ds)).items():
+      related_inv(ds[i],d);assert r.signature(ds[i],rt)==r.signature(d,rt)
+    assert warehouse(t)==wh0,'Warehouse quantities differ on resume'
+    save(db,key+':result',{'status':'verified','at':m.now(),'documents':len(chunk),'reconciled_existing_intent':True,'all_quantities_preserved':True,'prices_rows_order_preserved':True,'linked_documents_preserved':True})
+    counts[typ]+=len(chunk);done+=len(chunk)
+    save(db,'apply_progress:v1',{'status':'running','at':m.now(),'verified':done,'counts':counts,'type':typ,'next_offset':o+len(chunk)})
+    continue
+   assert not intent,'Intent without snapshot; reconcile'
    before=r.live(t,typ,chunk);goals={};bodies=[]
    for i,d in before.items():
     old=docs[typ][i];h.inv(old,d);assert r.signature(old,typ)==r.signature(d,typ),'Concurrent incoming edit'
@@ -83,7 +109,7 @@ def main():
     if not newset:
      for z in range(0,len(oldset),50):newset.update(r.live(t,rt,list(oldset)[z:z+50]))
     for i,d in newset.items():
-     a.invariants(oldset[i],d);assert r.signature(oldset[i],rt)==r.signature(d,rt),'Related document monetary values changed'
+     related_inv(oldset[i],d);assert r.signature(oldset[i],rt)==r.signature(d,rt),'Related document monetary values changed'
    wh=warehouse(t);assert wh==wh0,'Warehouse quantities mismatch after batch'
    save(db,key+':result',{'status':'verified','at':m.now(),'documents':len(chunk),'positions':sum(len(r.rows(d)) for d in before.values()),'all_quantities_preserved':True,'prices_rows_order_preserved':True,'linked_documents_preserved':True})
    counts[typ]+=len(chunk);done+=len(chunk)
