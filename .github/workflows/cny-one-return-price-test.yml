@@ -23,3 +23,5 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
         run: python scripts/cny_one_return_price_test.py
+
+# Trigger the existing single-document workflow; no write intent has been created.
