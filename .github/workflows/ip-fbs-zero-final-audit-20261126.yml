@@ -5,7 +5,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: bot-stock
+  group: bot-stock-ip-readonly-audit
   cancel-in-progress: false
 jobs:
   audit:
