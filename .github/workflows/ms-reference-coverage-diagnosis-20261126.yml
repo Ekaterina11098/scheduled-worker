@@ -7,7 +7,7 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 12
     steps:
       - name: Compare linked order query coverage with direct exact reads
         env:
@@ -23,25 +23,38 @@ jobs:
                   raw=r.read()
                   if r.headers.get('Content-Encoding')=='gzip':raw=gzip.decompress(raw)
                   return json.loads(raw)
+          import concurrent.futures,threading
           flt='updated>=2026-11-25 00:00:00;applicable=true;store='+base+'/entity/store/3c67619d-f25d-11ee-0a80-0c6f000a027a'
-          demands=read('/entity/demand',{'filter':flt,'limit':1000})
-          print(json.dumps({'demand_size':demands.get('meta',{}).get('size'),'page_count':len(demands.get('rows',[])),'row_type':type(demands.get('rows')).__name__}),flush=True)
-          assert isinstance(demands.get('rows'),list)
-          ids=sorted({v['customerOrder']['meta']['href'].rsplit('/',1)[-1] for v in demands['rows'] if v.get('customerOrder')})
-          print(json.dumps({'demands':len(demands['rows']),'unique_linked_orders':len(ids)}),flush=True)
-          for start in range(0,min(len(ids),40),40):
-              page=ids[start:start+40];query=';'.join('id='+v for v in page)
-              r=read('/entity/customerorder',{'filter':query,'limit':len(page)})
-              found={v['id'] for v in r.get('rows',[])};missing=set(page)-found
-              print(json.dumps({'query':'current','requested':len(page),'returned':len(r.get('rows',[])),'meta_size':r.get('meta',{}).get('size'),'missing':sorted(missing),'extra':sorted(found-set(page))}),flush=True)
-              if missing:
-                  try:
-                      r=read('/entity/customerorder',{'filter':query+';archived=false;archived=true','limit':len(page)})
-                      print(json.dumps({'query':'including_archived','requested':len(page),'returned':len(r.get('rows',[])),'meta_size':r.get('meta',{}).get('size'),'missing':sorted(set(page)-{v['id'] for v in r.get('rows',[])})}),flush=True)
-                  except Exception as e:print(json.dumps({'archive_probe_status':getattr(e,'code',None),'error_type':type(e).__name__}),flush=True)
-                  for ident in sorted(missing)[:5]:
+          headers=[];size=None
+          for offset in range(0,100000,1000):
+              data=read('/entity/demand',{'filter':flt,'limit':1000,'offset':offset})
+              rows=data.get('rows');current=data.get('meta',{}).get('size')
+              assert isinstance(rows,list) and type(current) is int and (size is None or size==current)
+              size=current;headers.extend(rows)
+              if len(rows)<1000:break
+          assert len(headers)==size
+          ids=sorted({v['customerOrder']['meta']['href'].rsplit('/',1)[-1] for v in headers if v.get('customerOrder')})
+          print(json.dumps({'demands':len(headers),'unique_linked_orders':len(ids)}),flush=True)
+          stop=threading.Event()
+          def coverage(start):
+              if stop.is_set():return
+              page=ids[start:start+100];query=';'.join('id='+v for v in page)
+              try:
+                  value=read('/entity/customerorder',{'filter':query,'limit':1})
+                  total=value.get('meta',{}).get('size')
+                  if total==len(page):return
+                  actual=read('/entity/customerorder',{'filter':query,'limit':len(page)})
+                  found={r['id'] for r in actual.get('rows',[])}
+                  missing=sorted(set(page)-found);stop.set()
+                  print(json.dumps({'offset':start,'requested':len(page),'returned':len(actual.get('rows',[])),'meta_size':actual.get('meta',{}).get('size'),'missing':missing,'extra':sorted(found-set(page))}),flush=True)
+                  for ident in missing[:3]:
                       try:
-                          value=read('/entity/customerorder/'+ident)
-                          print(json.dumps({'direct_id':value.get('id'),'archived':value.get('archived'),'deleted':value.get('deleted')}),flush=True)
-                      except Exception as e:print(json.dumps({'direct_id':ident,'status':getattr(e,'code',None),'error_type':type(e).__name__}),flush=True)
+                          row=read('/entity/customerorder/'+ident)
+                          print(json.dumps({'direct_id':row.get('id'),'archived':row.get('archived'),'deleted':row.get('deleted')}),flush=True)
+                      except Exception as e:
+                          print(json.dumps({'direct_id':ident,'status':getattr(e,'code',None),'error_type':type(e).__name__}),flush=True)
+              except Exception as e:
+                  stop.set();print(json.dumps({'batch_offset':start,'status':getattr(e,'code',None),'error_type':type(e).__name__}),flush=True)
+          with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:list(pool.map(coverage,range(0,len(ids),100)))
+          print(json.dumps({'coverage_mismatch_found':stop.is_set()}),flush=True)
           PY
