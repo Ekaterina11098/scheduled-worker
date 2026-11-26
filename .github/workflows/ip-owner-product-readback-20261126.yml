@@ -1,0 +1,73 @@
+name: Addressed owner product analysis readback
+on:
+  push:
+    paths: [.github/workflows/ip-owner-product-readback-20261126.yml]
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency: {group: ip-owner-product-readback-20261126, cancel-in-progress: false}
+jobs:
+  read:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/owner_ad_tests23.py
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5 > /dev/null 2>&1
+      - shell: python
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_2: ${{ secrets.WB_TOKEN_2 }}
+        run: |
+          import sys
+          sys.path.insert(0,'scripts')
+          import os,time,json,requests
+          from urllib.parse import urlsplit
+          from owner_ad_tests23 import State,ReadWB,stamp
+          KEY='advertising:ip:owner-product-review:2026-11-26:readback:v1'
+          db=State()
+          if db.get(KEY):
+           print('Existing addressed readback retained; no repeat')
+           raise SystemExit(0)
+          state={'status':'reading','wb_writes':0,'telegram_calls':0,'source_metric_calls':0,'started_at':stamp()}
+          if not db.put(KEY,state,once=True):raise RuntimeError('Already claimed')
+          original=requests.sessions.Session.request
+          def guard(session,method,url,*args,**kw):
+           h=urlsplit(url).hostname;p=urlsplit(url).path
+           if h=='advert-api.wildberries.ru':
+            if method.upper()!='GET' or p not in ('/adv/v1/promotion/count','/api/advert/v2/adverts','/api/advert/v1/config'):raise PermissionError('Only three read-only WB routes')
+           elif h!=urlsplit(db.base).hostname:raise PermissionError('No source/TG/model routes')
+           return original(session,method,url,*args,**kw)
+          requests.sessions.Session.request=guard
+          try:
+           w=ReadWB(db,'token_2');w.identity();state['identity_verified']=True
+           def read(path,params=None):
+            for attempt in range(3):
+             try:return w.read('advert-api.wildberries.ru',path,params=params)
+             except RuntimeError as e:
+              if '429'not in str(e)and 'cooldown'not in str(e):raise
+              if attempt==2:raise
+              state.update(status='waiting_provider',detail=str(e));db.put(KEY,state)
+              time.sleep(65)
+            raise RuntimeError('Bounded provider retries exhausted')
+           inv=read('/adv/v1/promotion/count')
+           ids=sorted({r['advertId']for g in inv.get('adverts',[])if g['status']==9 for r in g.get('advert_list',[])})
+           if not ids or len(ids)>20:raise ValueError('Active scope exceeds bounded20')
+           state['active_ids']=ids;db.put(KEY,state)
+           cs=read('/api/advert/v2/adverts',{'ids':','.join(map(str,ids))})['adverts']
+           if {c['id']for c in cs}!=set(ids) or any(c['currency']!='RUB'for c in cs):raise ValueError('Coverage/currency mismatch')
+           state.update(configurations={str(c['id']):c for c in cs},configuration_observed_at=stamp());db.put(KEY,state)
+           state['minimum_configuration']=read('/api/advert/v1/config')
+           state.update(status='complete',finished_at=stamp(),read_routes=3);db.put(KEY,state)
+           print(json.dumps({'status':'complete','campaigns':len(cs),'wb_writes':0,'telegram_calls':0}))
+          except Exception as e:
+           state.update(status='attention',error=str(e)if isinstance(e,(ValueError,RuntimeError,PermissionError))else type(e).__name__,finished_at=stamp());db.put(KEY,state);raise
+          
