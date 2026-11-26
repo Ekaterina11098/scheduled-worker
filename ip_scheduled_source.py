@@ -70,7 +70,19 @@ def ingest(obs,ident=None):
    if source=='mpstats_campaign_catalog':catalogs.append(p)
    elif source=='mpstats_campaign_report':reports[p['campaign_id']]=p
  except (ValueError,KeyError,TypeError) as e:state['normalization_errors'].append({'tool':obs['tool'],'error':str(e)})
+def active_catalog_scope(catalogs,prior_scope):
+ state_pages=[c for c in catalogs if c.get('report')=='state']
+ first=next((c for c in state_pages if c.get('start_row')==0),None)
+ if not first or type(first.get('total'))is not int:raise ValueError('Complete state catalog required')
+ total=first['total'];rows=[r for c in state_pages for r in c.get('rows',[])]
+ ids={r['wb_id'] for r in rows}
+ if len(ids)!=total:raise ValueError('State catalog pagination incomplete; active scope unknown')
+ active={r['wb_id']for r in rows if r.get('status_id')==9}
+ if not active:raise ValueError('No confirmed active campaigns; do not claim empty healthy report')
+ return set(prior_scope)|active,active,total
+
 def collect(call,checks,known):
+ global scope,overview
  bidder=copy.deepcopy(BIDDER)
  def run(reqs):
   reqs=[r for r in reqs if r]
@@ -91,9 +103,15 @@ def collect(call,checks,known):
   if first['total']>400:raise ValueError('Unexpected catalog scope over400; no unbounded paging')
   covered={r['wb_id'] for c in catalogs if c.get('report')==kind for r in c.get('rows',[])}
   for offset in range(100,first['total'],100):
-   if scope.issubset(covered):break
    obtain('wbbidder_campaigns',dict(args,start_row=offset))
    covered={r['wb_id'] for c in catalogs if c.get('report')==kind for r in c.get('rows',[])}
+ scope,active,total=active_catalog_scope(catalogs,scope)
+ if len(scope)>20:raise ValueError('Discovered scope exceeds bounded20; no active campaigns silently omitted')
+ state.update(active_campaign_ids=sorted(active),catalog_total=total,catalog_scope_complete=True)
+ if set(overview.get('campaign_ids',[]))!=scope:
+  put('advertising:ip:daily-overview-scope:v1:before-discovery:'+REPORT_DAY,overview)
+  overview=dict(overview,campaign_ids=sorted(scope),catalog_active_ids=sorted(active),catalog_scope_observed_at=datetime.now(timezone.utc).isoformat())
+  put('advertising:ip:daily-overview-scope:v1',overview)
  rows=[r for c in catalogs if c.get('report')=='stats' for r in c.get('rows',[])]
  mapping={r['wb_id']:r for r in rows}
  bidder['token_2']['campaign_ids']=sorted({r['id'] for r in rows})
@@ -119,8 +137,10 @@ def main():
  global scope,overview
  intent=get('advertising:ip:report_clock:v1:policy') or {}
  if not intent.get('enabled') or intent.get('chat_id')!=-1004378639510 or SLOT not in intent.get('slots',[]):raise PermissionError('Report clock owner approval missing')
+ overview=get('advertising:ip:daily-overview-scope:v1')or{}
  prior=get(KEY)
- if prior and prior.get('status')=='complete':
+ requested=set(overview.get('campaign_ids',[]))
+ if prior and prior.get('status')=='complete' and requested.issubset({c['campaign_id']for c in prior.get('view',{}).get('campaigns',[])}) and prior.get('catalog_scope_complete')is True:
   print(json.dumps({'status':'saved_period_reused','period':DAY,'source_calls':0}));return
  if prior:put(KEY+':previous:'+str(prior.get('run_id','unknown')),prior)
 
