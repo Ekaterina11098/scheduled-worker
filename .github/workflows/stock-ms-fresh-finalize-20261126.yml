@@ -1,0 +1,131 @@
+name: Finalize stock with fresh inputs after large MS reconciliation26Nov
+on:
+  push:
+    paths: ['.github/workflows/stock-ms-fresh-finalize-20261126.yml']
+# Daily05:00/20:00MSK; legacy0700 journal identity retained; bounded10-minute checks resume unfinished slots only.
+# Completed slots and unexpired Retry-After are skipped without business API calls.
+# Owner approved daily stock execution and new stock notifications, 2026-10-15.
+permissions:
+  contents: read
+concurrency:
+  group: bot-stock
+  cancel-in-progress: false
+jobs:
+  stock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            content_group_destination.py
+            stock_deploy_support.py
+            warehouse_id_patch.py
+            scripts/moysklad_warehouses.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: 4cc85ae773cf0c624a12ede7f8bcb83fdccaa4b0
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          persist-credentials: false
+          path: private-source
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests==2.32.5 python-dotenv==1.1.1 aiogram==3.22.0 simplejson==4.2.0 'psycopg[binary]==3.2.9' cryptography > "$RUNNER_TEMP/daily-install.log" 2>&1
+      - name: Fresh stock calculation and newly created stock-only notifications
+        env:
+          PYTHONPATH: ${{ github.workspace }}/private-source:${{ github.workspace }}
+          STOCK_DAILY_ENABLED: 'true'
+          STOCK_OZON_ENABLED: 'true'
+          STOCK_PENDING_RESERVE_ENABLED: 'true'
+          STOCK_CANCELLATION_RESTORE_ENABLED: 'true'
+          STOCK_RUN_SLOT: '0700'
+          STOCK_NOTIFICATIONS_ENABLED: 'true'
+          STOCK_CLOUD_EXECUTION_ENABLED: 'true'
+          STOCK_JOURNAL_IMPORT_ACCEPTED: 'true'
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_1: ${{ secrets.WB_TOKEN_1 }}
+          WB_TOKEN_2: ${{ secrets.WB_TOKEN_2 }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          WB_FINANCE_TOKEN_1: ${{ secrets.WB_FINANCE_TOKEN_1 }}
+          WB_FINANCE_TOKEN_2: ${{ secrets.WB_FINANCE_TOKEN_2 }}
+          WB_FINANCE_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          WB_STOCK_WAREHOUSE_1: ${{ vars.WB_STOCK_WAREHOUSE_1 }}
+          WB_STOCK_WAREHOUSE_2: ${{ vars.WB_STOCK_WAREHOUSE_2 }}
+          WB_STOCK_WAREHOUSE_3: ${{ vars.WB_STOCK_WAREHOUSE_3 }}
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          MOYSKLAD_STORE_NAME: МСК
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ALLOWED_CHAT_ID: ${{ secrets.TELEGRAM_ALLOWED_CHAT_ID }}
+          AUTO_STOCK_FAIL_FAST: '1'
+        run: |
+          python warehouse_id_patch.py private-source
+          python -c "import stock_deploy_support, stock_regular_job"
+          python - <<'PY'
+          import stock_deploy_support,stock_unposted_source as m,tg_agent_new as g,time,json
+          g.RUN_DEADLINE=time.monotonic()+120
+          ids=['531982d0-5ed7-11ef-0a80-14c3001cdc4b','81aa4e4d-5ed1-11ef-0a80-0015001bf2bb']
+          refs=[dict(customerOrder=dict(meta=dict(href=g.MS_API+'/entity/customerorder/'+v))) for v in ids]
+          rows=m.referenced_customer_orders(g,refs,{})
+          assert set(rows)==set(ids) and all(rows[v].get('deleted') for v in ids)
+          print(json.dumps(dict(exact_historical_trash_references_verified=len(rows))),flush=True)
+          PY
+          python - <<'PY'
+          import os,time,json,runpy,sys,re
+          import stock_deploy_support as support,tg_agent_new as g
+          import stock_regular_service as service
+          from stock_execution_fence import cloud_writer
+          from stock_operation_store import canonical,digest
+          root='technical:stock-daily:2026-11-26:0700'
+          # Reopen only a zero-operation stale skip plan; never discard a claim.
+          with cloud_writer(support.runtime_db()):
+              with support.runtime_db() as db:
+                  row=db.execute('SELECT snapshot FROM stock_runs WHERE id=%s FOR UPDATE',(root,)).fetchone()
+                  data=json.loads(row[0])
+                  p=data.get('progress',{})
+                  no_operations=all(p.get(k,0)==0 for k in ('total','prepared','sent','confirmed','uncertain')) and not data.get('registry') and not data.get('held_articles')
+                  if data.get('full_plan',{}).get('blocked') and data.get('source') and service.source_expired(data['source']) and no_operations:
+                      data.setdefault('owner_recovery_history',[]).append(dict(at=time.time(),reason='refresh expired zero-operation plan after completed long MS reconciliation',previous_status=data.get('status'),previous_generation=data['generation'],blocked=len(data['full_plan']['blocked']),source_started=data['source']['started'],authorization='owner-complete-ms-stock-repair-20261126'))
+                      data.setdefault('plan_history',[]).append(dict(generation=data['generation'],plan=data.pop('full_plan'),source_time=data['source']['started']))
+                      data.update(generation=data['generation']+1,status='collecting',msk_execution_complete=False,execution_complete=False,delivery_done=False)
+                      db.execute('UPDATE stock_runs SET snapshot=%s,plan=%s,digest=%s WHERE id=%s',(canonical(data),'{}',digest({}),root))
+                      print('Reopened only expired zero-operation plan; confirmed claims preserved',flush=True)
+          observation=dict(kind='ms-stock-repair-progress-v1',stage='starting',counts={},api_counts={},api_seconds={})
+          def save_observation():
+              observation['at']=time.time()
+              try:
+                  with support.runtime_db() as db:
+                      db.execute('INSERT INTO stock_runs VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(id) DO UPDATE SET snapshot=excluded.snapshot',('technical:ms-stock-repair-progress:2026-11-26:morning',canonical(observation),'{}',digest({}),'technical-no-executor',time.time()))
+              except Exception as e:print(json.dumps(dict(progress_observer_error=type(e).__name__)),flush=True)
+          def progress(value):
+              observation.update(stage=value['stage'],counts={k:v for k,v in value.items() if k!='stage'})
+              save_observation()
+          g.STOCK_PENDING_PROGRESS=progress
+          original_api=g.api;last=[time.monotonic()]
+          def observed_api(method,url,*args,**kw):
+              start=time.monotonic()
+              try:return original_api(method,url,*args,**kw)
+              finally:
+                  if not kw.get('wb',True):
+                      from urllib.parse import urlparse
+                      key=method+' '+re.sub(r'/[0-9a-f-]{16,}(?=/|$)','/:id',urlparse(url).path)
+                      observation['api_counts'][key]=observation['api_counts'].get(key,0)+1
+                      observation['api_seconds'][key]=round(observation['api_seconds'].get(key,0)+time.monotonic()-start,2)
+                      if time.monotonic()-last[0]>=30:
+                          save_observation();last[0]=time.monotonic()
+          g.api=observed_api
+          sys.argv=['content_group_destination.py','private-source/stock_regular_job.py']
+          try:runpy.run_path('content_group_destination.py',run_name='__main__')
+          finally:save_observation()
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: owner-encrypted-stock-daily-receipt
+          path: ${{ runner.temp }}/stock-deploy-proof
+          retention-days: 90
+
