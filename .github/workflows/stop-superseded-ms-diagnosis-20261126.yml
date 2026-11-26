@@ -15,10 +15,10 @@ jobs:
         run: |
           python - <<'PY'
           import os,json,urllib.request
-          base='https://api.github.com/repos/Ekaterina11098/scheduled-worker/actions/runs/45763501827'
+          base='https://api.github.com/repos/Ekaterina11098/scheduled-worker/actions/runs/45764053852'
           headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'}
           with urllib.request.urlopen(urllib.request.Request(base,headers=headers)) as r:d=json.load(r)
-          assert d['path']=='.github/workflows/stock-ms-fresh-finalize-20261126.yml' and d['head_sha']=='9678b7cd1da18460b0c92fef36109161aaaedf9b'
+          assert d['path']=='.github/workflows/stock-ms-fresh-finalize-20261126.yml' and d['head_sha']=='ff8b3cf4d1337561bea241c24a3794a40b7a3441'
           if d['status']!='completed':
               with urllib.request.urlopen(urllib.request.Request(base+'/cancel',headers=headers,method='POST')) as r:print('cancel_status',r.status)
           else:print('already_completed',d['conclusion'])
