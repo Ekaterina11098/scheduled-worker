@@ -23,3 +23,5 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
         run: python scripts/cny_simple_full_returns_cleared.py
+
+# Resume verified scope after runner time limit, 2026-11-26T13:08Z.
