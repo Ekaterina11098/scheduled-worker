@@ -512,6 +512,8 @@ class Worker:
         # ООО supply prefix К already denotes Киргизия; keep the destination once.
         if rule.get("comment_prefix") == "Киргизия" and label.startswith("К "):
             label = label[2:].strip()
+        if self.c.get("cabinet") == "token_1" and rule.get("comment_prefix") == "Киргизия":
+            label = " ".join(word for word in label.split() if word.casefold() != "киргизия")
         if label.endswith(" Китай"):
             label = label[:-len(" Китай")].strip()
         elif label.startswith("Китай "):
