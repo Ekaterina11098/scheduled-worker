@@ -1,0 +1,42 @@
+name: Diagnose exact MS order coverage26Nov
+on:
+  push:
+    paths: ['.github/workflows/ms-reference-coverage-diagnosis-20261126.yml']
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Compare linked order query coverage with direct exact reads
+        env:
+          MS_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os,json,urllib.request,urllib.parse,gzip
+          base='https://api.moysklad.ru/api/remap/1.2'
+          def read(path,params=None):
+              url=base+path+('?' + urllib.parse.urlencode(params) if params else '')
+              req=urllib.request.Request(url,headers={'Authorization':'Bearer '+os.environ['MS_TOKEN'],'Accept-Encoding':'gzip'})
+              with urllib.request.urlopen(req,timeout=30) as r:
+                  raw=r.read()
+                  if r.headers.get('Content-Encoding')=='gzip':raw=gzip.decompress(raw)
+                  return json.loads(raw)
+          flt='updated>=2026-11-25 00:00:00;applicable=true;store='+base+'/entity/store/3c67619d-f25d-11ee-0a80-0c6f000a027a'
+          demands=read('/entity/demand',{'filter':flt,'limit':1000})
+          assert isinstance(demands.get('rows'),list) and len(demands['rows'])<1000
+          ids=sorted({v['customerOrder']['meta']['href'].rsplit('/',1)[-1] for v in demands['rows'] if v.get('customerOrder')})
+          print(json.dumps({'demands':len(demands['rows']),'unique_linked_orders':len(ids)}),flush=True)
+          for start in range(0,len(ids),40):
+              page=ids[start:start+40];query=';'.join('id='+v for v in page)
+              r=read('/entity/customerorder',{'filter':query,'limit':len(page)})
+              found={v['id'] for v in r.get('rows',[])};missing=set(page)-found
+              print(json.dumps({'query':'current','requested':len(page),'returned':len(r.get('rows',[])),'meta_size':r.get('meta',{}).get('size'),'missing':sorted(missing),'extra':sorted(found-set(page))}),flush=True)
+              if missing:
+                  r=read('/entity/customerorder',{'filter':query+';archived=false;archived=true','limit':len(page)})
+                  print(json.dumps({'query':'including_archived','requested':len(page),'returned':len(r.get('rows',[])),'meta_size':r.get('meta',{}).get('size'),'missing':sorted(set(page)-{v['id'] for v in r.get('rows',[])})}),flush=True)
+                  for ident in sorted(missing)[:5]:
+                      value=read('/entity/customerorder/'+ident)
+                      print(json.dumps({'direct_id':value.get('id'),'archived':value.get('archived'),'deleted':value.get('deleted')}),flush=True)
+          PY
