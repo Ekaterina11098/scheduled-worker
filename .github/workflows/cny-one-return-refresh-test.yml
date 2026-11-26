@@ -1,0 +1,25 @@
+name: Test one existing return refresh only
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/cny-one-return-refresh-test.yml']
+permissions:
+  contents: read
+concurrency:
+  group: ms-cny-single-return-test
+  cancel-in-progress: false
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Snapshot and resave exactly one existing return
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: python scripts/cny_one_return_refresh_test.py
