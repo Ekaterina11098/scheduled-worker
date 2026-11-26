@@ -1,0 +1,139 @@
+name: Owner EvaBag20 OOO and China with IP zero26Nov
+on:
+  push:
+    paths: ['.github/workflows/stock-owner-eva20-20261126.yml']
+permissions:
+  contents: read
+concurrency:
+  group: bot-stock
+  cancel-in-progress: false
+jobs:
+  stock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            content_group_destination.py
+            stock_deploy_support.py
+            warehouse_id_patch.py
+            scripts/moysklad_warehouses.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: db2ff6342f855ca835340258edab948ff246b80d
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          persist-credentials: false
+          path: private-source
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests==2.32.5 python-dotenv==1.1.1 aiogram==3.22.0 simplejson==4.2.0 'psycopg[binary]==3.2.9' cryptography > "$RUNNER_TEMP/daily-install.log" 2>&1
+      - name: Fresh stock calculation and newly created stock-only notifications
+        env:
+          PYTHONPATH: ${{ github.workspace }}/private-source:${{ github.workspace }}
+          STOCK_DAILY_ENABLED: 'true'
+          STOCK_OZON_ENABLED: 'true'
+          STOCK_PENDING_RESERVE_ENABLED: 'true'
+          STOCK_CANCELLATION_RESTORE_ENABLED: 'true'
+          STOCK_RUN_SLOT: ${{ github.event_name == 'workflow_dispatch' && inputs.slot || ((github.event.schedule == '0 2 * * *' || github.event.schedule == '10,20,30,40,50 2 * * *' || github.event.schedule == '*/10 3-8 * * *') && '0700' || '1630') }}
+          STOCK_NOTIFICATIONS_ENABLED: 'false'
+          STOCK_CLOUD_EXECUTION_ENABLED: 'true'
+          STOCK_JOURNAL_IMPORT_ACCEPTED: 'true'
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_1: ${{ secrets.WB_TOKEN_1 }}
+          WB_TOKEN_2: ${{ secrets.WB_TOKEN_2 }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          WB_FINANCE_TOKEN_1: ${{ secrets.WB_FINANCE_TOKEN_1 }}
+          WB_FINANCE_TOKEN_2: ${{ secrets.WB_FINANCE_TOKEN_2 }}
+          WB_FINANCE_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          WB_STOCK_WAREHOUSE_1: ${{ vars.WB_STOCK_WAREHOUSE_1 }}
+          WB_STOCK_WAREHOUSE_2: ${{ vars.WB_STOCK_WAREHOUSE_2 }}
+          WB_STOCK_WAREHOUSE_3: ${{ vars.WB_STOCK_WAREHOUSE_3 }}
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          MOYSKLAD_STORE_NAME: МСК
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ALLOWED_CHAT_ID: ${{ secrets.TELEGRAM_ALLOWED_CHAT_ID }}
+          AUTO_STOCK_FAIL_FAST: '1'
+        run: |
+          python warehouse_id_patch.py private-source
+          python - <<'PY'
+          import os,time,json,math,copy
+          import stock_deploy_support as support,tg_agent_new as g
+          import stock_owner_eva_20261126 as owner
+          from stock_operation_store import Store,canonical,digest
+          from stock_execution_fence import cloud_writer
+          from stock_shared_requests import SharedRequests
+          from stock_storage_health import verify_runtime_storage
+          from stock_approved_warehouses import install
+          from stock_live_capacity import LiveCapacity
+          from stock_card_lifecycle import Lifecycle
+          from threading import RLock
+          g.RUN_DEADLINE=time.monotonic()+1800;g.STOCK_FURCOAT_ENABLED=True;g.STOCK_CANCELLATION_STORE=None
+          os.environ['STOCK_STORAGE_PROOF_FILE']=os.path.join(os.environ['RUNNER_TEMP'],'owner-eva20-proof.json')
+          os.environ['STOCK_STORAGE_PROOF_SCOPE']=owner.ROOT
+          progress_key='technical:owner-eva20-progress:2026-11-26'
+          with cloud_writer(support.runtime_db()):
+              with support.runtime_db() as db:
+                  store=Store(db,postgres=True);shared=SharedRequests(store,budget=g.check_run_budget)
+                  g.STOCK_SHARED_ORDERS=shared;g.STOCK_REQUEST_GATE=shared;g._CACHE_GET=shared.get;g._CACHE_SET=shared.put
+                  install(g)
+                  data=json.loads(store.sql('SELECT snapshot FROM stock_runs WHERE id=?',('technical:stock-daily:2026-11-26:0700',)).fetchone()[0]);db.commit()
+                  source=data['source']
+                  def put_key(key,value):
+                      with store.transaction():store.sql('INSERT INTO stock_runs VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET snapshot=excluded.snapshot',(key,canonical(value),'{}',digest({}),'technical-no-executor',time.time()))
+                  def write_proof(v):put_key(progress_key+':storage',v)
+                  def read_proof():
+                      row=store.sql('SELECT snapshot FROM stock_runs WHERE id=?',(progress_key+':storage',)).fetchone();db.commit();return json.loads(row[0])
+                  def verify():verify_runtime_storage(write_proof,read_proof,dict(scope=owner.ROOT,nonce=os.urandom(16).hex()))
+                  verify();original=g.check_run_budget;last=[time.monotonic()];lock=RLock()
+                  def budget():
+                      with lock:
+                          original()
+                          if time.monotonic()-last[0]>=120:verify();last[0]=time.monotonic()
+                  g.check_run_budget=budget
+                  def progress(stage,**kw):put_key(progress_key,dict(stage=stage,at=time.time(),**kw))
+                  tracker=Lifecycle(g,store,shared)
+                  def refresh():
+                      progress('checking_exact_cards')
+                      locations={};eligible={};china_cards=None
+                      for i,t in enumerate(g.cabinet_tokens()):
+                          cards=g.get_real_wb_cards_and_scores(t)
+                          for card in cards:card['_no_photo']=not bool(card.get('photos'))
+                          matching=[r for r in cards if g.norm(r.get('vendorCode'))==owner.ART]
+                          ids=g.article_size_ids(matching).get(owner.ART,set())
+                          if ids!={owner.LOCATIONS[i]['chrtId']}:raise RuntimeError('Exact approved card identity changed in cabinet'+str(i))
+                          warehouse=owner.LOCATIONS[i]['warehouse']
+                          if warehouse not in g.cached_wb_warehouse_ids(t):raise RuntimeError('Approved exact seller warehouse unavailable')
+                          locations[str(i)]=dict(warehouse=warehouse,chrtId=next(iter(ids)))
+                          eligible[str(i)]=owner.ART in g.eligible_articles(matching)
+                          if i==2:china_cards=matching
+                      prices=tracker.price_rows(g.cabinet_tokens()[2],china_cards)
+                      price_ready=all(tracker.price_status(card,prices) is True for card in china_cards)
+                      progress('checking_live_msk_capacity',china_price_ready=price_ready)
+                      proof=LiveCapacity(g,lambda:source).proof(force=True,articles={owner.ART})
+                      narrow={k:v for k,v in proof.items() if k in ('complete','observed_at','physical_observed_at','received_at','digest','store_id','scope_articles')}
+                      for name in ('physical_moscow','available_moscow','pending','native_reserves','blocked'):
+                          narrow[name]={k:v for k,v in proof.get(name,{}).items() if k==owner.ART}
+                      facts=dict(proof=narrow,ip=owner.read(g,1),locations=locations,eligible=eligible,china_price_ready=price_ready)
+                      progress('fresh_capacity_ready',physical=narrow['physical_moscow'].get(owner.ART),pending=narrow['pending'].get(owner.ART,0),free=narrow['available_moscow'].get(owner.ART))
+                      return facts
+                  for attempt in range(8):
+                      try:
+                          result=owner.publish(g,store,refresh)
+                          progress('complete',final_fbs=result['final_fbs'],stock_put_operations=result['stock_put_operations'])
+                          print(json.dumps(dict(status=result['status'],complete=result['execution_complete'],final_fbs=result['final_fbs'],stock_put_operations=result['stock_put_operations'])),flush=True)
+                          break
+                      except Exception as e:
+                          wait=getattr(e,'wait',0);readback='waiting for WB readback' in str(e)
+                          capacity_retry='Fresh capacity reconciliation exceeded120seconds' in str(e)
+                          progress('waiting',error=str(e),error_type=type(e).__name__,retry=wait,readback_only=readback)
+                          print(json.dumps(dict(attempt=attempt+1,error=str(e),error_type=type(e).__name__,wait=wait)),flush=True)
+                          if attempt==7 or not(wait or readback or capacity_retry):raise
+                          left=max(30,math.ceil(wait))
+                          while left>0:part=min(30,left);g.check_run_budget();time.sleep(part);left-=part
+          PY
