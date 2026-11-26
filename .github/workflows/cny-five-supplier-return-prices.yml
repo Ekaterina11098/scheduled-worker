@@ -1,0 +1,25 @@
+name: Correct selected supplier return prices and verify quantities
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/cny-five-supplier-return-prices.yml']
+permissions:
+  contents: read
+concurrency:
+  group: ms-cny-selected-chain
+  cancel-in-progress: false
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Correct selected supplier returns
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: python scripts/cny_five_supplier_return_prices.py
