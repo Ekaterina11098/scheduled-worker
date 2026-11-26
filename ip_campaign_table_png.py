@@ -42,7 +42,7 @@ def recommendations(c):
    out.append(r['article']+': '+money(p['spend'])+' ₽, '+str(int(p.get('clicks',0)))+' кликов, '+str(int(p.get('orders',0)))+' заказов. Решение не готово: экономика/наличие не подтверждены.');continue
   if p.get('amount',0)>0 and p['spend']/p['amount']>.05:
    out.append(r['article']+': '+r['decision'])
- return out or ['Новых готовых действий нет.']
+ return out or ['Без изменений.']
 
 def budget_column(c):
  """Owner-approved display only; execution conditions remain in the structured plan."""
@@ -76,7 +76,7 @@ def render_ip(view,contract,outdir):
   current=[a for a in contract['actions'] if a['campaign']==cid]
   rec=[decision(a) for a in current]
   # Execution receipts and analytical notes stay internal, never recommendations.
-  if not rec:rec=['Оставить на паузе.'] if raw.get('status_id')==11 else ['Архив; не запускать.'] if raw.get('status_id')==7 else ['Новых готовых действий нет.']
+  if not rec:rec=['Оставить на паузе.'] if raw.get('status_id')==11 else ['Архив; не запускать.'] if raw.get('status_id')==7 else ['Без изменений.']
   label=contract.get('campaign_labels',{}).get(str(cid),{})
   name=raw.get('campaign_name') or label.get('name') or 'Название не сохранено'
   pay=raw.get('payment_type') or label.get('payment')
@@ -89,8 +89,14 @@ def render_ip(view,contract,outdir):
  if len(files)!=1:raise ValueError('Campaign table exceeds one PNG; explicit layout review required, no clipped or unbound actions')
  out=Path(outdir);out.mkdir(parents=True,exist_ok=True);path=out/'recommendations.png';path.write_bytes(files[0]['bytes'])
  return dict(kind='drr',path=str(path))
+def visible_campaigns(campaigns):
+ """Only confirmed active campaigns get working rows; keep all others in totals."""
+ return [c for c in campaigns if c.get('status')==9 and not c.get('never_started')]
+
 def render_campaign_table(bundle):
  bundle=dict(bundle,campaigns=sorted([c for c in bundle['campaigns'] if not c.get('never_started')],key=lambda c:not any(r.get('action') for r in c.get('attention',[]))))
+ counts={status:sum(c.get('status')==status for c in bundle['campaigns'])for status in(9,11,7)}
+ bundle['analysis_notice']=(bundle.get('analysis_notice')or'')+' Рабочие строки: '+str(counts[9])+' активных РК. Не показаны: '+str(counts[11])+' приостановленных и '+str(counts[7])+' архивных; их сохранённые расходы включены в общий итог. Неизвестный статус не считается активным.'
  W=2400;H=6500;xs=[44,355,650,870,1090,1700,2356];files=[]
  count=len(bundle['days']);period_label=str(count)+' дн.'
  def canvas(title):
@@ -123,8 +129,7 @@ def render_campaign_table(bundle):
    for j,line in enumerate(wrap(d,label,xs[i+1]-xs[i]-28,29)):d.text((xs[i],267+j*35),line,font=font(29,True),fill=NAVY)
   return im,d
  im,d=table();y=365;actions=[]
- for c in bundle['campaigns']:
-  if c.get('status')==7:continue # archives contribute to totals below, not recommendation rows
+ for c in visible_campaigns(bundle['campaigns']):
   p=c.get('period');day=c.get('last');draft=c.get('never_started')
   cells=[str(c['id'])+'\n'+c['name'],'День: '+(money(day['spend'])+' ₽' if day else 'не запускалась' if draft else 'нет данных')+'\n'+period_label+': '+(money(p['spend'])+' ₽' if p else 'не запускалась' if draft else 'нет данных'),'Не применима' if draft else pct(p),'Не применима' if draft else pct(day),summary(c),'\n'.join(recommendations(c))]
   ls=[wrap(d,s,xs[i+1]-xs[i]-34,bold=(i==5 and bool(c.get('attention')))) for i,s in enumerate(cells)]
