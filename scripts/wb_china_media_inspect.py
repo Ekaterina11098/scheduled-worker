@@ -99,7 +99,7 @@ def same_image(left, right):
     return sum(ImageStat.Stat(ImageChops.difference(left, right)).mean) / 3 <= 3
 
 
-def append_media(client, request, request_id):
+def append_media(client, request, request_id, mark_write_pending):
     article = request.get("vendorCode")
     current = inspect_card(client, article, request.get("nmID"))
     if current["video"]:
@@ -134,6 +134,7 @@ def append_media(client, request, request_id):
     if inspect_card(client, article, current["nmID"]) != current:
         raise Stop("media_changed_before_write")
 
+    mark_write_pending()
     response = json.loads(client.call(
         "https://content-api.wildberries.cn/content/v3/media/save", "POST",
         {"nmId": current["nmID"], "data": old_urls + staged_urls},
