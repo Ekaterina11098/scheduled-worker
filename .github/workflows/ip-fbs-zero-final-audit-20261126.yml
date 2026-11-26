@@ -1,4 +1,4 @@
-name: Verify all IP FBS zero after MS stock repair26Nov
+name: Verify all IP FBS zero after evening Guangzhou repair26Nov
 on:
   push:
     paths: ['.github/workflows/ip-fbs-zero-final-audit-20261126.yml']
@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Ekaterina11098/VESCHI_AI
-          ref: 33dcdb80c7c69a64ae340b6255a381b05b23c133
+          ref: 6a8ba4a99f216021dde094cee75f3d4e2b7f6421
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           persist-credentials: false
           path: private-source
@@ -78,7 +78,7 @@ jobs:
               positive += [dict(warehouse=warehouse,chrtId=i,amount=q) for i,q in values.items() if q!=0]
               checks.append(dict(warehouse=warehouse,sizes=len(values),total=sum(values.values())))
           result=dict(complete=True,observed_at=time.time(),card_count=len(cards),size_count=len(ids),warehouses=checks,nonzero=positive,stock_writes=0,policy='all_ip_fbs_zero')
-          ident='technical:ip-fbs-zero-final-audit:2026-11-26:morning'
+          ident='technical:ip-fbs-zero-final-audit:2026-11-26:evening'
           with support.runtime_db() as db:
               db.execute('INSERT INTO stock_runs VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(id) DO UPDATE SET snapshot=excluded.snapshot',(ident,canonical(result),'{}',digest({}),'technical-no-executor',time.time()))
           print(json.dumps(dict(complete=True,cards=len(cards),sizes=len(ids),warehouse_count=len(wh),nonzero=len(positive),stock_writes=0)))
