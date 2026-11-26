@@ -50,7 +50,7 @@ jobs:
       - name: Apply campaign scope reconciliation
         uses: actions/checkout@v4
         with:
-          ref: 67a060ddb4b861d42b9fb22f6872846c5a47893a
+          ref: 8c919dd117c6aebb3d0b72a2b6e71e681b377233
           path: ip-scope-patch
           persist-credentials: false
           sparse-checkout-cone-mode: false
