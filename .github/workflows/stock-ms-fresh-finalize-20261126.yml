@@ -98,13 +98,16 @@ jobs:
           if 0<delay<=180:
               print('Honouring current stock retry pause before fresh execution',flush=True)
               time.sleep(delay+1)
+          from threading import RLock
+          observation_lock=RLock()
           observation=dict(kind='ms-stock-repair-progress-v1',stage='starting',counts={},api_counts={},api_seconds={})
           def save_observation():
-              observation['at']=time.time()
-              try:
-                  with support.runtime_db() as db:
-                      db.execute('INSERT INTO stock_runs VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(id) DO UPDATE SET snapshot=excluded.snapshot',('technical:ms-stock-repair-progress:2026-11-26:morning',canonical(observation),'{}',digest({}),'technical-no-executor',time.time()))
-              except Exception as e:print(json.dumps(dict(progress_observer_error=type(e).__name__)),flush=True)
+              with observation_lock:
+                  observation['at']=time.time()
+                  try:
+                      with support.runtime_db() as db:
+                          db.execute('INSERT INTO stock_runs VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(id) DO UPDATE SET snapshot=excluded.snapshot',('technical:ms-stock-repair-progress:2026-11-26:morning',canonical(observation),'{}',digest({}),'technical-no-executor',time.time()))
+                  except Exception as e:print(json.dumps(dict(progress_observer_error=type(e).__name__)),flush=True)
           def progress(value):
               observation.update(stage=value['stage'],counts={k:v for k,v in value.items() if k!='stage'})
               save_observation()
@@ -117,10 +120,12 @@ jobs:
                   if not kw.get('wb',True):
                       from urllib.parse import urlparse
                       key=method+' '+re.sub(r'/[0-9a-f-]{16,}(?=/|$)','/:id',urlparse(url).path)
-                      observation['api_counts'][key]=observation['api_counts'].get(key,0)+1
-                      observation['api_seconds'][key]=round(observation['api_seconds'].get(key,0)+time.monotonic()-start,2)
-                      if time.monotonic()-last[0]>=30:
-                          save_observation();last[0]=time.monotonic()
+                      elapsed=time.monotonic()-start
+                      with observation_lock:
+                          observation['api_counts'][key]=observation['api_counts'].get(key,0)+1
+                          observation['api_seconds'][key]=round(observation['api_seconds'].get(key,0)+elapsed,2)
+                          if time.monotonic()-last[0]>=30:
+                              save_observation();last[0]=time.monotonic()
           g.api=observed_api
           sys.argv=['content_group_destination.py','private-source/stock_regular_job.py']
           try:runpy.run_path('content_group_destination.py',run_name='__main__')
