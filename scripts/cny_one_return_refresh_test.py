@@ -4,7 +4,7 @@ import cny_single_document_test as s
 import cny_document_rollout as r
 b=s.b;m=s.m
 def save(db,key,value):s.save(db,'return_refresh:'+key,value)
-def shape(d):return [(p['id'],str(b.D(p['quantity']).normalize()),m.href(p['assortment'])) for p in d['positions']['rows']]
+def shape(d):return [[p['id'],str(b.D(p['quantity']).normalize()),m.href(p['assortment'])] for p in d['positions']['rows']]
 def main():
  t=b.ReadOnly();db=m.Cache(t);cfg=db.get(s.ROOT+'return_refresh_config:v1')
  assert cfg and cfg['authorized'] and cfg['scope']=='one_existing_salesreturn_refresh_only' and cfg['max_documents']==1
