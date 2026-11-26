@@ -7,12 +7,12 @@ from china_cloud_cost_control import Cache,WB,validate_identity
 ROOT='china_agent:owner_midday26_buttons:v1'
 def now():return datetime.now(timezone.utc).isoformat()
 def main():
- io=AdvertisingIO();auth=io.get(ROOT+':approval');assert auth['status']=='approved_for_publication_only' and auth['owner_id']==5122667182 and not auth['wb_execution_authorized'];validate_identity(Cache(),WB());assert not io.get(ROOT+':delivery'),'Inspect delivery; never repeat send'
- state=dict(status='preflight',started_at=now(),actions=[],blocked=[],checks=[],wb_writes=0,telegram_calls=0);assert io.create(ROOT+':delivery',state)
+ io=AdvertisingIO();auth=io.get(ROOT+':approval');assert auth['status']=='approved_for_publication_only' and auth['owner_id']==5122667182 and not auth['wb_execution_authorized'];validate_identity(Cache(),WB());prior=io.get(ROOT+':delivery');assert not prior or prior['status']=='preflight' and not prior['actions'] and not prior['checks'] and not prior['blocked'] and prior['telegram_calls']==0,'Inspect delivery; never repeat send'
+ state=dict(status='preflight',started_at=now(),actions=[],blocked=[],checks=[],wb_writes=0,telegram_calls=0);assert prior or io.create(ROOT+':delivery',state)
  def save():io.put(ROOT+':delivery',copy.deepcopy(state))
  original=requests.sessions.Session.request
- def guard(s,m,url,*a,**kw):
-  u=urlparse(url);m=m.upper();ok=u.hostname==urlparse(io.url).hostname and m in('GET','POST','PATCH') and u.path.startswith('/rest/v1/')
+ def guard(s,method,url,*a,**kw):
+  u=urlparse(url);m=method.upper();ok=u.hostname==urlparse(io.url).hostname and m in('GET','POST','PATCH') and u.path.startswith('/rest/v1/')
   if u.hostname=='advert-api.wildberries.ru':ok=m=='GET' and u.path in('/api/advert/v2/adverts','/api/advert/v1/config') or m=='POST' and u.path=='/api/advert/v1/bids/min'
   if u.hostname=='discounts-prices-api.wildberries.ru':ok=m=='GET' and u.path=='/api/v2/list/goods/filter'
   if u.hostname=='marketplace-api.wildberries.ru':ok=m=='POST' and u.path=='/api/v3/stocks/2126188'
@@ -69,5 +69,6 @@ def main():
   state.update(status='sent',telegram_calls=1,message_id=receipt['message_id'],receipt=receipt);save();bind(io,f,receipt);assert io.get(PLAN+p['plan_id'])['report_message_ids']==[receipt['message_id']];state.update(status='delivered',completed_at=now());save();print(json.dumps(dict(status='delivered',message_id=receipt['message_id'],actions=len(state['actions']),blocked=state['blocked'],wb_writes=0)))
  finally:requests.sessions.Session.request=original
 if __name__=='__main__':main()
+
 
 
