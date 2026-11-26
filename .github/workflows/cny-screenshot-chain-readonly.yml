@@ -1,4 +1,4 @@
-name: Read screenshot-selected currency chain only
+name: Read selected chain historical audit only
 on:
   push:
     branches: [main]
@@ -14,9 +14,9 @@ jobs:
         with:
           persist-credentials: false
           sparse-checkout: scripts
-      - name: Read four selected documents and currencies
+      - name: Read selected-chain audit events and notes
         env:
           MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-        run: python scripts/cny_screenshot_chain_readonly.py
+        run: python scripts/cny_selected_chain_audit_readonly.py
