@@ -94,7 +94,9 @@ jobs:
                   raise Stopped('MS exact linked order coverage: '+json.dumps(detail)) from exc
               finally:g.api=api
           m.referenced_customer_orders=detailed
-          runpy.run_module('stock_regular_job',run_name='__main__')
+          import sys
+          sys.argv=['content_group_destination.py','private-source/stock_regular_job.py']
+          runpy.run_path('content_group_destination.py',run_name='__main__')
           PY
       - uses: actions/upload-artifact@v4
         if: always()
