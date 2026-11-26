@@ -110,7 +110,9 @@ def collect(call,checks,known):
  state.update(active_campaign_ids=sorted(active),catalog_total=total,catalog_scope_complete=True)
  if set(overview.get('campaign_ids',[]))!=scope:
   put('advertising:ip:daily-overview-scope:v1:before-discovery:'+REPORT_DAY,overview)
-  overview=dict(overview,campaign_ids=sorted(scope),catalog_active_ids=sorted(active),catalog_scope_observed_at=datetime.now(timezone.utc).isoformat())
+  new_active=active-set(overview.get('campaign_ids',[]))
+  priority=sorted(new_active,reverse=True)+[i for i in overview.get('priority_campaign_ids',[])if i not in new_active]
+  overview=dict(overview,campaign_ids=sorted(scope),priority_campaign_ids=priority,catalog_active_ids=sorted(active),catalog_scope_observed_at=datetime.now(timezone.utc).isoformat())
   put('advertising:ip:daily-overview-scope:v1',overview)
  rows=[r for c in catalogs if c.get('report')=='stats' for r in c.get('rows',[])]
  mapping={r['wb_id']:r for r in rows}
