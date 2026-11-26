@@ -1,0 +1,86 @@
+name: Verify all IP FBS zero after MS stock repair26Nov
+on:
+  push:
+    paths: ['.github/workflows/ip-fbs-zero-final-audit-20261126.yml']
+permissions:
+  contents: read
+concurrency:
+  group: bot-stock
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: stock_deploy_support.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: 33dcdb80c7c69a64ae340b6255a381b05b23c133
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          persist-credentials: false
+          path: private-source
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests==2.32.5 python-dotenv==1.1.1 aiogram==3.22.0 simplejson==4.2.0 'psycopg[binary]==3.2.9' cryptography
+      - name: Read every active IP card and warehouse, no stock writes
+        env:
+          PYTHONPATH: ${{ github.workspace }}/private-source:${{ github.workspace }}
+          WB_TOKEN_2: ${{ secrets.WB_TOKEN_2 }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          AUTO_STOCK_FAIL_FAST: '1'
+        run: |
+          python - <<'PY'
+          import time,json,uuid
+          import stock_deploy_support as support,tg_agent_new as g
+          from stock_operation_store import canonical,digest
+          token=g.cabinet_tokens()[1];g.RUN_DEADLINE=time.monotonic()+500
+          api=g.api
+          def readonly(method,url,token,**kw):
+              assert method=='GET' or (method=='POST' and (url.endswith('/content/v2/get/cards/list') or '/api/v3/stocks/' in url))
+              return api(method,url,token,**kw)
+          g.api=readonly
+          cursor={'limit':100};cards=[];seen=set()
+          for _ in range(100):
+              value=g.api('POST',g.WB_CONTENT+'/content/v2/get/cards/list',token,json={'settings':{'cursor':cursor,'filter':{'withPhoto':-1}}},retry_read_network=True)
+              if not isinstance(value.get('cards'),list):value=value.get('data',{})
+              rows=value.get('cards');assert isinstance(rows,list) and isinstance(value.get('cursor'),dict)
+              cards+=rows
+              if len(rows)<100:break
+              marker=(value['cursor'].get('updatedAt'),value['cursor'].get('nmID'))
+              assert all(marker) and marker not in seen;seen.add(marker)
+              cursor={'limit':100,'updatedAt':marker[0],'nmID':marker[1]};time.sleep(.7)
+          else:raise AssertionError('Card page bound')
+          ids=set()
+          for card in cards:
+              for size in card.get('sizes',[]):
+                  ident=size.get('chrtID',size.get('chrtId'))
+                  if ident is None:
+                      assert not size.get('skus'),'Published barcode has no stock identity'
+                      continue
+                  assert type(ident) is int and ident>0
+                  ids.add(ident)
+          ids=sorted(ids)
+          warehouses=g.api('GET',g.WB_MARKET+'/api/v3/warehouses',token,retry_read_network=True)
+          assert isinstance(warehouses,list)
+          wh=sorted({r['id'] for r in warehouses if r.get('deliveryType')==1 and not r.get('isDeleting') and not r.get('isDeleted')})
+          assert ids and wh and 854652 in wh
+          checks=[];positive=[]
+          for warehouse in wh:
+              values=g.get_real_wb_stocks(token,ids,warehouse)
+              assert set(values)==set(ids)
+              positive += [dict(warehouse=warehouse,chrtId=i,amount=q) for i,q in values.items() if q!=0]
+              checks.append(dict(warehouse=warehouse,sizes=len(values),total=sum(values.values())))
+          result=dict(complete=True,observed_at=time.time(),card_count=len(cards),size_count=len(ids),warehouses=checks,nonzero=positive,stock_writes=0,policy='all_ip_fbs_zero')
+          ident='technical:ip-fbs-zero-final-audit:2026-11-26:morning'
+          with support.runtime_db() as db:
+              db.execute('INSERT INTO stock_runs VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(id) DO UPDATE SET snapshot=excluded.snapshot',(ident,canonical(result),'{}',digest({}),'technical-no-executor',time.time()))
+          print(json.dumps(dict(complete=True,cards=len(cards),sizes=len(ids),warehouse_count=len(wh),nonzero=len(positive),stock_writes=0)))
+          assert not positive
+          PY
