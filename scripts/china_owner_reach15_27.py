@@ -10,6 +10,7 @@ from china_advertising_economic_review import model_rows
 ROOT='china_agent:owner_reach15_27:v1';io=AdvertisingIO();scope=io.get(ROOT+':scope');ids=[x['nm']for x in scope['items']];assert len(ids)==15
 out=io.get(ROOT+':result')or dict(status='reading',errors={},started_at=datetime.now(timezone.utc).isoformat(),wb_writes=0,telegram_calls=0)
 if out.get('status')=='complete':raise SystemExit('Already saved')
+if not io.get(ROOT+':result'):assert io.create(ROOT+':result',out)
 original=requests.sessions.Session.request
 def guard(s,method,url,*a,**kw):
  u=urlparse(url);m=method.upper();p=u.path
