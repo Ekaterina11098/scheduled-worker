@@ -46,7 +46,8 @@ jobs:
            binding_key='advertising:ip:png-message:v1:'+str(p['chat_id'])+':'+str(p['message_id'])
            binding=db.get(binding_key)or{}
            plan=db.get(binding.get('plan_key',''))or{}
-           if plan.get('actions')!=[]or plan.get('message_id')!=p['message_id']:raise PermissionError('Executable binding is not the empty approved report')
+           if plan.get('message_id')!=p['message_id']or (plan.get('actions')and plan.get('plan_sha256')!=p.get('expected_plan_sha256')):raise PermissionError('Exact frozen action scope not approved')
+           if p.get('displayed_action_count')!=len(plan.get('actions',[])):raise PermissionError('PNG action count differs from bound plan')
            token=os.environ['ADVERTISING_TELEGRAM_BOT_TOKEN']
            host='https://api.telegram.org/bot'+token+'/'
            me=requests.get(host+'getMe',timeout=(10,40),allow_redirects=False).json()
@@ -73,8 +74,14 @@ jobs:
             db.put(ROOT+':prior_delivery_claim',claim,once=True)
             claim.update(media_sha256=p['sha256'],photo_file_unique_id=unique,owner_edit_receipt=ROOT+':execution',edited_at=state['confirmed_at'])
             db.put(p['delivery_claim'],claim)
+            plan_key=binding['plan_key']
+            if db.get(plan_key)!=plan:raise PermissionError('Frozen plan changed during media edit')
+            db.put(ROOT+':prior_plan_metadata',plan,once=True)
+            plan.update(file_unique_id=unique,media_sha256=p['sha256'],owner_edit_receipt=ROOT+':execution')
+            db.put(plan_key,plan)
             binding.update(file_unique_id=unique,media_sha256=p['sha256'],owner_edit_receipt=ROOT+':execution')
             db.put(binding_key,binding)
+            if db.get(plan_key).get('file_unique_id')!=unique or db.get(binding_key).get('file_unique_id')!=unique:raise RuntimeError('Edited photo binding readback mismatch')
             ak='advertising:ip:report_clock:v1:artifact:2026-11-26:morning';art=db.get(ak)or{}
             if art.get('images')and art['images'][0].get('kind')=='drr':
              art['images'][0].update(data=p['data'],sha256=p['sha256']);art.update(owner_edit_receipt=ROOT+':execution',new_actions=0)
@@ -83,4 +90,3 @@ jobs:
             state['metadata_repair_error']=type(e).__name__;db.put(ROOT+':execution',state)
            print(json.dumps({'status':state['status'],'message_id':state['message_id'],'new_messages':0,'budget_edits':0,'wb_writes':0}))
           if __name__=='__main__':run()
-          
