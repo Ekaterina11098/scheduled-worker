@@ -87,6 +87,14 @@ jobs:
               values=g.get_real_wb_stocks(g.cabinet_tokens()[cab],[r['body']['location']['chrtId'] for r in items],wh)
               for row in items:
                   row.update(actual=values[row['body']['location']['chrtId']],observed_at=time.time())
+          from stock_unposted_source import wb_units
+          from datetime import datetime,timezone
+          recent=wb_units(g,2,[2126188],datetime.now(timezone.utc),days=1)
+          for row in rows:
+              if row['state']!='uncertain':continue
+              with support.runtime_db() as db:
+                  sent=db.execute("SELECT max(at) FROM stock_events WHERE run=%s AND seq=%s AND state='sent'",(row['run'],row['seq'])).fetchone()[0]
+              row['orders_after_dispatch']=[u for u in recent if u['article']==row['article'] and datetime.fromisoformat(u['created_at'].replace('Z','+00:00')).timestamp()>sent]
           result=dict(complete=True,root=root,rows=rows,observed_at=time.time(),stock_writes=0)
           with support.runtime_db() as db:
               db.execute('INSERT INTO stock_runs VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(id) DO UPDATE SET snapshot=excluded.snapshot',('technical:stock-readback-diagnosis:2026-11-26',canonical(result),'{}',digest({}),'technical-no-executor',time.time()))
