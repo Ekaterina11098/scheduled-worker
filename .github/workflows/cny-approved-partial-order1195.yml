@@ -1,0 +1,25 @@
+name: Correct approved three-item sale and partial return
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/cny-approved-partial-order1195.yml']
+permissions:
+  contents: read
+concurrency:
+  group: ms-cny-selected-chain
+  cancel-in-progress: false
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Apply approved sale and return amounts
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: python scripts/cny_approved_partial_order1195.py
