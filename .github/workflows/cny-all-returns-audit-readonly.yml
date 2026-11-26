@@ -1,0 +1,25 @@
+name: Audit all customer returns read only
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/cny-all-returns-audit-readonly.yml']
+permissions:
+  contents: read
+concurrency:
+  group: ms-cny-return-audit-readonly
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Read all customer returns and linked document data
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: python scripts/cny_all_returns_audit_readonly.py
