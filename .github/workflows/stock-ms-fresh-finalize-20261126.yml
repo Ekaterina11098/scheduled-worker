@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Ekaterina11098/VESCHI_AI
-          ref: ec8766b19d15160c45f38c22dc0e312e18e5bf2b
+          ref: 07ed0a0318fe63591f76ae0df3b3a06508935951
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           persist-credentials: false
           path: private-source
@@ -111,6 +111,19 @@ jobs:
           def progress(value):
               observation.update(stage=value['stage'],counts={k:v for k,v in value.items() if k!='stage'})
               save_observation()
+          import stock_debit_checkpoint as debit
+          original_scan=debit.scan_from
+          def observed_scan(ledger,units,catalog,*args,**kwargs):
+              old={(u['cabinet'],u['id'],u['article']):u['group'] for u in ledger.get('order_catalog',[])}
+              groups={u['group'] for u in units}
+              moved=[u for u in catalog if u['cabinet']<3 and old.get((u['cabinet'],u['id'],u['article']),u['group'])!=u['group']]
+              relevant=[u for u in moved if u['group'] in groups or old.get((u['cabinet'],u['id'],u['article'])) in groups]
+              chosen=original_scan(ledger,units,catalog,*args,**kwargs)
+              with observation_lock:
+                  observation['debit_scope']=dict(checkpoint=ledger.get('ms_scan_from'),read_from=chosen,moved_total=len(moved),moved_current_groups=len(relevant),unrelated_closed_groups=len(moved)-len(relevant))
+                  save_observation()
+              return chosen
+          debit.scan_from=observed_scan
           g.STOCK_PENDING_PROGRESS=progress
           original_api=g.api;last=[time.monotonic()]
           def observed_api(method,url,*args,**kw):
