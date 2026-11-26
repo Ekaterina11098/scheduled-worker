@@ -1,4 +1,5 @@
 """Read current WB China media for one exact article using the existing worker."""
+import base64
 import hashlib
 import io
 import json
@@ -51,11 +52,9 @@ def inspect_card(client, vendor_code, expected_nm_id=None):
         "video_field_present": "video" in card,
     }
 
-def load_bundle(client, file_id, checksum, vendor_code):
+def load_drive_bundle(client, file_id):
     if not re.fullmatch(r"[A-Za-z0-9_-]{10,150}", file_id or ""):
         raise Stop("invalid_bundle_id")
-    if not re.fullmatch(r"[a-f0-9]{64}", checksum or ""):
-        raise Stop("invalid_bundle_checksum")
     credentials = json.loads(client.call(
         client.base + "/rest/v1/rpc/content_photo_drive_credentials", "POST", {}
     ))
@@ -71,6 +70,29 @@ def load_bundle(client, file_id, checksum, vendor_code):
         payload = bytearray()
         for chunk in response.iter_content(64 * 1024):
             payload.extend(chunk)
+            if len(payload) > 40 * 1024 * 1024:
+                raise Stop("bundle_size_limit")
+    return payload
+
+
+def load_bundle(client, request, vendor_code):
+    checksum = request.get("sha256")
+    if not re.fullmatch(r"[a-f0-9]{64}", checksum or ""):
+        raise Stop("invalid_bundle_checksum")
+    bundle_id = request.get("bundleId")
+    if bundle_id is None:
+        payload = load_drive_bundle(client, request.get("driveFileId"))
+    else:
+        count = request.get("bundleParts")
+        if not re.fullmatch(r"[a-f0-9-]{36}", bundle_id or "") or type(count) is not int or not 1 <= count <= 70:
+            raise Stop("invalid_bundle_parts")
+        payload = bytearray()
+        for index in range(count):
+            row = client.get(f"content_photo_bridge:v1:media_input:{bundle_id}:{index:03}")
+            part = row.get("base64") if isinstance(row, dict) else None
+            if not isinstance(part, str) or not 1 <= len(part) <= 800000:
+                raise Stop("bundle_part_missing")
+            payload.extend(base64.b64decode(part, validate=True))
             if len(payload) > 40 * 1024 * 1024:
                 raise Stop("bundle_size_limit")
     if hashlib.sha256(payload).hexdigest() != checksum:
@@ -104,7 +126,7 @@ def append_media(client, request, request_id, mark_write_pending):
     current = inspect_card(client, article, request.get("nmID"))
     if current["video"]:
         raise Stop("video_present_needs_verified_preservation")
-    files = load_bundle(client, request.get("driveFileId"), request.get("sha256"), article)
+    files = load_bundle(client, request, article)
     slides = [image_signature(raw, png_required=True) for raw in files]
     if any(same_image(left, right) for i, left in enumerate(slides) for right in slides[i + 1:]):
         raise Stop("duplicate_uploaded_slides")
