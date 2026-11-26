@@ -1,0 +1,144 @@
+name: Fresh read-only allocation proposal EvaBag brown26Nov
+on:
+  push:
+    paths: ['.github/workflows/stock-eva-proposal-20261126.yml']
+permissions:
+  contents: read
+concurrency:
+  group: bot-stock
+  cancel-in-progress: false
+jobs:
+  stock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            content_group_destination.py
+            stock_deploy_support.py
+            warehouse_id_patch.py
+            scripts/moysklad_warehouses.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: 40c6a7ef4a34f7ecb739578091e26af1295e55da
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          persist-credentials: false
+          path: private-source
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests==2.32.5 python-dotenv==1.1.1 aiogram==3.22.0 simplejson==4.2.0 'psycopg[binary]==3.2.9' cryptography > "$RUNNER_TEMP/daily-install.log" 2>&1
+      - name: Fresh stock calculation and newly created stock-only notifications
+        env:
+          PYTHONPATH: ${{ github.workspace }}/private-source:${{ github.workspace }}
+          STOCK_DAILY_ENABLED: 'true'
+          STOCK_OZON_ENABLED: 'true'
+          STOCK_PENDING_RESERVE_ENABLED: 'true'
+          STOCK_CANCELLATION_RESTORE_ENABLED: 'true'
+          STOCK_RUN_SLOT: ${{ github.event_name == 'workflow_dispatch' && inputs.slot || ((github.event.schedule == '0 2 * * *' || github.event.schedule == '10,20,30,40,50 2 * * *' || github.event.schedule == '*/10 3-8 * * *') && '0700' || '1630') }}
+          STOCK_NOTIFICATIONS_ENABLED: 'false'
+          STOCK_CLOUD_EXECUTION_ENABLED: 'true'
+          STOCK_JOURNAL_IMPORT_ACCEPTED: 'true'
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_1: ${{ secrets.WB_TOKEN_1 }}
+          WB_TOKEN_2: ${{ secrets.WB_TOKEN_2 }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          WB_FINANCE_TOKEN_1: ${{ secrets.WB_FINANCE_TOKEN_1 }}
+          WB_FINANCE_TOKEN_2: ${{ secrets.WB_FINANCE_TOKEN_2 }}
+          WB_FINANCE_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          WB_STOCK_WAREHOUSE_1: ${{ vars.WB_STOCK_WAREHOUSE_1 }}
+          WB_STOCK_WAREHOUSE_2: ${{ vars.WB_STOCK_WAREHOUSE_2 }}
+          WB_STOCK_WAREHOUSE_3: ${{ vars.WB_STOCK_WAREHOUSE_3 }}
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          MOYSKLAD_STORE_NAME: МСК
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ALLOWED_CHAT_ID: ${{ secrets.TELEGRAM_ALLOWED_CHAT_ID }}
+          AUTO_STOCK_FAIL_FAST: '1'
+        run: |
+          python warehouse_id_patch.py private-source
+          python - <<'PY'
+          import os,time,json,math
+          import stock_deploy_support as support,tg_agent_new as g,auto_stock as a
+          import stock_regular_service as service
+          from stock_operation_store import Store,canonical,digest
+          from stock_execution_fence import cloud_writer
+          from stock_shared_requests import SharedRequests
+          from stock_storage_health import verify_runtime_storage
+          from stock_slot_demand_reference import install
+          from stock_order_demand import speed
+          from stock_approved_warehouses import install as install_warehouses
+          from threading import RLock
+          art='042-evabag-brown';key='technical:stock-proposal:2026-11-26:042-evabag-brown'
+          g.RUN_DEADLINE=time.monotonic()+1800;g.STOCK_FURCOAT_ENABLED=True
+          g.STOCK_CANCELLATION_STORE=None
+          os.environ['STOCK_STORAGE_PROOF_FILE']=os.path.join(os.environ['RUNNER_TEMP'],'eva-proposal-proof.json')
+          os.environ['STOCK_STORAGE_PROOF_SCOPE']=key
+          api=g.api
+          def readonly(method,url,*args,**kwargs):
+              assert method in ('GET','POST'),'Proposal must not write stock'
+              return api(method,url,*args,**kwargs)
+          g.api=readonly
+          with cloud_writer(support.runtime_db()):
+              with support.runtime_db() as db:
+                  store=Store(db,postgres=True);shared=SharedRequests(store,budget=g.check_run_budget)
+                  g.STOCK_SHARED_ORDERS=shared;g.STOCK_REQUEST_GATE=shared;g._CACHE_GET=shared.get;g._CACHE_SET=shared.put
+                  install_warehouses(g)
+                  prior=json.loads(store.sql('SELECT snapshot FROM stock_runs WHERE id=?',('technical:stock-daily:2026-11-26:0700',)).fetchone()[0]);db.commit()
+                  assert install(g,prior,'technical:stock-daily:2026-11-26:0700'),'Complete closed-day demand reference required'
+                  def save(value):
+                      with store.transaction():store.sql('INSERT INTO stock_runs VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET snapshot=excluded.snapshot',(key,canonical(value),'{}',digest({}),'technical-no-executor',time.time()))
+                  progress=dict(status='collecting',article=art,started=time.time(),stock_writes=0)
+                  def write_proof(value):
+                      with store.transaction():store.sql('INSERT INTO stock_runs VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET snapshot=excluded.snapshot',(key+':storage',canonical(value),'{}',digest({}),'technical-no-executor',time.time()))
+                  def read_proof():
+                      row=store.sql('SELECT snapshot FROM stock_runs WHERE id=?',(key+':storage',)).fetchone();db.commit();return json.loads(row[0])
+                  def verify():verify_runtime_storage(write_proof,read_proof,dict(scope=key,nonce=os.urandom(16).hex()))
+                  verify();original=g.check_run_budget;last=[time.monotonic()];lock=RLock()
+                  def budget():
+                      with lock:
+                          original()
+                          if time.monotonic()-last[0]>=120:verify();last[0]=time.monotonic()
+                  g.check_run_budget=budget
+                  def observe(v):
+                      progress.update(stage=v['stage'],counts={k:z for k,z in v.items() if k!='stage'},at=time.time());save(progress)
+                  g.STOCK_PENDING_PROGRESS=observe;save(progress)
+                  for attempt in range(4):
+                      try:
+                          sales=[speed(g,t,7) for t in g.cabinet_tokens()]
+                          src=service.capture(g,{art},sales)
+                          assert not service.source_expired(src),'Proposal source expired'
+                          src['moscow_raw']={k:v for k,v in src['moscow_raw'].items() if k==art}
+                          plan=service.plan_source(g,a,src,set(),set())
+                          blocked=[r for r in plan['blocked'] if r['article']==art]
+                          members=[r for r in plan['articles'] if r['article']==art]
+                          n=4 if art in (src.get('ozon')or{}).get('locations',{}) else 3
+                          cards=service.restored_cards(src)[:n]
+                          before=a.before_quantities(art,cards,src['fbs'][:n])
+                          target=members[0]['target'] if members else before
+                          proof=src['unposted_orders']
+                          from stock_fbo import fbo_quantity
+                          result=dict(status='complete',article=art,started=progress['started'],observed_at=time.time(),stock_writes=0,
+                            physical_msk=proof['physical_moscow'].get(art),pending=proof['pending'].get(art,0),native_ms_reserve=proof.get('native_reserves',{}).get(art),
+                            free=proof['available_moscow'].get(art),blocked=blocked,reserve_block=proof.get('blocked',{}).get(art),
+                            before=before,target=target,manual=[r for r in plan['manual'] if r['article']==art],names=(list(g.CABINET_NAMES)+['Ozon'])[:n],warehouses=src['warehouses'][:n],
+                            fbo=[fbo_quantity(c,art,g.CheckError) if any(g.norm(x.get('vendorCode'))==art for x in c) else None for c in cards],
+                            peak=[max((src['sales'][i][1].get(art)or{}).values(),default=0) for i in range(n)],
+                            daily=[src['sales'][i][1].get(art,{}) for i in range(n)],
+                            photo_eligible=[art in g.eligible_articles(c) for c in cards],
+                            pending_by_cabinet=proof['by_cabinet'].get(art,{}),reserve_proof=[r for r in proof['proof'] if r['article']==art],
+                            order_units=[u for u in proof['units'] if u['article']==art],
+                            ms_documents=[d for d in proof['documents'] if art in d.get('quantities',{}) and d.get('group') in {u['group'] for u in proof['units'] if u['article']==art}],
+                            source_started=src['started'],physical_observed_at=proof['physical_observed_at'],document_period=proof.get('ms_document_period'),demand_period={k:v for k,v in g.STOCK_SLOT_DEMAND_REFERENCE.items() if k!='reports'})
+                          save(result);print(json.dumps(dict(status='complete',article=art,physical=result['physical_msk'],pending=result['pending'],free=result['free'],before=before,target=target,blocked=blocked,stock_writes=0)),flush=True)
+                          break
+                      except Exception as e:
+                          wait=getattr(e,'wait',0);progress.update(status='waiting',error=str(e),error_type=type(e).__name__,retry_after=wait,at=time.time());save(progress)
+                          if not wait or attempt==3:raise
+                          left=math.ceil(wait)
+                          while left>0:part=min(30,left);g.check_run_budget();time.sleep(part);left-=part
+          PY
