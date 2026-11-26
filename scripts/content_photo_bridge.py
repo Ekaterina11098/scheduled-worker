@@ -260,8 +260,13 @@ def run():
         key=row['cache_key'];request=row['payload'];ident=key.removeprefix(ROOT+'request:')
         if str(uuid.UUID(ident))!=ident:raise Stop('request_identity')
         if not client.claim(ident):continue
+        pending_write = False
+        def mark_write_pending():
+            nonlocal pending_write
+            pending_write = True
+            client.put(key,{**request,'status':'running','write_state':'submission_pending','run_id':os.environ.get('GITHUB_RUN_ID')})
         try:
-            if request.get('operation') != 'media_inspect':
+            if request.get('operation') not in ('media_inspect', 'media_append'):
                 valid_request(request)
             age=dt.datetime.now(dt.timezone.utc)-dt.datetime.fromisoformat(request['created_at'].replace('Z','+00:00'))
             if not 0<=age.total_seconds()<3600:raise Stop('request_expired')
@@ -281,6 +286,16 @@ def run():
                     'video_field_present': card['video_field_present'],
                     'wb_writes': 0,
                 }
+            elif request.get('operation') == 'media_append':
+                from wb_china_media_inspect import append_media
+
+                if request.get('cabinet') != 'china' or type(request.get('nmID')) is not int:
+                    raise Stop('invalid_append_target')
+                report = append_media(client, request, ident, mark_write_pending)
+                result = {
+                    **request, **report, 'status': 'ready', 'finished_at': stamp(),
+                    'run_id': os.environ.get('GITHUB_RUN_ID'),
+                }
             else:
                 if cards is None:cards=client.catalog()
                 result=export(client,request,ident,cards)
@@ -293,9 +308,9 @@ def run():
                 continue
             code=str(error) if isinstance(error,(Stop,DriveError,GalleryError)) else type(error).__name__
             code=re.sub('[^a-zA-Z0-9_]','',code)[:100]
-            client.put(key,{**request,'status':'failed','finished_at':stamp(),'safe_error':code,'run_id':os.environ.get('GITHUB_RUN_ID'),'wb_writes':0})
-    client.put(ROOT+'health',{'at':stamp(),'processed':processed,'run_id':os.environ.get('GITHUB_RUN_ID'),'wb_writes':0})
-    print('Private photo export finished; WB writes=0; public artifacts=0')
+            client.put(key,{**request,'status':'failed','finished_at':stamp(),'safe_error':code,'run_id':os.environ.get('GITHUB_RUN_ID'),'wb_writes':None if pending_write else 0})
+    client.put(ROOT+'health',{'at':stamp(),'processed':processed,'run_id':os.environ.get('GITHUB_RUN_ID')})
+    print('Private media queue finished; inspect private results')
 
 if __name__=='__main__':
     try:run()
