@@ -16,5 +16,6 @@ jobs:
           sparse-checkout: scripts
       - name: Read live header summary
         env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
         run: python scripts/cny_incoming_live_header_counts.py
