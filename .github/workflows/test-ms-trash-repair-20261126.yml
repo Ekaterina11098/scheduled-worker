@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Ekaterina11098/VESCHI_AI
-          ref: 75b21711d4ba68cb26d0a1a44bdc75673277ed3a
+          ref: 22a864aaf3c75d94e73b62e928c2c6c027068831
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           persist-credentials: false
       - uses: actions/setup-python@v5
@@ -20,4 +20,4 @@ jobs:
           python-version: '3.12'
       - run: pip install requests==2.32.5 python-dotenv==1.1.1 aiogram==3.22.0 simplejson==4.2.0 'psycopg[binary]==3.2.9'
       - name: Offline exact MS, reservation, stock dispatch and all-IP-zero regression tests
-        run: python -m unittest -v test_stock_ms_assortment_articles test_stock_ms_position_cache_batch test_stock_shared_requests test_stock_ms_throttle test_stock_read_retries test_stock_ms_recovery test_stock_ms_stable_pages test_stock_ms_parallel_heartbeat test_stock_ms_reference_reads test_stock_long_collection_freshness test_stock_ms_customer_order_batch test_stock_ms_exact_order_snapshot test_stock_ms_deleted_order_references test_stock_china_ms_exact_orders test_stock_all_ip_disabled test_stock_belt_common_pool test_stock_group_execution test_stock_regular_service test_stock_slot_demand_reference test_stock_live_capacity test_stock_unposted_orders test_stock_debit_checkpoint test_stock_capacity_prefetch test_stock_incremental_orders test_stock_china_mgt_daily test_stock_china_mgt_publish test_stock_china_cancellation_release test_stock_cancellation_credit test_stock_document_identities test_stock_exact_assortments test_stock_batch_transport
+        run: python -m unittest test_stock_ms_document_week -v test_stock_ms_assortment_articles test_stock_ms_position_cache_batch test_stock_shared_requests test_stock_ms_throttle test_stock_read_retries test_stock_ms_recovery test_stock_ms_stable_pages test_stock_ms_parallel_heartbeat test_stock_ms_reference_reads test_stock_long_collection_freshness test_stock_ms_customer_order_batch test_stock_ms_exact_order_snapshot test_stock_ms_deleted_order_references test_stock_china_ms_exact_orders test_stock_all_ip_disabled test_stock_belt_common_pool test_stock_group_execution test_stock_regular_service test_stock_slot_demand_reference test_stock_live_capacity test_stock_unposted_orders test_stock_debit_checkpoint test_stock_capacity_prefetch test_stock_incremental_orders test_stock_china_mgt_daily test_stock_china_mgt_publish test_stock_china_cancellation_release test_stock_cancellation_credit test_stock_document_identities test_stock_exact_assortments test_stock_batch_transport
