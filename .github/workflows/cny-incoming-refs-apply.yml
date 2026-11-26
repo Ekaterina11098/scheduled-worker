@@ -23,3 +23,5 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
         run: python scripts/cny_incoming_refs_apply.py
+
+# Resume from verified private checkpoints; never replay prior intents.
