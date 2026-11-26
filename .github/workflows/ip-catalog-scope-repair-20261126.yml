@@ -1,7 +1,5 @@
 name: Addressed IP catalog scope repair
 on:
-  push:
-    paths: [.github/workflows/ip-catalog-scope-repair-20261126.yml]
   workflow_dispatch:
 permissions: {contents: read}
 concurrency: {group: ip-catalog-scope-repair-20261126, cancel-in-progress: false}
