@@ -1,0 +1,152 @@
+name: Complete owner stock recovery after delayed WB writes26Nov
+on:
+  push:
+    paths: ['.github/workflows/stock-owner-holds-recovery-20261126.yml']
+# Daily05:00/20:00MSK; legacy0700 journal identity retained; bounded10-minute checks resume unfinished slots only.
+# Completed slots and unexpired Retry-After are skipped without business API calls.
+# Owner approved daily stock execution and new stock notifications, 2026-10-15.
+permissions:
+  contents: read
+concurrency:
+  group: bot-stock
+  cancel-in-progress: false
+jobs:
+  stock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            content_group_destination.py
+            stock_deploy_support.py
+            warehouse_id_patch.py
+            scripts/moysklad_warehouses.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: 33dcdb80c7c69a64ae340b6255a381b05b23c133
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          persist-credentials: false
+          path: private-source
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests==2.32.5 python-dotenv==1.1.1 aiogram==3.22.0 simplejson==4.2.0 'psycopg[binary]==3.2.9' cryptography > "$RUNNER_TEMP/daily-install.log" 2>&1
+      - name: Fresh stock calculation and newly created stock-only notifications
+        env:
+          PYTHONPATH: ${{ github.workspace }}/private-source:${{ github.workspace }}
+          STOCK_DAILY_ENABLED: 'true'
+          STOCK_OZON_ENABLED: 'true'
+          STOCK_PENDING_RESERVE_ENABLED: 'true'
+          STOCK_CANCELLATION_RESTORE_ENABLED: 'true'
+          STOCK_RUN_SLOT: '0700'
+          STOCK_NOTIFICATIONS_ENABLED: 'true'
+          STOCK_CLOUD_EXECUTION_ENABLED: 'true'
+          STOCK_JOURNAL_IMPORT_ACCEPTED: 'true'
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_1: ${{ secrets.WB_TOKEN_1 }}
+          WB_TOKEN_2: ${{ secrets.WB_TOKEN_2 }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          WB_FINANCE_TOKEN_1: ${{ secrets.WB_FINANCE_TOKEN_1 }}
+          WB_FINANCE_TOKEN_2: ${{ secrets.WB_FINANCE_TOKEN_2 }}
+          WB_FINANCE_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          WB_STOCK_WAREHOUSE_1: ${{ vars.WB_STOCK_WAREHOUSE_1 }}
+          WB_STOCK_WAREHOUSE_2: ${{ vars.WB_STOCK_WAREHOUSE_2 }}
+          WB_STOCK_WAREHOUSE_3: ${{ vars.WB_STOCK_WAREHOUSE_3 }}
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          MOYSKLAD_STORE_NAME: МСК
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ALLOWED_CHAT_ID: ${{ secrets.TELEGRAM_ALLOWED_CHAT_ID }}
+          AUTO_STOCK_FAIL_FAST: '1'
+        run: |
+          python warehouse_id_patch.py private-source
+          python -c "import stock_deploy_support, stock_regular_job"
+          python - <<'PY'
+          import os,time,json,runpy,sys,re
+          import stock_deploy_support as support,tg_agent_new as g
+          import stock_regular_service as service
+          from stock_execution_fence import cloud_writer
+          from stock_operation_store import canonical,digest
+          root='technical:stock-daily:2026-11-26:0700'
+          # Explicit owner recovery: settle only observed writes, retain all claims.
+          from stock_operation_store import Store,Stopped
+          g.RUN_DEADLINE=time.monotonic()+300
+          with cloud_writer(support.runtime_db()):
+              with support.runtime_db() as db:
+                  store=Store(db,postgres=True)
+                  data=json.loads(store.sql('SELECT snapshot FROM stock_runs WHERE id=?',(root,)).fetchone()[0])
+                  assert data['engine']=='group-checkpoint-v1'
+                  before=service.totals(store,data)
+                  service.reconcile(store,g,data)
+                  rows=service.operation_rows(store,data['registry'].values())
+                  if any(state in ('sent','uncertain') for rid,seq,body,state in rows):
+                      raise Stopped('Unresolved actual stock remains; no prior write will be resent')
+                  data.setdefault('owner_recovery_history',[]).append(dict(at=time.time(),authorization='owner-resolve-stock-problems-20261126',reason='settle delayed WB writes by fresh reads and refresh skipped weekly MS articles',before=before,after=service.totals(store,data)))
+                  data.update(status='refreshing',held_articles=[],msk_execution_complete=False,execution_complete=False,delivery_done=False)
+                  data['source']['capacity_replan_required']=True
+                  with store.transaction():
+                      store.sql('UPDATE stock_runs SET snapshot=? WHERE id=?',(canonical(data),root))
+                  print(json.dumps(dict(settled_old_writes=True,progress=service.totals(store,data))),flush=True)
+          delay=data.get('retry_not_before',0)-time.time()
+          if 0<delay<=180:
+              print('Honouring current stock retry pause before fresh execution',flush=True)
+              time.sleep(delay+1)
+          from threading import RLock
+          observation_lock=RLock()
+          observation=dict(kind='ms-stock-repair-progress-v1',stage='starting',counts={},api_counts={},api_seconds={})
+          def save_observation():
+              with observation_lock:
+                  observation['at']=time.time()
+                  try:
+                      with support.runtime_db() as db:
+                          db.execute('INSERT INTO stock_runs VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(id) DO UPDATE SET snapshot=excluded.snapshot',('technical:ms-stock-repair-progress:2026-11-26:morning',canonical(observation),'{}',digest({}),'technical-no-executor',time.time()))
+                  except Exception as e:print(json.dumps(dict(progress_observer_error=type(e).__name__)),flush=True)
+          def progress(value):
+              observation.update(stage=value['stage'],counts={k:v for k,v in value.items() if k!='stage'})
+              save_observation()
+          import stock_debit_checkpoint as debit
+          original_scan=debit.scan_from
+          def observed_scan(ledger,units,catalog,*args,**kwargs):
+              old={(u['cabinet'],u['id'],u['article']):u['group'] for u in ledger.get('order_catalog',[])}
+              groups={u['group'] for u in units}
+              moved=[u for u in catalog if u['cabinet']<3 and old.get((u['cabinet'],u['id'],u['article']),u['group'])!=u['group']]
+              relevant=[u for u in moved if u['group'] in groups or old.get((u['cabinet'],u['id'],u['article'])) in groups]
+              chosen=original_scan(ledger,units,catalog,*args,**kwargs)
+              with observation_lock:
+                  observation['debit_scope']=dict(checkpoint=ledger.get('ms_scan_from'),read_from=chosen,moved_total=len(moved),moved_current_groups=len(relevant),unrelated_closed_groups=len(moved)-len(relevant))
+                  save_observation()
+              return chosen
+          debit.scan_from=observed_scan
+          g.STOCK_PENDING_PROGRESS=progress
+          original_api=g.api;last=[time.monotonic()]
+          def observed_api(method,url,*args,**kw):
+              start=time.monotonic()
+              try:return original_api(method,url,*args,**kw)
+              finally:
+                  if not kw.get('wb',True):
+                      from urllib.parse import urlparse
+                      key=method+' '+re.sub(r'/[0-9a-f-]{16,}(?=/|$)','/:id',urlparse(url).path)
+                      elapsed=time.monotonic()-start
+                      with observation_lock:
+                          observation['api_counts'][key]=observation['api_counts'].get(key,0)+1
+                          observation['api_seconds'][key]=round(observation['api_seconds'].get(key,0)+elapsed,2)
+                          if time.monotonic()-last[0]>=30:
+                              save_observation();last[0]=time.monotonic()
+          g.api=observed_api
+          sys.argv=['content_group_destination.py','private-source/stock_regular_job.py']
+          try:runpy.run_path('content_group_destination.py',run_name='__main__')
+          finally:save_observation()
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: owner-encrypted-stock-daily-receipt
+          path: ${{ runner.temp }}/stock-deploy-proof
+          retention-days: 90
+
+
+# Resume after obsolete collector released its exclusive writer session.
