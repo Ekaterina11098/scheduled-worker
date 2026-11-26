@@ -12,9 +12,17 @@ def main():
  bulk=db.get(r.ROOT+'authorization:v1');assert not bulk['authorized']
  path='entity/salesreturn/'+cfg['document_id'];basis_path='entity/demand/'+cfg['demand_id']
  before=s.getdoc(t,path);basis=s.getdoc(t,basis_path)
- assert m.href(before['demand'])==m.MS+basis_path
- assert basis['rate']['currency']['isoCode']=='CNY' and b.D(basis['rate'].get('value',1))==12
- assert before['rate']['currency']['isoCode']=='RUB'
+ save(db,'initial_read:v1',{'at':m.now(),'before':before,'basis':basis})
+ assert m.href(before['demand'])==m.MS+basis_path,'Unexpected source demand'
+ assert basis['rate']['currency']['isoCode']=='CNY' and b.D(basis['rate'].get('value',1))==12,'Source demand is not CNY at rate 12'
+ if before['rate']['currency']['isoCode']=='CNY':
+  baseline=db.get(b.ROOT+'backup:salesreturn:page:'+str(cfg.get('baseline_offset',0)))
+  old=next(x for x in baseline['documents'] if x['id']==before['id'])
+  target=b.plan(old,old['positions']['rows'])
+  save(db,'result:v1',{'status':'read_only_verified' if b.D(before['sum'])==b.D(target['actual_minor']) and shape(before)==shape(old) else 'read_only_mismatch','outcome':'already_cny_without_resave','at':m.now(),'document_id':before['id'],'name':before['name'],'before_currency':old['rate']['currency']['meta']['href'],'after_currency':'CNY','original_sum':old['sum'],'after_sum':before['sum'],'target_sum':target['actual_minor'],'rows':len(shape(before)),'quantity':str(sum((b.D(p['quantity']) for p in before['positions']['rows']),b.D(0))),'positions_unchanged':shape(before)==shape(old),'ms_documents_written':0})
+  print('Selected return already uses CNY; observed read-only and no resave attempted.')
+  return
+ assert before['rate']['currency']['isoCode']=='RUB','Unexpected initial return currency'
  # Preserve the actual source, not a reconstructed or newly created return.
  save(db,'snapshot:v1',{'status':'prepared','at':m.now(),'before':before,'basis':basis,'shape':shape(before),'body':{},'ms_documents_in_scope':1})
  fresh=s.getdoc(t,path);assert r.signature(fresh,'salesreturn')==r.signature(before,'salesreturn')
