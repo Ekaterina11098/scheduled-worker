@@ -1,0 +1,38 @@
+name: Diagnose newly deleted MS linked orders26Nov
+on:
+  push:
+    paths: ['.github/workflows/ms-deleted-links-20261126.yml']
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read deleted order linkage without modifying documents
+        env:
+          MS_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os,json,urllib.request,urllib.parse,gzip,time
+          base='https://api.moysklad.ru/api/remap/1.2'
+          def read(path,params=None):
+              req=urllib.request.Request(base+path+('?' + urllib.parse.urlencode(params) if params else ''),headers={'Authorization':'Bearer '+os.environ['MS_TOKEN'],'Accept-Encoding':'gzip'})
+              with urllib.request.urlopen(req,timeout=40) as r:
+                  raw=r.read()
+                  if r.headers.get('Content-Encoding')=='gzip':raw=gzip.decompress(raw)
+                  return json.loads(raw)
+          data=read('/entity/customerorder',{'filter':'isDeleted=true;deleted>=2026-11-25 00:00:00','limit':100})
+          print(json.dumps({'recent_deleted_total':data.get('meta',{}).get('size'),'rows':len(data.get('rows',[]))}),flush=True)
+          for row in data.get('rows',[])[:30]:
+              ident=row['id'];demands=row.get('demands',[])
+              print(json.dumps({'order':ident,'deleted':row.get('deleted'),'updated':row.get('updated'),'demand_refs':len(demands)}),flush=True)
+              if not demands:continue
+              for ref in demands[:3]:
+                  href=ref.get('meta',{}).get('href','')
+                  if not href.startswith(base+'/entity/demand/'):continue
+                  d=read(href[len(base):]);print(json.dumps({'order':ident,'demand':d.get('id'),'applied':d.get('applicable'),'updated':d.get('updated'),'store':d.get('store',{}).get('meta',{}).get('href','').rsplit('/',1)[-1]}),flush=True)
+              current=read('/entity/customerorder',{'filter':'id='+ident,'limit':1})
+              both=read('/entity/customerorder',{'filter':'id='+ident+';isDeleted=true;isDeleted=false','limit':1})
+              print(json.dumps({'order':ident,'default_size':current.get('meta',{}).get('size'),'including_deleted_size':both.get('meta',{}).get('size'),'including_deleted_ids':[r.get('id') for r in both.get('rows',[])]}),flush=True)
+          PY
