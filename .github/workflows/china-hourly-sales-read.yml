@@ -51,6 +51,17 @@ jobs:
           WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
         run: python scripts/china_hourly_sales_read.py
 
+      - name: Refresh owner Google Sheets dataset without business changes
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          CHINA_TELEGRAM_BOT_TOKEN: ""
+          OPENAI_API_KEY: ""
+        run: python scripts/china_sheet_dashboard.py
+
   analyze:
     needs: read
     if: ${{ needs.read.outputs.source_ready == 'true' }}
