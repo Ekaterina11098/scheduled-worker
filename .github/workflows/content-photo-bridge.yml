@@ -16,6 +16,7 @@ jobs:
           persist-credentials: false
           sparse-checkout: |
             scripts/content_photo_bridge.py
+            scripts/wb_china_media_inspect.py
             scripts/test_content_photo_bridge.py
             scripts/content_photo_drive.py
             scripts/test_content_photo_drive.py
