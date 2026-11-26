@@ -261,12 +261,29 @@ def run():
         if str(uuid.UUID(ident))!=ident:raise Stop('request_identity')
         if not client.claim(ident):continue
         try:
-            valid_request(request)
+            if request.get('operation') != 'media_inspect':
+                valid_request(request)
             age=dt.datetime.now(dt.timezone.utc)-dt.datetime.fromisoformat(request['created_at'].replace('Z','+00:00'))
             if not 0<=age.total_seconds()<3600:raise Stop('request_expired')
             client.put(key,{**request,'status':'running','started_at':stamp(),'run_id':os.environ.get('GITHUB_RUN_ID')})
-            if cards is None:cards=client.catalog()
-            result=export(client,request,ident,cards)
+            if request.get('operation') == 'media_inspect':
+                from wb_china_media_inspect import inspect_card
+
+                if request.get('cabinet') != 'china':
+                    raise Stop('cabinet_not_supported')
+                card = inspect_card(client, request.get('vendorCode'), request.get('nmID'))
+                result = {
+                    **request, 'status': 'ready', 'finished_at': stamp(),
+                    'nmID': card['nmID'], 'photo_count': len(card['photos']),
+                    'photo_field_present': card['photo_field_present'],
+                    'photo_positions': list(range(1, len(card['photos']) + 1)),
+                    'has_video': bool(card['video']),
+                    'video_field_present': card['video_field_present'],
+                    'wb_writes': 0,
+                }
+            else:
+                if cards is None:cards=client.catalog()
+                result=export(client,request,ident,cards)
             client.put(key,result);processed+=1
         except Exception as error:
             from content_photo_drive import DriveError
