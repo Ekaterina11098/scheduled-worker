@@ -1,0 +1,76 @@
+name: Verify EvaBag automatic slots and IP prohibition26Nov
+on:
+  push:
+    paths: ['.github/workflows/stock-eva-schedule-check-20261126.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/workflows/stock-daily-1630-prepared.yml
+          sparse-checkout-cone-mode: false
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: 40c6a7ef4a34f7ecb739578091e26af1295e55da
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          persist-credentials: false
+          path: private-source
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests==2.32.5 python-dotenv==1.1.1 aiogram==3.22.0 simplejson==4.2.0 'psycopg[binary]==3.2.9'
+      - name: Offline exact-article schedule, planning and forbidden IP transport checks
+        env:
+          PYTHONPATH: ${{ github.workspace }}/private-source
+        run: |
+          python - <<'PY'
+          import time,json,copy
+          from pathlib import Path
+          from datetime import datetime,timezone
+          import tg_agent_new as g,auto_stock as a,stock_cabinet_policy as p
+          from stock_execution_fence import EXPLICIT_HOLDS
+          from stock_daily_entry import validate_start
+          from stock_operation_store import Stopped
+          from stock_card_evidence import CardCatalog
+          import stock_cloud_execution as cloud,stock_execution_fence as fence
+          def no_network(*args,**kw):raise AssertionError('Offline verification must never contact a marketplace')
+          g.requests.request=no_network
+          g.cabinet_tokens=lambda:['ooo','ip','china']
+          art='042-evabag-brown'
+          assert not g.is_excluded_item(art) and art not in EXPLICIT_HOLDS
+          assert not p.blocked(art,0) and p.blocked(art,1) and not p.blocked(art,2)
+          # Synthetic offline fixtures, not new observations of real FBO stock.
+          ids=[1299725420,409166427,4224925928]
+          cards=[CardCatalog([dict(vendorCode=art,nmID=i+1,sizes=[dict(chrtID=ids[i])],_no_photo=False,_fbo_quantity=q,_fbo_observed_at=time.time())]) for i,q in enumerate((1,4,0))]
+          stocks=[{art:20},{art:0},{art:20}]
+          sales=[({},{}),({},{}),({},{})]
+          normal=a.automatic_stock_plan(art,129,cards,stocks,sales)
+          assert normal==[20,0,20],normal
+          stress=copy.deepcopy(sales);stress[1]=({art:1000},{art:{'2026-11-25':1000}})
+          high_ip=a.automatic_stock_plan(art,129,cards,stocks,stress)
+          assert high_ip[1]==0 and high_ip[0]>0 and high_ip[2]>0,high_ip
+          try:p.validate_plan(dict(article=art),dict(target=[20,1,20]))
+          except Stopped:pass
+          else:raise AssertionError('Positive IP plan accepted')
+          marker=cloud._INTENT.set(dict(token='ip',warehouse=854652,stocks=[dict(chrtId=409166427,amount=1)],used=False))
+          original=fence.require_cloud_lease;fence.require_cloud_lease=lambda:None
+          try:
+              try:cloud.validate_transport('PUT','https://marketplace-api.wildberries.ru/api/v3/stocks/854652','ip',dict(stocks=[dict(chrtId=409166427,amount=1)]))
+              except Stopped as e:assert 'IP' in str(e),str(e)
+              else:raise AssertionError('Positive IP transport accepted')
+          finally:fence.require_cloud_lease=original;cloud._INTENT.reset(marker)
+          slots=[]
+          for day in (26,27):
+              assert validate_start(datetime(2026,11,day,2,tzinfo=timezone.utc),'true','0700')=='2026-11-'+str(day)+':0700'
+              assert validate_start(datetime(2026,11,day,17,tzinfo=timezone.utc),'true','1630')=='2026-11-'+str(day)
+          workflow=Path('.github/workflows/stock-daily-1630-prepared.yml').read_text()
+          assert "cron: '0 2 * * *'" in workflow and "cron: '0 17 * * *'" in workflow
+          assert "STOCK_DAILY_ENABLED: 'true'" in workflow and '40c6a7ef4a34f7ecb739578091e26af1295e55da' in workflow
+          print(json.dumps(dict(article=art,excluded=False,eligible_cabinets=['OOO','China'],slots_msk=['05:00','20:00'],normal_target=normal,high_ip_demand_target=high_ip,positive_ip_plan_blocked=True,positive_ip_transport_blocked=True,marketplace_requests=0,stock_writes=0)))
+          PY
