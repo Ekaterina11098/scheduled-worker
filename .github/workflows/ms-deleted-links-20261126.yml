@@ -22,8 +22,8 @@ jobs:
                   raw=r.read()
                   if r.headers.get('Content-Encoding')=='gzip':raw=gzip.decompress(raw)
                   return json.loads(raw)
-          data=read('/entity/customerorder',{'filter':'isDeleted=true;deleted>=2026-11-25 00:00:00','limit':100})
-          print(json.dumps({'recent_deleted_total':data.get('meta',{}).get('size'),'rows':len(data.get('rows',[]))}),flush=True)
+          data=read('/entity/customerorder',{'filter':'isDeleted=true','limit':100})
+          print(json.dumps({'deleted_total':data.get('meta',{}).get('size'),'rows':len(data.get('rows',[]))}),flush=True)
           for row in data.get('rows',[])[:30]:
               ident=row['id'];demands=row.get('demands',[])
               print(json.dumps({'order':ident,'deleted':row.get('deleted'),'updated':row.get('updated'),'demand_refs':len(demands)}),flush=True)
