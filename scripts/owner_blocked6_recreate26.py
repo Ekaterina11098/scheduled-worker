@@ -9,6 +9,12 @@ from owner_blocked6_suffixcopy26 import creation_errors
 ROOT='china_agent:owner_blocked6_recreate26:v1'
 SOURCE='china_agent:owner_blocked6_clone26:v1:discovery'
 def stamp():return datetime.now(timezone.utc).isoformat()
+def trash_matches(trash,before):
+ # Trash API omits title/brand/description/kizMarked; absence is not field deletion.
+ if trash.get('nmID')!=before['nmID']or trash.get('vendorCode')!=before['vendorCode']:return False
+ def chars(c):return sorted([dict(id=x['id'],value=x['value'])for x in c.get('characteristics',[])],key=lambda x:x['id'])
+ def sizes(c):return sorted(c.get('sizes',[]),key=lambda x:x.get('chrtID',0))
+ return chars(trash)==chars(before)and sizes(trash)==sizes(before)and trash.get('dimensions')==before.get('dimensions')
 def main():
  io=AdvertisingIO();a=io.get(ROOT+':approval');d=io.get(SOURCE);assert a['status']=='approved'and a['owner_id']==5122667182 and d['status']=='complete';assert set(a['nm_ids'])==set(map(int,d['cards']));validate_identity(Cache(),WB())
  def authority():assert io.get(ROOT+':approval')==a and datetime.now(timezone.utc)<datetime.fromisoformat(a['expires_at'])
@@ -27,7 +33,7 @@ def main():
   time.sleep(.8);r=requests.post('https://content-api.wildberries.ru'+path,headers={'Authorization':io.token,'Cache-Control':'no-cache'},json=body,timeout=(10,50));r.raise_for_status();return r.json()
  def read(text,trash=False):
   j=call('/content/v2/get/cards/trash'if trash else'/content/v2/get/cards/list',{'settings':{'sort':{'ascending':False},'cursor':{'limit':100},'filter':{'textSearch':text,'withPhoto':-1}}});assert isinstance(j.get('cards'),list),'Card list schema';return j['cards']
- def exact(nm,trash=False):return [x for x in read(str(nm),trash)if x['nmID']==nm]
+ def exact(nm,trash=False):return [x for x in read(d['cards'][str(nm)]['vendorCode']if trash else str(nm),trash)if x['nmID']==nm]
  def mutate(path,body,kind,item):
   nonlocal allowed
   authority();assert not any(x['kind']==kind and x['old_nm']==item['old_nm']for x in e['operations']),'Operation replay blocked';op=dict(kind=kind,old_nm=item['old_nm'],body=body,status='submitting',started_at=stamp());e['operations'].append(op);save();allowed=('POST',path,body)
@@ -58,7 +64,7 @@ def main():
    trashed=False
    for _ in range(12):
     active=exact(nm);removed=exact(nm,True)
-    if not active and len(removed)==1 and canonical(removed[0])==canonical(item['before']):item.update(status='in_trash',trash_readback=removed[0]);trashed=True;save();break
+    if not active and len(removed)==1 and trash_matches(removed[0],item['before']):item.update(status='in_trash',trash_readback=removed[0]);trashed=True;save();break
     time.sleep(3)
    if not trashed:
     # Accepted trash request with unchanged active card is a no-op, never repeat it.
