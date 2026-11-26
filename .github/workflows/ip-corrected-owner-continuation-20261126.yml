@@ -1,7 +1,5 @@
 name: Owner corrected eleven category minimum continuation
 on:
-  push:
-    paths: [.github/workflows/ip-corrected-owner-continuation-20261126.yml]
   workflow_dispatch:
 permissions: {contents: read}
 concurrency: {group: ip-corrected-owner-apply-20261126, cancel-in-progress: false}
