@@ -1,0 +1,82 @@
+name: Addressed IP catalog scope repair
+on:
+  push:
+    paths: [.github/workflows/ip-catalog-scope-repair-20261126.yml]
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency: {group: ip-catalog-scope-repair-20261126, cancel-in-progress: false}
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 22b202d06e3480f8ed526377be158fb42ad979b2
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*.py
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: dfa9651d7f18589ca1c8a1c8de020774be963261
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          persist-credentials: false
+          path: private-source
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5 cryptography==46.0.2 Pillow==12.3.0 > /dev/null 2>&1
+      - shell: python
+        env:
+          IP_REPORT_SLOT: midday
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          MPSTATS_API_TOKEN: ${{ secrets.MPSTATS_API_TOKEN }}
+        run: |
+          """Addressed catalog coverage repair using existing MPStats readers; never WB/TG."""
+          import copy,datetime,json,os,sys,requests
+          from urllib.parse import urlsplit
+          import ip_scheduled_source as m
+          ROOT='advertising:ip:catalog_scope_repair:v1:2026-11-26'
+          if(m.get(ROOT)or{}).get('status')=='complete':print('Saved repair reused');raise SystemExit(0)
+          m.KEY=ROOT;m.state['status']='reading_catalog';m.overview=m.get('advertising:ip:daily-overview-scope:v1')or{};m.scope=set(m.overview['campaign_ids']);oldscope=set(m.scope)
+          host=urlsplit(os.environ['SUPABASE_URL']).hostname;original=requests.sessions.Session.request
+          def guard(session,method,url,*a,**kw):
+           domain=urlsplit(url).hostname
+           if domain not in(host,'mcp.mpstats.io'):raise PermissionError('Only existing saved-state/MPStats routes')
+           if domain=='mcp.mpstats.io'and m.state['decoded_response_bytes']>=100_000_000:raise RuntimeError('Byte budget')
+           r=original(session,method,url,*a,**kw);m.state['decoded_response_bytes']+=len(r.content);return r
+          requests.sessions.Session.request=guard
+          def collect(call,checks,known):
+           bidder=copy.deepcopy(m.BIDDER);calls=0
+           def read(tool,args):
+            nonlocal calls
+            if calls>=6:raise RuntimeError('Six addressed reads exhausted')
+            req={'key':'token_2:'+tool+':'+json.dumps(args,sort_keys=True),'cabinet':'token_2','tool':tool,'arguments':args};calls+=1
+            out=m.execute_reads(call,checks,known,[req],bidder,m.saved,max_requests=1)
+            if any(x.get('status')!='received'for x in out):raise RuntimeError('Provider gap; no blind retry')
+           for kind in('stats','state'):
+            args={'tokens':[m.BIDDER['token_2']['id']],'report':kind,'d1':m.DAY,'d2':m.DAY,'limit':100,'start_row':0,'bidder_only':False,'sort':'wb_id','sort_dir':'desc'}
+            read('wbbidder_campaigns',args);first=next(c for c in m.catalogs if c['report']==kind and c['start_row']==0)
+            if first['total']>200:raise RuntimeError('Addressed repair limited to two catalog pages')
+            for offset in range(100,first['total'],100):read('wbbidder_campaigns',dict(args,start_row=offset))
+           m.scope,active,total=m.active_catalog_scope(m.catalogs,oldscope)
+           if len(m.scope)>20:raise RuntimeError('Scope exceeds existing bounded20')
+           mapping={r['wb_id']:r for c in m.catalogs if c.get('report')=='stats'for r in c.get('rows',[])}
+           bidder['token_2']['campaign_ids']=sorted({r['id']for r in mapping.values()})
+           for cid in sorted(active-oldscope):read('wbbidder_campaign_stats',{'campaign_id':mapping[cid]['id'],'report':'products','d1':m.DAY,'d2':m.DAY})
+           priority=sorted(active-oldscope,reverse=True)+[i for i in m.overview.get('priority_campaign_ids',[])if i not in active-oldscope]
+           m.put(ROOT+':prior_scope',m.overview);m.overview=dict(m.overview,campaign_ids=sorted(m.scope),priority_campaign_ids=priority,catalog_active_ids=sorted(active),catalog_scope_observed_at=datetime.datetime.now(datetime.timezone.utc).isoformat());m.put('advertising:ip:daily-overview-scope:v1',m.overview)
+           view=m.load_daily_table_view(m.Store(),m.NOW+datetime.timedelta(days=1));view.update(observed_day=m.REPORT_DAY,intraday=True,observed_at=datetime.datetime.now(datetime.timezone.utc).isoformat())
+           m.state.update(status='complete',view=view,scope_count=len(m.scope),active_campaign_ids=sorted(active),catalog_total=total,catalog_scope_complete=True,new_campaign_ids=sorted(active-oldscope),source_calls=calls,finished_at=datetime.datetime.now(datetime.timezone.utc).isoformat());m.save();return[]
+          try:
+           pause=m.database('GET','telegram_api_cache',params={'cache_key':'eq.mpstats:cooldown','expires_at':'gt.'+m.NOW.isoformat(),'select':'expires_at','limit':1})or[]
+           if pause:
+            wait=(datetime.datetime.fromisoformat(pause[0]['expires_at'].replace('Z','+00:00'))-datetime.datetime.now(datetime.timezone.utc)).total_seconds()
+            if wait>1200:raise RuntimeError('Existing provider cooldown exceeds bounded repair')
+            if wait>0:m.time.sleep(wait+1)
+           rows=m.database('GET','analytics_snapshots',params={'source':'eq.mpstats_connection','cabinet':'eq.shared','select':'tools:payload->0->tools','order':'id.desc','limit':1})or[]
+           m.discover(os.environ['MPSTATS_API_TOKEN'],read_checks=True,extra_reader=collect,catalog=rows[0]['tools'])
+           print(json.dumps({k:m.state.get(k)for k in('status','scope_count','catalog_total','source_calls','wb_calls','wb_writes','telegram_calls')}))
+          except Exception as e:m.state.update(status='blocked',error=type(e).__name__+':'+str(e));m.save();raise
