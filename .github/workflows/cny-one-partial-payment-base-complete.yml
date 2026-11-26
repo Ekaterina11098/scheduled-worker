@@ -1,0 +1,25 @@
+name: Complete approved one chain nominal CNY test
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/cny-one-partial-payment-base-complete.yml']
+permissions:
+  contents: read
+concurrency:
+  group: ms-cny-selected-chain
+  cancel-in-progress: false
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Preserve selected amounts and verify complete chain
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: python scripts/cny_one_partial_payment_base_complete.py
