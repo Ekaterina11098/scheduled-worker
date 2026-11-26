@@ -1,7 +1,5 @@
 name: Apply owner approved two exclusions
 on:
-  push:
-    paths: [.github/workflows/ip-two-exclusions-20261126.yml]
   workflow_dispatch:
 permissions: {contents: read}
 concurrency: {group: ip-two-exclusions-20261126, cancel-in-progress: false}
