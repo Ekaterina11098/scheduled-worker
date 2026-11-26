@@ -26,7 +26,7 @@ def main():
  assert {x['type'] for x in items}=={'customerorder','demand','salesreturn','paymentin'} and len(items)==4
  paths={x['type']:'entity/'+x['type']+'/'+x['id'] for x in items}
  def read():return {k:s.getdoc(t,p) for k,p in paths.items()}
- before=read();order=before['customerorder'];target=int(order['sum'])
+ before=read();save(db,'inspection:v1',{'at':m.now(),'documents':before});order=before['customerorder'];target=int(order['sum'])
  assert target==cfg['expected_order_sum_minor'] and target>0
  for typ,d in before.items():
   assert b.D(d['sum'])==cfg['expected_before'][typ],'Amount changed since authorization'
@@ -77,6 +77,7 @@ def main():
 if __name__=='__main__':
  try:main()
  except Exception as error:
-  try:save(m.Cache(b.ReadOnly()),'error:v1',{'status':'stopped','at':m.now(),'detail':str(error)})
+  import traceback
+  try:save(m.Cache(b.ReadOnly()),'error:v1',{'status':'stopped','at':m.now(),'detail':str(error),'trace':traceback.format_exc()})
   except Exception:pass
   print('Selected-chain operation stopped; inspect private diagnostics.');sys.exit(1)
