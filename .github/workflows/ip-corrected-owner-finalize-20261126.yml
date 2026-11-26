@@ -1,0 +1,135 @@
+name: Finalize accepted owner11; bids and readback only
+on:
+  push:
+    paths: [.github/workflows/ip-corrected-owner-finalize-20261126.yml]
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency: {group: ip-corrected-owner-apply-20261126, cancel-in-progress: false}
+jobs:
+  apply:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/owner_ad_tests23.py
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5 > /dev/null 2>&1
+      - shell: python
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_2: ${{ secrets.WB_TOKEN_2 }}
+        run: |
+          """Execute only the11owner-approved corrected proposals. Durable per-write no replay."""
+          import sys,copy,json,hashlib,time,datetime,requests
+          sys.path.insert(0,'scripts')
+          from owner_ad_tests23 import State,ReadWB,stamp
+          ROOT='ip_agent:corrected_report:2026-11-26:v1:recovery:v4';APPROVAL='ip_agent:corrected_report:2026-11-26:v1:approval';HOST='advert-api.wildberries.ru'
+          def digest(x):return hashlib.sha256(json.dumps(x,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+          def projection(c):return {'id':c['id'],'status':c['status'],'currency':c['currency'],'bid_type':c['bid_type'],'settings':c['settings'],'members':{str(n['nm_id']):{'bids':n['bids_kopecks'],'subject':n['subject']}for n in c['nm_settings']}}
+          class Run:
+           def __init__(self):
+            self.db=State();self.a=self.db.get(APPROVAL);self.wb=ReadWB(self.db,'token_2');self.s=dict(status='preflight',writes={},wb_write_attempts=0,telegram_calls=0,started_at=stamp());self.deadline=time.time()+7200
+           def save(self):self.db.put(ROOT+':execution',self.s)
+           def guard(self):
+            if not self.a or self.a.get('status')!='approved'or self.a.get('cabinet')!='token_2'or self.a.get('plan_sha256')!=digest(self.a['items'])or len(self.a['items'])!=11:raise PermissionError('Exact corrected approval missing')
+            if self.db.get(APPROVAL)!=self.a or datetime.datetime.now(datetime.timezone.utc)>=datetime.datetime.fromisoformat(self.a['expires_at']):raise PermissionError('Approval changed/expired')
+            if any(self.a.get(k)is not False for k in ('topup','pause_start','other_writes','telegram')):raise PermissionError('Scope expansion')
+           def call(self,path,method='GET',body=None,params=None,host=HOST,step=None):
+            reads={('GET',HOST,'/adv/v1/promotion/count'),('GET',HOST,'/api/advert/v2/adverts'),('POST',HOST,'/api/advert/v1/bids/min'),('POST','seller-analytics-api.wildberries.ru','/api/analytics/v3/sales-funnel/products')}
+            writes={('PATCH',HOST,'/api/advert/v1/bids')};write=(method,host,path)in writes
+            if (method,host,path)not in reads|writes or(write and step not in ('membership','bids')):raise PermissionError('Endpoint boundary')
+            if write and body!=self.s['planned_writes'].get(step):raise PermissionError('Write differs from exact planned body')
+            key='wb-pause:'+hashlib.sha256((self.wb.token+host+path).encode()).hexdigest()
+            for attempt in range(3):
+             self.guard();until=float((self.db.get(key)or{}).get('until',0))
+             if until>self.deadline:raise RuntimeError('Provider cooldown exceeds bounded run')
+             while until>time.time():
+              self.s.update(status='waiting_provider',resume_after=datetime.datetime.fromtimestamp(until,datetime.timezone.utc).isoformat());self.save();time.sleep(min(25,max(.1,until-time.time())));self.guard()
+             if write:
+              prior=self.s['writes'].get(step,{})
+              if prior.get('status')in('submitting','accepted','uncertain'):raise RuntimeError('Write outcome exists; no replay')
+              self.s['writes'][step]=dict(status='submitting',body=body,at=stamp());self.s['wb_write_attempts']+=1;self.save()
+             try:r=requests.request(method,'https://'+host+path,headers={'Authorization':self.wb.token},json=body,params=params,timeout=(10,70),allow_redirects=False)
+             except requests.RequestException:
+              if write:self.s['writes'][step]['status']='uncertain';self.save()
+              raise RuntimeError('Unknown request result, never replay')from None
+             try:data=r.json()if r.content else{}
+             except ValueError:data={'unparseable':True}
+             raw=r.headers.get('X-Ratelimit-Retry')or r.headers.get('Retry-After')or r.headers.get('X-Ratelimit-Reset')
+             try:delay=float(raw or 0)
+             except ValueError:delay=0
+             if delay>time.time()-86400:delay=max(0,delay-time.time())
+             if r.status_code==429 or r.headers.get('X-Ratelimit-Remaining')=='0':self.db.put(key,{'until':time.time()+max(3,delay)+5,'basis':'provider_header'})
+             if r.status_code==429:
+              if write:self.s['writes'][step].update(status='rejected429',http=429)
+              self.s.setdefault('definite429',[]).append(dict(path=path,at=stamp(),retry_after=delay));self.save();continue
+             if not r.ok or (isinstance(data,dict)and data.get('unparseable')):
+              if not write:self.s['last_read_error']=dict(path=path,http=r.status_code,response=data,body=body);self.save()
+              if write:self.s['writes'][step].update(status='uncertain'if r.status_code>=500 or r.ok else'rejected',http=r.status_code,response=data);self.save()
+              raise RuntimeError('WB HTTP'+str(r.status_code)+' '+path)
+             if write:self.s['writes'][step].update(status='accepted',accepted_at=stamp(),response=data);self.save()
+             return data
+            raise RuntimeError('Bounded429attempts exhausted')
+           def configs(self,ids):
+            cs=self.call('/api/advert/v2/adverts',params={'ids':','.join(map(str,ids))})['adverts']
+            if {c['id']for c in cs}!=set(ids):raise ValueError('Incomplete config readback')
+            return {str(c['id']):c for c in cs}
+           def execute(self):
+            self.guard();self.wb.identity()
+            prior=self.db.get('ip_agent:corrected_report:2026-11-26:v1:recovery:v3:execution')or{}
+            if prior.get('status')!='attention'or prior.get('error')!='Approval changed/expired'or not prior.get('finished_at')or prior.get('writes',{}).get('membership',{}).get('status')!='accepted'or prior.get('writes',{}).get('bids'):raise PermissionError('Exact stopped accepted membership required')
+            expected_body=prior['planned_writes']['membership']
+            returned=prior['writes']['membership']['response']['nms']
+            def shape(rows,response=False):
+             return {r['advert_id']:{'add':sorted(r['nms']['added'if response else'add']),'delete':sorted(r['nms']['deleted'if response else'delete'])}for r in rows}
+            if shape(returned,True)!=shape(expected_body['nms']):raise ValueError('Membership acceptance scope differs')
+            eligible=prior['eligible'];before=copy.deepcopy(prior['before']);ids=sorted(map(int,before))
+            self.s.update(before=before,configuration_observed_at=prior['configuration_observed_at'],membership_receipt_key='ip_agent:corrected_report:2026-11-26:v1:recovery:v3:execution',membership_accepted_at=prior['writes']['membership']['accepted_at'],minimum_receipts=prior['minimum_receipts'],eligible=eligible,skipped=[],already_satisfied=[])
+            self.save()
+            growth=[a for a in eligible if a['kind']in('raise','add')]
+            stock=self.call('/api/analytics/v3/sales-funnel/products','POST',{'selectedPeriod':{'start':'2026-11-26','end':'2026-11-26'},'pastPeriod':{'start':'2026-11-25','end':'2026-11-25'},'nmIds':[a['nm']for a in growth],'skipDeletedNm':False,'limit':1000,'offset':0},host='seller-analytics-api.wildberries.ru')
+            ps={r['product']['nmId']:r['product']for r in stock['data']['products']}
+            if set(ps)!={a['nm']for a in growth}or any(ps[a['nm']]['vendorCode'].casefold()!=a['sku'].casefold()for a in growth):raise ValueError('Growth stock identity mismatch')
+            self.s.update(growth_stock=ps,stock_observed_at=stamp());self.save()
+            bids={}
+            for a in growth:
+             if a['kind']=='raise'and ps[a['nm']]['stocks']['wb']<=0:self.s['skipped'].append(dict(a,reason='FBO no longer positive'));continue
+             c=before[str(a['campaign'])]
+             if c['settings']['payment_type']!='cpc'or not c['settings']['placements'].get(a['placement']):raise ValueError('Placement mismatch')
+             minimum=prior['minimum_receipts'][str(a['campaign'])];place='recommendation'if a['placement']=='recommendations'else'search'
+             floor=[b['value']for n in minimum['bids']for b in n['bids']if b['type']==place and b['currency']=='RUB']
+             if len(floor)!=1 or floor[0]>a['target_bid_kopecks']:raise ValueError('Minimum not proven')
+             if a['kind']=='add'and ps[a['nm']]['subjectId']!=50:raise ValueError('Addition subject changed')
+             bids.setdefault(a['campaign'],[]).append({'nm_id':a['nm'],'placement':a['placement'],'bid_kopecks':a['target_bid_kopecks']})
+            body={'bids':[{'advert_id':cid,'nm_bids':ns}for cid,ns in sorted(bids.items())]}
+            self.s['planned_writes']={'bids':body};self.save()
+            if bids:self.call('/api/advert/v1/bids','PATCH',body,step='bids');time.sleep(6)
+            after=self.configs(ids);self.s.update(after=after,readback_at=stamp());self.save()
+            groups=shape(expected_body['nms']);targets={(cid,n['nm_id'],n['placement']):n['bid_kopecks']for cid,ns in bids.items()for n in ns}
+            for cid,c in before.items():
+             actual=after[cid];g=groups.get(int(cid),{'add':[],'delete':[]});old={n['nm_id']:n for n in c['nm_settings']};new={n['nm_id']:n for n in actual['nm_settings']}
+             if set(new)!=set(old)-set(g['delete'])|set(g['add']):raise ValueError('Final membership mismatch')
+             if {k:c[k]for k in('status','currency','bid_type','settings')}!={k:actual[k]for k in('status','currency','bid_type','settings')}:raise ValueError('Unapproved campaign setting change')
+             for nm in set(old)&set(new):
+              expected=copy.deepcopy(old[nm])
+              for (bidcid,bidnm,place),target in targets.items():
+               if bidcid==int(cid)and bidnm==nm:expected['bids_kopecks'][place]=target
+              if new[nm]!=expected:raise ValueError('Unapproved existing bid/member change')
+             for nm in g['add']:
+              if new[nm]['subject']['id']!=50 or new[nm]['bids_kopecks']['recommendations']!=295:raise ValueError('Addition rate readback mismatch')
+            self.s.update(status='verified_all'if not self.s['skipped']else'verified_eligible',verified_count=len(eligible)-len(self.s['skipped']),applied_count=len(eligible)-len(self.s['skipped']),other_settings_unchanged=True)
+           def run(self):
+            if self.db.get(ROOT+':execution'):print('Existing outcome retained, no replay');return
+            if not self.db.put(ROOT+':execution',self.s,once=True):raise RuntimeError('Execution already claimed')
+            try:self.execute()
+            except Exception as e:self.s.update(status='attention',error=str(e)if isinstance(e,(ValueError,RuntimeError,PermissionError))else type(e).__name__)
+            self.s['finished_at']=stamp();self.save();print(json.dumps({k:self.s.get(k)for k in('status','verified_count','wb_write_attempts','error')}))
+          if __name__=='__main__':Run().run()
