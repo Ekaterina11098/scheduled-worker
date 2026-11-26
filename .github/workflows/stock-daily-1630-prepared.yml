@@ -39,7 +39,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Ekaterina11098/VESCHI_AI
-          ref: ff8dfc03d2e143c81e641473870b0119af3bc178
+          ref: dfd31571926cff5098900cffb3ac405c660d44a6
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           persist-credentials: false
           path: private-source
@@ -85,3 +85,5 @@ jobs:
           path: ${{ runner.temp }}/stock-deploy-proof
           retention-days: 90
 
+
+# Owner26Nov: MS demand document dates limited to trailing seven days; prior reserve ledger retained.
