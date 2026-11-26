@@ -1,0 +1,25 @@
+name: Diagnose remaining 25 Nov MS historical stock discrepancy
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/inspect-320214719-ms-stock.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Read only current item stock reserves and MS stock by document
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+        run: python scripts/inspect_320214719_ms_stock.py
