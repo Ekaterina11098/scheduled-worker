@@ -1,0 +1,25 @@
+name: OOO exact owner requested restoration
+on:
+  push:
+    branches: [main]
+    paths: ['scripts/ooo_restore22_apply26.py']
+permissions: {contents: read}
+concurrency:
+  group: ooo-token1-owner-writes
+  cancel-in-progress: false
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 140
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, sparse-checkout: scripts}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5 --quiet
+      - name: Apply exact private approved additions and read back
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_1: ${{ secrets.WB_TOKEN_1 }}
+        run: python -u scripts/ooo_restore22_apply26.py
