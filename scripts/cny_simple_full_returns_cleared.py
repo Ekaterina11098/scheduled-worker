@@ -52,7 +52,7 @@ def prepare(db,t,cfg,groups):
      else:
       assert b.D(d.get('vatSum'))==0
       assert len(d.get('operations',[]))==1
-      assert b.D(d['operations'][0]['linkedSum'])==b.D(d['sum']),'Unallocated payment requires separate review'
+      assert 0<=b.D(d['operations'][0]['linkedSum'])<=b.D(d['sum']),'Invalid allocation'
     order=cur['customerorder'];demand=cur['demand'];ret=cur['salesreturn']
     target=int(order['sum']);assert b.D(order['sum'])==target and target>=0
     product=m.href(r.rows(order)[0]['assortment'])
@@ -70,7 +70,11 @@ def prepare(db,t,cfg,groups):
      else:assert not links,'Unexpected additional payment'
     for typ in WRITE:
      if typ not in cur:continue
-     d=cur[typ];goal=goals[typ][d['id']];goal['sum']=target
+     d=cur[typ];goal=goals[typ][d['id']]
+     if typ in ('paymentin','paymentout') and b.D(d['operations'][0]['linkedSum'])!=b.D(d['sum']):
+      assert rid in cfg['partial_allocation_return_ids'] and b.D(d['sum'])==target,'Partial allocation amount requires separate review'
+      continue
+     goal['sum']=target
      if typ in ('demand','salesreturn'):
       oldp=r.rows(d)[0];p={k:copy.deepcopy(oldp[k]) for k in r.FIELDS if k in oldp}
       p['assortment']=m.meta(oldp['assortment']);p['price']=target
@@ -112,10 +116,11 @@ def write(db,typ,bodies,key,allowed):
 def main():
  t=b.ReadOnly();db=m.Cache(t);cfg=db.get(b.ROOT+P+'scope:v1')
  assert cfg and cfg['authorized'] and cfg['scope']=='approved_simple_full_single_item_returns'
- assert cfg['expected_chains']>0 and cfg['max_batch']==50 and cfg['preserve_rates'] and cfg['preserve_quantities'] and cfg['preserve_position_order'] and not cfg['outside_ms_changes']
+ assert cfg['expected_chains']==1799 and cfg['max_batch']==50 and cfg['preserve_rates'] and cfg['preserve_quantities'] and cfg['preserve_position_order'] and not cfg['outside_ms_changes']
  parent=db.get(cfg['parent_preflight_key'])
- assert parent and parent['status']=='conflicts' and parent['chains']==cfg['expected_chains']+len(cfg['excluded_return_ids'])
- assert {x['return_id'] for x in parent['conflicts']}==set(cfg['excluded_return_ids']),'Unexpected parent conflict requires review'
+ assert parent and parent['status']=='conflicts' and parent['chains']==cfg['expected_chains']
+ assert {x['return_id'] for x in parent['conflicts']}==set(cfg['partial_allocation_return_ids']),'Unexpected parent conflict requires review'
+ assert cfg['preserve_existing_partial_payment_allocations']
  groups=[db.get(b.ROOT+P+'sources:'+str(i))['chains'] for i in range(cfg['source_groups'])]
  allchains=[x for group in groups for x in group]
  assert len(allchains)==cfg['expected_chains'] and {x['return_id'] for x in allchains}=={x['return_id'] for x in cfg['items']}
@@ -173,7 +178,7 @@ def main():
     assert r.signature(d,typ)==r.signature(plan['goals'][typ][i],typ),'Full final reconciliation mismatch'
   verified+=len(chains)
   save(db,'final_audit:'+str(batch),{'status':'verified','at':m.now(),'documents':final})
- save(db,'result:v1',{'status':'verified','at':m.now(),'verified_chains':verified,'documents':totals,'order_prices_source':True,'quantities_order_links_preserved':True,'rates_preserved':True,'global_currency_migration_enabled':False})
+ save(db,'result:v1',{'status':'verified','at':m.now(),'verified_chains':verified,'documents':totals,'order_prices_source':True,'quantities_order_links_preserved':True,'rates_preserved':True,'partial_payment_allocations_preserved':cfg['partial_allocation_return_ids'],'global_currency_migration_enabled':False})
  print('Scoped return-chain alignment and complete readback verified; private results saved.')
 if __name__=='__main__':
  try:main()
