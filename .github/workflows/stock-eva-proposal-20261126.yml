@@ -113,6 +113,8 @@ jobs:
                           src=service.capture(g,{art},sales)
                           assert not service.source_expired(src),'Proposal source expired'
                           src['moscow_raw']={k:v for k,v in src['moscow_raw'].items() if k==art}
+                          progress['source_diagnostics']=dict(physical=src['unposted_orders']['physical_moscow'].get(art),pending=src['unposted_orders']['pending'].get(art,0),free=src['unposted_orders']['available_moscow'].get(art),native=src['unposted_orders'].get('native_reserves',{}).get(art),stocks=[v.get(art) for v in src['fbs']],warehouses=src['warehouses'],cards=[[v for v in row if g.norm(v.get('vendorCode'))==art] for row in src['cards']],daily=[v[1].get(art,{}) for v in src['sales']],order_units=[u for u in src['unposted_orders']['units'] if u['article']==art],reserve_proof=[u for u in src['unposted_orders']['proof'] if u['article']==art],at=time.time())
+                          save(progress)
                           plan=service.plan_source(g,a,src,set(),set())
                           blocked=[r for r in plan['blocked'] if r['article']==art]
                           members=[r for r in plan['articles'] if r['article']==art]
