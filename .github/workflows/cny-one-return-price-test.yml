@@ -1,0 +1,25 @@
+name: Test one selected return price conversion only
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/cny-one-return-price-test.yml']
+permissions:
+  contents: read
+concurrency:
+  group: ms-cny-single-return-test
+  cancel-in-progress: false
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Convert price in one authorized existing return and verify
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: python scripts/cny_one_return_price_test.py
