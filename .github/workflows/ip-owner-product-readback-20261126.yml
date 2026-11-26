@@ -1,7 +1,5 @@
 name: Addressed owner product analysis readback
 on:
-  push:
-    paths: [.github/workflows/ip-owner-product-readback-20261126.yml]
   workflow_dispatch:
 permissions: {contents: read}
 concurrency: {group: ip-owner-product-readback-20261126, cancel-in-progress: false}
