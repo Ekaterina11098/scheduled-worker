@@ -33,7 +33,7 @@ def main():
   assert d['rate']['currency']['isoCode']=='CNY'
   if typ!='paymentin':
    assert len(r.rows(d))==1 and b.D(r.rows(d)[0]['quantity'])==1
-   assert b.D(r.rows(d)[0].get('discount'))==0 and not d.get('vatEnabled')
+   assert b.D(r.rows(d)[0].get('discount'))==0 and b.D(r.rows(d)[0].get('vat'))==0,'Only zero-tax undiscounted example allowed'
  assert len({m.href(r.rows(before[k])[0]['assortment']) for k in ('customerorder','demand','salesreturn')})==1
  assert m.href(before['demand']['customerOrder'])==m.MS+paths['customerorder']
  assert m.href(before['salesreturn']['demand'])==m.MS+paths['demand']
