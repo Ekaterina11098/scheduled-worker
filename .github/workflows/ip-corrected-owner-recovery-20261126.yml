@@ -1,7 +1,5 @@
 name: Owner corrected eleven preflight recovery
 on:
-  push:
-    paths: [.github/workflows/ip-corrected-owner-recovery-20261126.yml]
   workflow_dispatch:
 permissions: {contents: read}
 concurrency: {group: ip-corrected-owner-apply-20261126, cancel-in-progress: false}
