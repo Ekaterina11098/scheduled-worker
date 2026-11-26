@@ -1,0 +1,31 @@
+name: Retry exact WB 320214719 after panama restock
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/retry-wb-320214719-panamas.yml']
+permissions:
+  contents: read
+concurrency:
+  group: fbs-document-chain-production
+  cancel-in-progress: false
+jobs:
+  retry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Resume only previously rejected demand after live stock check in native CNY
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          FBS_EXECUTION_KIND: manual
+          FBS_OWNER_APPROVAL_ID: china-320214719-panamas-restocked-20261126
+        run: python scripts/retry_wb_320214719_panamas.py
