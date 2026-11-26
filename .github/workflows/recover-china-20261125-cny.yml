@@ -1,0 +1,31 @@
+name: Recover 25 Nov China FBS 3 missed chains in CNY
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/recover-china-20261125-cny.yml']
+permissions:
+  contents: read
+concurrency:
+  group: fbs-document-chain-production
+  cancel-in-progress: false
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check exact WB dates, stock, duplicates and CNY currency before and after MS writes
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          FBS_EXECUTION_KIND: manual
+          FBS_OWNER_APPROVAL_ID: china-20261125-cny-recovery
+        run: python scripts/recover_china_20261125_cny.py
