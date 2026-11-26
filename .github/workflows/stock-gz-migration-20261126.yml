@@ -86,6 +86,15 @@ jobs:
                       value=store.sql('SELECT snapshot FROM stock_runs WHERE id=?',(key,)).fetchone();db.commit()
                       return json.loads(value[0])
                   verify_runtime_storage(write,read,dict(scope=migration.ROOT,nonce=os.urandom(16).hex()))
+                  from threading import RLock
+                  original_budget=g.check_run_budget;last=[time.monotonic()];budget_lock=RLock()
+                  def budget():
+                      with budget_lock:
+                          original_budget()
+                          if time.monotonic()-last[0]>=120:
+                              verify_runtime_storage(write,read,dict(scope=migration.ROOT,nonce=os.urandom(16).hex()))
+                              last[0]=time.monotonic()
+                  g.check_run_budget=budget
                   for attempt in range(12):
                       try:
                           result=migration.publish(g,store)
