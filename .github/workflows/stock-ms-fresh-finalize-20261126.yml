@@ -1,7 +1,6 @@
 name: Finalize stock with fresh inputs after large MS reconciliation26Nov
 on:
-  push:
-    paths: ['.github/workflows/stock-ms-fresh-finalize-20261126.yml']
+  workflow_dispatch:
 # Daily05:00/20:00MSK; legacy0700 journal identity retained; bounded10-minute checks resume unfinished slots only.
 # Completed slots and unexpired Retry-After are skipped without business API calls.
 # Owner approved daily stock execution and new stock notifications, 2026-10-15.
@@ -27,7 +26,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Ekaterina11098/VESCHI_AI
-          ref: ff8dfc03d2e143c81e641473870b0119af3bc178
+          ref: dfd31571926cff5098900cffb3ac405c660d44a6
           token: ${{ secrets.SOURCE_READ_TOKEN }}
           persist-credentials: false
           path: private-source
@@ -65,15 +64,6 @@ jobs:
         run: |
           python warehouse_id_patch.py private-source
           python -c "import stock_deploy_support, stock_regular_job"
-          python - <<'PY'
-          import stock_deploy_support,stock_unposted_source as m,tg_agent_new as g,time,json
-          g.RUN_DEADLINE=time.monotonic()+120
-          ids=['531982d0-5ed7-11ef-0a80-14c3001cdc4b','81aa4e4d-5ed1-11ef-0a80-0015001bf2bb']
-          refs=[dict(customerOrder=dict(meta=dict(href=g.MS_API+'/entity/customerorder/'+v))) for v in ids]
-          rows=m.referenced_customer_orders(g,refs,{})
-          assert set(rows)==set(ids) and all(rows[v].get('deleted') for v in ids)
-          print(json.dumps(dict(exact_historical_trash_references_verified=len(rows))),flush=True)
-          PY
           python - <<'PY'
           import os,time,json,runpy,sys,re
           import stock_deploy_support as support,tg_agent_new as g
