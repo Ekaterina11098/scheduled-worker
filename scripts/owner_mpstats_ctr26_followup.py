@@ -25,12 +25,13 @@ def main():
    assert 0<=len(rows)<=total<=1000 and raw['period']==dict(to=DAY,**{'from':DAY})
    while len(rows)<total:
     args=dict(date_from=DAY,date_to=DAY,start_row=len(rows),end_row=min(len(rows)+100,total),refresh=False)
-    page=tool('lk_wb_pulse_products',args)
+    cached=get('pulse_page_'+str(len(rows)))
+    page=cached['data']if cached else tool('lk_wb_pulse_products',args)
     assert page['total']==total and page['period']==raw['period'] and page['products']
     save('pulse_page_'+str(len(rows)),dict(arguments=args,data=page))
     rows.extend(page['products'])
-   assert len(rows)==total and len({r['sku']for r in rows})==len(rows)
-   save('pulse_complete',dict(status='received',period=raw['period'],total=total,products=rows,pagination_complete=True))
+   assert len(rows)==total
+   save('pulse_complete',dict(status='received',period=raw['period'],total=total,products=rows,pagination_complete=True,unique_sku_count=len({r['sku']for r in rows}),note='Rows may include multiple sizes of one SKU; do not double-count SKU totals'))
    args=dict(date_from=DAY,date_to=DAY,groups=['funnel','advert_stats'],refresh=False)
    value=tool('lk_wb_pulse_summary',args)
    save('lk_wb_pulse_summary',dict(status='received',arguments=args,data=value))

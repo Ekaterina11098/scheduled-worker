@@ -39,3 +39,5 @@ jobs:
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           OPENAI_API_KEY: ''
         run: PYTHONPATH=source python scripts/owner_mpstats_ctr26_followup.py
+
+# Complete size-aware readback, reuse previously received pages.
