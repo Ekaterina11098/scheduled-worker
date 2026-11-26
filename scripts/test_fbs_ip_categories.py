@@ -47,4 +47,14 @@ class CaseTests(unittest.TestCase):
   desc=w.order_annotation({"name":"Сумки","closedAt":"2026-11-14T10:08:58Z"})["description"]
   self.assertEqual(desc,"14 11 26  Киргизия Сумки")
 
+class OOOCommentTests(unittest.TestCase):
+ def test_kyrgyzstan_once_when_repeated_in_supply_name(self):
+  worker=m.Worker(T({}),None,{"cabinet":"token_1","order_annotation":{"state_name":"Возврат на ФБО","comment_prefix":"Киргизия","cabinet_word":"Киргизия"}})
+  result=worker.order_annotation({"name":"сумки киргизия","closedAt":"2026-11-26T05:38:36Z"})["description"]
+  self.assertEqual(result,"26 11 26  Киргизия сумки")
+ def test_kyrgyzstan_once_for_mixed_case(self):
+  worker=m.Worker(T({}),None,{"cabinet":"token_1","order_annotation":{"state_name":"Возврат на ФБО","comment_prefix":"Киргизия","cabinet_word":"Киргизия"}})
+  result=worker.order_annotation({"name":"Киргизия сумки КИРГИЗИЯ зонты","closedAt":"2026-11-26T05:38:36Z"})["description"]
+  self.assertEqual(result,"26 11 26  Киргизия сумки зонты")
+
 if __name__=="__main__": unittest.main()
