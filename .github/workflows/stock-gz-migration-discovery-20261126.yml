@@ -1,0 +1,118 @@
+name: Discover owner Guangzhou warehouse migration26Nov
+on:
+  push:
+    paths: ['.github/workflows/stock-gz-migration-discovery-20261126.yml']
+permissions:
+  contents: read
+concurrency:
+  group: bot-stock
+  cancel-in-progress: false
+jobs:
+  stock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            content_group_destination.py
+            stock_deploy_support.py
+            warehouse_id_patch.py
+            scripts/moysklad_warehouses.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: dfd31571926cff5098900cffb3ac405c660d44a6
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          persist-credentials: false
+          path: private-source
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests==2.32.5 python-dotenv==1.1.1 aiogram==3.22.0 simplejson==4.2.0 'psycopg[binary]==3.2.9' cryptography > "$RUNNER_TEMP/daily-install.log" 2>&1
+      - name: Fresh stock calculation and newly created stock-only notifications
+        env:
+          PYTHONPATH: ${{ github.workspace }}/private-source:${{ github.workspace }}
+          STOCK_DAILY_ENABLED: 'true'
+          STOCK_OZON_ENABLED: 'true'
+          STOCK_PENDING_RESERVE_ENABLED: 'true'
+          STOCK_CANCELLATION_RESTORE_ENABLED: 'true'
+          STOCK_RUN_SLOT: ${{ github.event_name == 'workflow_dispatch' && inputs.slot || ((github.event.schedule == '0 2 * * *' || github.event.schedule == '10,20,30,40,50 2 * * *' || github.event.schedule == '*/10 3-8 * * *') && '0700' || '1630') }}
+          STOCK_NOTIFICATIONS_ENABLED: 'true'
+          STOCK_CLOUD_EXECUTION_ENABLED: 'true'
+          STOCK_JOURNAL_IMPORT_ACCEPTED: 'true'
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_1: ${{ secrets.WB_TOKEN_1 }}
+          WB_TOKEN_2: ${{ secrets.WB_TOKEN_2 }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          WB_FINANCE_TOKEN_1: ${{ secrets.WB_FINANCE_TOKEN_1 }}
+          WB_FINANCE_TOKEN_2: ${{ secrets.WB_FINANCE_TOKEN_2 }}
+          WB_FINANCE_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          WB_STOCK_WAREHOUSE_1: ${{ vars.WB_STOCK_WAREHOUSE_1 }}
+          WB_STOCK_WAREHOUSE_2: ${{ vars.WB_STOCK_WAREHOUSE_2 }}
+          WB_STOCK_WAREHOUSE_3: ${{ vars.WB_STOCK_WAREHOUSE_3 }}
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          MOYSKLAD_STORE_NAME: МСК
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ALLOWED_CHAT_ID: ${{ secrets.TELEGRAM_ALLOWED_CHAT_ID }}
+          AUTO_STOCK_FAIL_FAST: '1'
+        run: |
+          python warehouse_id_patch.py private-source
+          python - <<'PY'
+          import time,json
+          import stock_deploy_support as support,tg_agent_new as g
+          from stock_operation_store import canonical,digest
+          g.RUN_DEADLINE=time.monotonic()+500
+          api=g.api
+          def readonly(method,url,*a,**kw):
+              assert method in ('GET','POST')
+              return api(method,url,*a,**kw)
+          g.api=readonly
+          token=g.cabinet_tokens()[2]
+          warehouses=g.api('GET',g.WB_MARKET+'/api/v3/warehouses',token,retry_read_network=True)
+          byid={v['id']:v for v in warehouses}
+          assert all(i in byid for i in (2373413,2393088))
+          assert byid[2393088].get('deliveryType')==1 and not byid[2393088].get('isDeleting') and not byid[2393088].get('isProcessing')
+          cursor={'limit':100};cards=[];seen=set()
+          for _ in range(100):
+              value=g.api('POST',g.WB_CONTENT+'/content/v2/get/cards/list',token,json={'settings':{'cursor':cursor,'filter':{'withPhoto':-1}}},retry_read_network=True)
+              if not isinstance(value.get('cards'),list):value=value.get('data',{})
+              rows=value.get('cards');assert isinstance(rows,list)
+              cards+=rows
+              if len(rows)<100:break
+              marker=(value['cursor'].get('updatedAt'),value['cursor'].get('nmID'))
+              assert all(marker) and marker not in seen
+              seen.add(marker);cursor=dict(limit=100,updatedAt=marker[0],nmID=marker[1]);time.sleep(.7)
+          else:raise AssertionError('Incomplete card catalogue')
+          sizes={}
+          for card in cards:
+              for size in card.get('sizes',[]):
+                  ident=size.get('chrtID',size.get('chrtId'))
+                  if ident is None:
+                      assert not size.get('skus')
+                      continue
+                  assert type(ident) is int and ident>0
+                  if ident in sizes:assert sizes[ident]['article']==g.norm(card['vendorCode'])
+                  sizes[ident]=dict(article=g.norm(card['vendorCode']),chrtId=ident,nmId=card['nmID'])
+          stocks={}
+          for wh in (2308581,2373413,2393088):
+              if wh not in byid:continue
+              values={}
+              ids=sorted(sizes)
+              for start in range(0,len(ids),100):
+                  page=ids[start:start+100]
+                  reply=g.api('POST',g.WB_MARKET+'/api/v3/stocks/'+str(wh),token,json={'chrtIds':page},retry_read_network=True)
+                  assert isinstance(reply.get('stocks'),list)
+                  for row in reply['stocks']:
+                      i=row['chrtId'];q=row['amount']
+                      assert i in page and i not in values and type(q) in (int,float) and q>=0 and int(q)==q
+                      values[i]=int(q)
+              stocks[str(wh)]=dict(rows=[dict(sizes[i],amount=q) for i,q in sorted(values.items())],missing=sorted(set(ids)-set(values)),total=sum(values.values()))
+          result=dict(complete=True,at=time.time(),warehouses={str(k):byid[k] for k in (2308581,2373413,2393088) if k in byid},cards=len(cards),sizes=len(sizes),stocks=stocks,stock_writes=0)
+          with support.runtime_db() as db:
+              db.execute('INSERT INTO stock_runs VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(id) DO UPDATE SET snapshot=excluded.snapshot',('technical:gz-migration-discovery:2026-11-26',canonical(result),'{}',digest({}),'technical-no-executor',time.time()))
+          print(json.dumps(dict(complete=True,cards=len(cards),sizes=len(sizes),totals={k:v['total'] for k,v in stocks.items()},stock_writes=0)))
+          PY
