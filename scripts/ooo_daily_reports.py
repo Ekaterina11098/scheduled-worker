@@ -3,6 +3,7 @@ import os,json,datetime,re,runpy,tempfile,base64,hashlib
 from pathlib import Path
 from china_codex_cloud import DB,stamp
 from ooo_daily_review import review
+from ooo_composition_review import context as composition_context
 MSK=datetime.timezone(datetime.timedelta(hours=3))
 def execute(code,path):
  path.write_text(code,encoding='utf-8');return runpy.run_path(str(path),run_name='__main__')
@@ -75,6 +76,7 @@ def worker(slot,day=None,verify=False,prepare_only=False):
     for action in approval.get('manifest',{}).get('actions',[]):
      if action.get('nm')is not None:a['verified_bid_changes'].append({'cid':action['cid'],'nm':action['nm'],'at':verified})
   for cid in a['configurations']:a['campaigns'].setdefault(cid,{p:{}for p in ['day','three','fourteen','today']})
+  a['composition_context']=composition_context(db,a['configurations'],evidence['sources']['configurations']['observed_at'],evidence,day,persist=not verify)
   z=review(a,evidence,day)
   quality=None
   if slot=='morning':quality=require_complete_statistics(evidence['sources']['advertising14']['data'],[(date-datetime.timedelta(days=i)).isoformat()for i in (3,2,1)],a['configurations'])
@@ -101,6 +103,8 @@ def worker(slot,day=None,verify=False,prepare_only=False):
    s=db.get(root+':read')or{}
    if not s.get('data')or not s.get('steps'):raise RuntimeError('Current-day source unavailable')
    a['configurations'].update(s.get('current_configurations',{}))
+   current_context=composition_context(db,s.get('current_configurations',{}),s.get('configurations_observed_at',s.get('observed_at',stamp())),evidence,day,persist=not verify)
+   z['internal_analysis']['intraday_composition_context']=current_context
    for cid,cfg in s.get('current_statuses',{}).items():a['configurations'].setdefault(cid,cfg)
    quality=require_complete_statistics(s['data'],[day],s.get('current_statuses')or a['configurations'])
    s.update(day=day,observed_at=s['steps']['0']['observed_at'],status='partial',missing_ids=sorted(set(s['steps']['0']['requested_ids'])-{c['advertId']for c in s['data']}))

@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['.github/workflows/ooo-daily-reports.yml', 'scripts/ooo_daily_reports.py', 'scripts/ooo_daily_review.py', 'scripts/ooo_report_templates.json', 'scripts/test_ooo_report_recovery.py', 'scripts/test_ooo_discovery.py']
+    paths: ['.github/workflows/ooo-daily-reports.yml', 'scripts/ooo_daily_reports.py', 'scripts/ooo_daily_review.py', 'scripts/ooo_report_templates.json', 'scripts/test_ooo_report_recovery.py', 'scripts/test_ooo_discovery.py', 'scripts/ooo_composition_review.py', 'scripts/test_ooo_composition_review.py']
   schedule:
     - cron: '0 4 * * *'
     - cron: '30 4 * * *'
@@ -35,6 +35,7 @@ jobs:
           python scripts/test_ooo_report_recovery.py
           python scripts/test_ooo_funding.py
           python scripts/test_ooo_discovery.py
+          python scripts/test_ooo_composition_review.py
       - name: Verify current cached report rendering without delivery
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

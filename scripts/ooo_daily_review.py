@@ -1,5 +1,6 @@
 """Deterministic review of every catalogue row; proposals only, no provider calls."""
 import collections,datetime,json
+from ooo_composition_review import funding_assessment
 
 def minimum_bid_exclusions(a,e,day):
  """Proposals only: sustained failure at the minimum, after the latest known change.
@@ -102,7 +103,7 @@ def review(a,e,day):
  exclusions,minimum_checks=minimum_bid_exclusions(a,e,day)
  actions.extend(exclusions)
  for cid,cfg in a['configurations'].items():
-  check=evaluate_funding(cid,cfg,a['campaigns'].get(cid,{}),a['budgets'].get(cid),a['rows'],missing.get(cid,[]))
+  check=funding_assessment(evaluate_funding,cid,cfg,a['campaigns'].get(cid,{}),a['budgets'].get(cid),a['rows'],missing.get(cid,[]),e,day,a.get('composition_context',{}).get(str(cid),{}))
   funding_checks.append(check)
   if check['decision']=='propose_topup':funding.append({'cid':int(cid),'amount_kgs':check['amount_kgs']})
  assert len(checks)==len(a['rows'])
