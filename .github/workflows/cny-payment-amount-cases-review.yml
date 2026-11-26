@@ -1,0 +1,22 @@
+name: Read-only deferred payment amount case review
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/cny-payment-amount-cases-review.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Read deferred chain amounts
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: python scripts/cny_payment_amount_cases_review.py
