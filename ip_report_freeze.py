@@ -72,6 +72,7 @@ def main():
   full=copy.deepcopy(fullsource.get('view')or load_daily_table_view(store,now))
  else:full=copy.deepcopy(current)
  full=reconcile_scope(full,current)
+ full['priority_campaign_ids']=(store.cache_get('advertising:ip:daily-overview-scope:v1')or{}).get('priority_campaign_ids',[])
  full['_recent_views']=[]
  for back in(2,1):
   older=load_daily_table_view(store,now-timedelta(days=back));full['_recent_views'].append(older)
