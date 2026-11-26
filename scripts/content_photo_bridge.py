@@ -309,8 +309,8 @@ def run():
             code=str(error) if isinstance(error,(Stop,DriveError,GalleryError)) else type(error).__name__
             code=re.sub('[^a-zA-Z0-9_]','',code)[:100]
             client.put(key,{**request,'status':'failed','finished_at':stamp(),'safe_error':code,'run_id':os.environ.get('GITHUB_RUN_ID'),'wb_writes':None if pending_write else 0})
-    client.put(ROOT+'health',{'at':stamp(),'processed':processed,'run_id':os.environ.get('GITHUB_RUN_ID'),'wb_writes':0})
-    print('Private photo export finished; WB writes=0; public artifacts=0')
+    client.put(ROOT+'health',{'at':stamp(),'processed':processed,'run_id':os.environ.get('GITHUB_RUN_ID')})
+    print('Private media queue finished; inspect private results')
 
 if __name__=='__main__':
     try:run()
