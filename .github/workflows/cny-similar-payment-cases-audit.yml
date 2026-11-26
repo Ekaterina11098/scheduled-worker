@@ -1,0 +1,22 @@
+name: Read-only related-payment allocation and currency audit
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/cny-similar-payment-cases-audit.yml']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Read payments and basis documents without mutations
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: python scripts/cny_similar_payment_cases_audit.py
