@@ -1,0 +1,27 @@
+name: OOO exact owner potential package
+on:
+  push:
+    branches: [main]
+    paths: ['scripts/ooo_potential_apply26.py']
+permissions: {contents: read}
+concurrency:
+  group: ooo-token1-owner-writes
+  cancel-in-progress: false
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 140
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, sparse-checkout: scripts}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5 --quiet
+      - name: Offline exact-scope guards
+        run: python scripts/test_ooo_potential_apply26.py
+      - name: Execute only owner-approved private package; no delivery credentials
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_1: ${{ secrets.WB_TOKEN_1 }}
+        run: python -u scripts/ooo_potential_apply26.py
