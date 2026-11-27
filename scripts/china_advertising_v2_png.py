@@ -13,15 +13,17 @@ def pct(v):
  if v is None:return 'Нет данных'
  if v['amount']>0:return money(ratio(v))+'%'
  return 'Нет заказов' if v['spend']>0 else 'Нет расхода'
-def color(v):
+def color(v,target=5):
  r=ratio(v)
- return INK if r is None else GREEN if r<=5 else RED
+ return INK if r is None else GREEN if r<=target else RED
 def summary(c):
  day=c.get('last');p=c.get('period')
  if c.get('never_started'):return '3 товара; кампания не запускалась.' if c.get('member_count')==3 else 'Кампания не запускалась.'
  if p is None:return 'Статистика отсутствует; числовой результат не подтверждён.'
  return ('День: '+str(int(day['orders']))+' рекламных заказов; сумма '+money(day['amount'])+' ¥.\n' if day else 'День: нет данных.\n')+'3 дня: '+str(int(p['orders']))+' рекламных заказов; сумма '+money(p['amount'])+' ¥; '+str(int(p['clicks']))+' кликов.'
 def recommendations(c):
+ from china_advertising_target import target_pct
+ target=target_pct(c)
  if c.get('owner_unchanged'):return ['Ничего не менять.']
  if 'direction_recommendations' in c:return c['direction_recommendations'] or ['Без изменений.']
  rows=[r for r in c.get('attention',[]) if r.get('action')]
@@ -34,7 +36,7 @@ def recommendations(c):
    out.append(r['article']+': '+r['decision']);continue
   if r.get('candidate_for_manual_review'):
    out.append(r['article']+': '+money(p['spend'])+' ¥, '+str(int(p.get('clicks',0)))+' кликов, '+str(int(p.get('orders',0)))+' заказов. Решение не готово: экономика/наличие не подтверждены.');continue
-  if p.get('amount',0)>0 and p['spend']/p['amount']>.05:
+  if p.get('amount',0)>0 and 100*p['spend']/p['amount']>target:
    out.append(r['article']+': '+r['decision'])
  return out or ['Не требуется']
 
@@ -63,6 +65,9 @@ def budget_column(c):
  return text+'\n'+note if note else text
 
 def _render_legacy(bundle):
+ from china_advertising_target import target_pct
+ target=target_pct(bundle)
+ bundle=dict(bundle,campaigns=[dict(c,target_drr_pct=target)for c in bundle['campaigns']])
  bundle=dict(bundle,campaigns=sorted(bundle['campaigns'],key=lambda c:not any(r.get('action') for r in c.get('attention',[]))))
  W=2400;H=6500;xs=[44,355,650,870,1090,1700,2356];files=[]
  def canvas(title):
@@ -70,7 +75,7 @@ def _render_legacy(bundle):
   d.rectangle((0,0,W,205),fill=NAVY)
   d.text((44,28),title,font=font(48,True),fill='white')
   bd=bundle.get('budget_days') or []
-  subtitle=('Резерв: '+bd[0]+'—'+bd[-1]+' · 3 завершённых дня МСК' if 'бюджеты' in title and len(bd)==3 else 'День: '+bundle['days'][-1]+' · 3 дня: '+bundle['days'][0]+'—'+bundle['days'][-1]+' · цель ДРР 5%')
+  subtitle=('Резерв: '+bd[0]+'—'+bd[-1]+' · 3 завершённых дня МСК' if 'бюджеты' in title and len(bd)==3 else 'День: '+bundle['days'][-1]+' · 3 дня: '+bundle['days'][0]+'—'+bundle['days'][-1]+' · цель ДРР '+format(target,'g')+'%')
   if bundle.get('intraday') and 'бюджеты' not in title:subtitle+=' · сегодня неполный'
   d.text((44,100),subtitle,font=font(29,True),fill='white')
   d.text((44,150),'Срез: '+(str(bundle['source_observed_at'])+(' · остатки: '+bundle['budget_balance_observed_at'] if 'бюджеты' in title and bundle.get('budget_balance_observed_at') else '')),font=font(24),fill='#dce9f0')
@@ -90,7 +95,7 @@ def _render_legacy(bundle):
   files.append(dict(family=family,bytes=b.getvalue(),actions=actions))
  def table():
   im,d=canvas('Китай · ДРР и рекламные расходы')
-  d.text((44,216),'Рекомендации по завершённым дням · ДРР: ≤ 5% зелёный, > 5% красный',font=font(24),fill=INK)
+  d.text((44,216),'Рекомендации по завершённым дням · ДРР: ≤ '+format(target,'g')+'% зелёный, > '+format(target,'g')+'% красный',font=font(24),fill=INK)
   for i,label in enumerate(['Кампания WB','Расход, CNY','ДРР 3 дня','ДРР день','Товары: данные за 3 дня','Рекомендации по 3 дням']):
    for j,line in enumerate(wrap(d,label,xs[i+1]-xs[i]-28,29)):d.text((xs[i],267+j*35),line,font=font(29,True),fill=NAVY)
   return im,d
@@ -106,7 +111,7 @@ def _render_legacy(bundle):
    finish(im,y,'drr',actions);im,d=table();y=365;actions=[]
   d.rounded_rectangle((24,y,W-24,y+h),18,fill='#fff1cc' if any(r.get('action') for r in c.get('attention',[])) else 'white')
   for i,lines in enumerate(ls):
-   col=color(p) if i==2 else color(day) if i==3 else INK
+   col=color(p,target) if i==2 else color(day,target) if i==3 else INK
    for j,line in enumerate(lines):d.text((xs[i],y+18+j*35),line,font=font(27,i==5 and bool(c.get('attention'))),fill=col)
   actions.extend(r['action'] for r in c.get('attention',[]) if r.get('action')and r['action']['kind']!='recover_campaign')
   y+=h+12
@@ -123,7 +128,7 @@ def _render_legacy(bundle):
  d.text((44,y+82),'Расход 3 дня: '+money(p['spend'] if p else None)+' ¥   |   Расход день: '+money(day['spend'] if day else None)+' ¥',font=font(29,True),fill=INK)
  for x,label,value in [(44,'Общая ДРР 3 дня: ',p),(1050,'Общая ДРР день: ',day)]:
   d.text((x,y+132),label,font=font(29,True),fill=INK)
-  d.text((x+d.textlength(label,font=font(29,True)),y+132),pct(value),font=font(29,True),fill=color(value))
+  d.text((x+d.textlength(label,font=font(29,True)),y+132),pct(value),font=font(29,True),fill=color(value,target))
  footer='ДРР = сумма расходов / сумма рекламных заказов до скидок WB. Дни без заказов входят в расходы. Нет заказов — сумма заказов 0, ДРР не вычисляется. Исторические расходы исключённых товаров и архивных РК включены в итог. Атрибуция не равна выкупам и прибыли. Новые тесты отмечены; период может включать прежний состав. Итог относится только к кабинету Китай.'
  if bundle.get('report_scope_label'):footer='ДРР = сумма расходов / сумма рекламных заказов до скидок WB. Показаны только три РК дополнения, не весь кабинет. Шуба: доступны 12–13.11; отсутствующая строка 11.11 не заменена нулём. Атрибуция не равна выкупам и прибыли. Все изменения — только после подтверждения.'
  if bundle.get('approved_statistics_exceptions'):footer+=' РК '+', '.join(bundle['approved_statistics_exceptions'])+': новый запуск; статистика WB не сформирована, в числовой итог не включена.'
@@ -166,7 +171,7 @@ def _render_legacy(bundle):
    d.text((860,y+offset),label+money(value)+' ¥',font=font(27),fill=INK)
   for offset,label,value in [(200,'ДРР завершённых дней: ',bp),(242,'ДРР за '+budget_day_label+': ',c.get('last'))]:
    d.text((860,y+offset),label,font=font(27),fill=INK)
-   d.text((860+d.textlength(label,font=font(27)),y+offset),pct(value),font=font(27,True),fill=color(value))
+   d.text((860+d.textlength(label,font=font(27)),y+offset),pct(value),font=font(27,True),fill=color(value,target))
   d.text((1630,y+16),'Рекомендация по пополнению',font=font(27,True),fill=NAVY)
   for j,line in enumerate(advice):d.text((1630,y+65+j*39),line,font=font(31 if j==0 else 27,j==0),fill=RED if j==0 and decision.startswith('Не пополнять') else INK)
   y+=height+18
