@@ -51,7 +51,7 @@ jobs:
           WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
           MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
           CHINA_TELEGRAM_BOT_TOKEN: ""
-        run: PYTHONPATH=scripts:source python scripts/china_owner_674_photo27.py
+        run: PYTHONPATH=scripts:source python scripts/china_owner_674_photo27_verify.py
 
 
 
@@ -63,3 +63,5 @@ jobs:
 # Continue zero-write preflight; preserve original photo.
 
 # Canonical compare unordered characteristic arrays.
+
+# Readonly verification, never repeat uploaded media.
