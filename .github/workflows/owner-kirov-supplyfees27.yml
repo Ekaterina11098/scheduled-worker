@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   publish:
-    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-kirov-finance27] Read historical fees'
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-orderroute27] Read requested order route'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -51,7 +51,7 @@ jobs:
           WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
           MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
           CHINA_TELEGRAM_BOT_TOKEN: ""
-        run: PYTHONPATH=scripts:source python scripts/china_owner_kirov_finance27.py
+        run: PYTHONPATH=scripts:source python scripts/china_owner_orderroute27.py
 
 
 
@@ -69,3 +69,5 @@ jobs:
 # Read current order IDs endpoint and historical finance only.
 
 # Compact private finance evidence after storage timeout.
+
+# Order-specific route read, no marketplace mutations.
