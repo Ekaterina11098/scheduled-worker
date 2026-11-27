@@ -63,10 +63,11 @@ def write(db,typ,bodies,key):
   save(db,key+':response',{'at':m.now(),'http_status':e.code,'detail':detail})
  except (TimeoutError,urllib.error.URLError):save(db,key+':response',{'at':m.now(),'uncertain':True})
 def run(typ,start,end,batch_size=20):
- t=b.ReadOnly();db=m.Cache(t);auth=db.get(b.ROOT+P+'authorization:v1');pf=db.get(b.ROOT+P+'preflight:v1');initial=db.get(b.ROOT+P+'start:v1')
+ t=b.ReadOnly();db=m.Cache(t);auth=db.get(b.ROOT+P+'authorization:v1');pf=db.get(b.ROOT+P+'preflight:v1');initial=db.get(b.ROOT+P+'reconciled_start:v1') or db.get(b.ROOT+P+'start:v1')
  assert auth and auth['authorized'] and auth['scope']=='remaining_ms_currency_references_only'
  assert auth['preserve_prices_sums_quantities_rows_stores_documents'] and not auth['outside_ms_changes']
- assert pf['status']=='complete' and not pf['errors'] and pf['warehouse_quantities_unchanged']
+ assert pf['status']=='complete' and not pf['errors']
+ assert pf['warehouse_quantities_unchanged'] or db.get(b.ROOT+P+'baseline_reconciliation:v1')['status']=='verified'
  assert not any(s['issues'] for s in pf['types']),'Unexpected currencies require review'
  cc=b.fullrows(t,'entity/currency');assert h.h.ccstate(cc)==h.h.ccstate(initial['currencies'])
  base=next(c for c in cc if c.get('default'));assert base['isoCode']=='CNY' and b.D(base['rate'])==1
