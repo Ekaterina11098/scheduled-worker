@@ -11,7 +11,7 @@ jobs:
     steps:
       - name: Query WB Statistics
         env:
-          WB_STATISTICS_TOKEN: ${{ secrets.WB_TOKEN_3 }}
+          WB_STATISTICS_TOKEN: ${{ secrets.WB_TOKEN_2 }}
         run: |
           cat > /tmp/order-public.pem <<'PEM'
           -----BEGIN PUBLIC KEY-----
@@ -30,7 +30,7 @@ jobs:
           import base64, concurrent.futures
           token = os.environ["WB_STATISTICS_TOKEN"]
           ids = ["f9a08c9e9fc3621258342a44d204f310c5f7aa1553f4de547becacde1c4c6527","9b790b1b32407caeb433c19112620a87a139bb60b49779c43164f53a65239506","20dd90e836cd2014bd25e819ea161ee93b8e49d1a50797e50137b70511dadecd","a6cbeeab6336a14fadfc5eaa8539d62dca03ff6d8ebeec315e4f1dbaa92aba20"]
-          market = "https://marketplace-api.wildberries.cn"
+          market = "https://marketplace-api.wildberries.ru"
           stats = "https://statistics-api.wildberries.cn/api/v1/supplier"
           finance = "https://finance-api.wildberries.cn/api/finance/v1/sales-reports/detailed"
           tz = datetime.timezone(datetime.timedelta(hours=3))
@@ -62,25 +62,34 @@ jobs:
           refs = api("Exact supply order IDs", market + "/api/marketplace/v3/supplies/" + supply + "/order-ids")
           if detail:
               emit("supply", detail, {"id","createdAt","closedAt","scanDt","done","warehouseId"})
-          if isinstance(refs, dict):
-              wanted = set(refs.get("orderIds", []))
+          target_order = "8bb9f3c33659a454df541181f5e62923ae76c0c64d94961eec7a9c0c29a2219b"
+          if refs is not None:
+              values = refs if isinstance(refs, list) else refs.get("orderIds", refs.get("orders", []))
+              wanted = {v.get("id", v.get("orderId")) if isinstance(v, dict) else v for v in values}
+              wanted.discard(None)
+              wanted = {str(v) for v in wanted}
+              print(f"Order list shape: {list(refs) if isinstance(refs, dict) else 'list'}", flush=True)
+              print(f"Target task in supply IDs: {any(digest(v) == target_order for v in wanted)}", flush=True)
               print(f"Supply order count: {len(wanted)}", flush=True)
               matched = {}
               cursor = 0
               for page in range(40):
-                  query = urllib.parse.urlencode({"limit":1000,"next":cursor,"dateFrom":stamp(10,10),"dateTo":stamp(11,9)})
+                  query = urllib.parse.urlencode({"limit":1000,"next":cursor,"dateFrom":stamp(10,23),"dateTo":stamp(11,21)})
                   data = api("Archive", market + "/api/v3/orders?" + query)
                   if not data or not data.get("orders"):
                       break
                   for row in data["orders"]:
-                      if row.get("id") in wanted or row.get("supplyId") == supply:
-                          matched[row["id"]] = row
+                      if str(row.get("id")) in wanted or row.get("supplyId") == supply:
+                          matched[str(row["id"])] = row
                   nxt = data.get("next")
                   if (wanted and wanted <= matched.keys()) or not nxt or nxt == cursor:
                       break
                   cursor = nxt
                   time.sleep(0.25)
               print(f"Supply orders recovered: {len(matched)}", flush=True)
+              print(f"Belt orders: {sum(r.get('nmId') == 453951161 for r in matched.values())}; scarf orders: {sum(r.get('nmId') == 493953813 for r in matched.values())}", flush=True)
               for row in matched.values():
+                  if row.get("nmId") not in (453951161,493953813) and digest(row.get("id")) != target_order:
+                      continue
                   emit("order", row, {"id","nmId","article","createdAt","supplyId"})
           PY
