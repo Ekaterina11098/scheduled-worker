@@ -62,7 +62,17 @@ jobs:
           AUTO_STOCK_FAIL_FAST: '1'
         run: |
           python warehouse_id_patch.py private-source
-          python owner_stock_apply_133_623_20261127.py
+          python - <<'PY'
+          import runpy,time,psycopg
+          for attempt in range(12):
+              try:
+                  runpy.run_path('owner_stock_apply_133_623_20261127.py',run_name='__main__')
+                  break
+              except psycopg.OperationalError:
+                  print('Database connection unavailable; retained journal, retry '+str(attempt+1),flush=True)
+                  if attempt==11:raise
+                  time.sleep(30)
+          PY
 
 # Resume exact saved owner scope after narrowing reservation reads to two articles.
 
