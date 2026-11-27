@@ -1,0 +1,25 @@
+name: Reconcile outstanding order currency references individually
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/cny-three-order-reference-reconcile.yml']
+permissions:
+  contents: read
+concurrency:
+  group: ms-cny-three-outstanding-order-references
+  cancel-in-progress: false
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Reconcile prior timeout and preserve all nominal values
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: python scripts/cny_three_order_reference_reconcile.py
