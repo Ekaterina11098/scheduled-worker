@@ -1,8 +1,5 @@
 name: Freeze recovered IP midday report only27Nov
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/ip-midday-freeze-20261127.yml']
   workflow_dispatch:
 permissions: {contents: read}
 concurrency:
