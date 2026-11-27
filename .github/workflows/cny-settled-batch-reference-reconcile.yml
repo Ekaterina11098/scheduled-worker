@@ -1,0 +1,25 @@
+name: Reconcile settled currency reference requests individually
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/cny-settled-batch-reference-reconcile.yml']
+permissions:
+  contents: read
+concurrency:
+  group: ms-cny-selected-chain
+  cancel-in-progress: false
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Reconcile actual saved state and preserve all nominal values
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: python scripts/cny_settled_batch_reference_reconcile.py
