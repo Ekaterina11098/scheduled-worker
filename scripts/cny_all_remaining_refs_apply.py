@@ -14,6 +14,9 @@ def signature(d,typ):
  return s
 def invariant(a,z,typ):
  assert [r.psig(x) for x in r.rows(a)]==[r.psig(x) for x in r.rows(z)],'Prices, quantities or row order changed'
+ for x,y in zip(r.rows(a),r.rows(z)):
+  for k in ('reserve','wait','shipped','received','inTransit','trackingCodes','trackingCodes_1162','customsDeclarationNumber'):
+   assert x.get(k)==y.get(k),'Position detail changed: '+k
  assert b.D(a.get('sum'))==b.D(z.get('sum')),'Nominal total changed'
  for k in ('id','name','moment','description','applicable','externalCode','vatEnabled','vatIncluded','reserve','overhead','attributes','syncId','code','shared','printed','published'):
   assert a.get(k)==z.get(k),'Header changed: '+k
