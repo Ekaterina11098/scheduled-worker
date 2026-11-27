@@ -4,6 +4,8 @@ from PIL import Image,ImageDraw
 from china_advertising_v2_png import font,money,pct,NAVY,BG,INK,GREEN,RED
 
 def pages(bundle):
+ from china_advertising_target import target_pct
+ target=target_pct(bundle)
  if not bundle.get('economic_review_complete'):raise ValueError('Economic review not complete')
  W,H=2400,7000;xs=[40,560,1020,1600,2360];files=[]
  def wrap(d,s,width,size=28):
@@ -18,7 +20,7 @@ def pages(bundle):
  def canvas():
   im=Image.new('RGB',(W,H),BG);d=ImageDraw.Draw(im);d.rectangle((0,0,W,225),fill=NAVY)
   d.text((40,24),'Китай · рассчитанные рекомендации по РК',font=font(46,True),fill='white')
-  d.text((40,90),'Полные дни после последнего изменения · цель ДРР 5% · текущие минимумы WB',font=font(28,True),fill='white')
+  d.text((40,90),'Полные дни после последнего изменения · цель ДРР '+format(target,'g')+'% · текущие минимумы WB',font=font(28,True),fill='white')
   d.text((40,137),bundle['source_observed_at'],font=font(25),fill='white')
   d.text((40,179),'Дополнительные предложения: '+str(sum(bool(r.get('action')) for c in bundle['campaigns'] for r in c['focus']))+' · исполнение — после согласования',font=font(25),fill='white')
   for i,label in enumerate(['РК · товар · период','Реклама за полные дни','Цена · собственная экономика','Рекомендация']):d.text((xs[i],245),label,font=font(28,True),fill=NAVY)
@@ -33,7 +35,7 @@ def pages(bundle):
    if r.get('pending_first_day') or r.get('already_excluded'):continue
    p=(r.get('comparison') or {}).get('after') or r['period']
    if p['spend']<=0:continue
-   risk=p['orders']==0 or p['amount']<=0 or 100*p['spend']/p['amount']>5
+   risk=p['orders']==0 or p['amount']<=0 or 100*p['spend']/p['amount']>target
    if not (r.get('action') or risk or r.get('pending_first_day')):continue
    e=r.get('economics') or {};days=(r.get('comparison') or {}).get('to_days') or bundle['days']
    first=days[0][8:10]+'.'+days[0][5:7];last=days[-1][8:10]+'.'+days[-1][5:7]
