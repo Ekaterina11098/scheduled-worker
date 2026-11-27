@@ -61,3 +61,5 @@ jobs:
 # Initialize missing checkpoint before readback.
 
 # Continue zero-write preflight; preserve original photo.
+
+# Canonical compare unordered characteristic arrays.
