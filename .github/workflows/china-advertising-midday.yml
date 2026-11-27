@@ -93,3 +93,5 @@ jobs:
 # Regression covers RPC route for oversized archived source.
 
 # Scoped RPC 520 recovery reads back exact payload before retry.
+
+# Reuse complete unchanged historical source without redundant large update.
