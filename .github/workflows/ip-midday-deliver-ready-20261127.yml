@@ -1,8 +1,5 @@
 name: Deliver already frozen IP midday report27Nov
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/ip-midday-deliver-ready-20261127.yml']
   workflow_dispatch:
 permissions: {contents: read}
 concurrency:
