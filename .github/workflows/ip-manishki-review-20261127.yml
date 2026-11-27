@@ -1,0 +1,32 @@
+name: Addressed IP manishki read-only review 27Nov
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/ip-manishki-review-20261127.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency:
+  group: wb-ip-advertising-agent
+  cancel-in-progress: false
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: c52c656cd737481f97efc739b89e4968edd17496
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            scripts/ip_manishki_review_20261127.py
+            scripts/owner_ad_tests23.py
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5 > "$RUNNER_TEMP/dependencies.log" 2>&1
+      - name: Read only seven scoped stocks three prices campaign and minimum
+        run: python scripts/ip_manishki_review_20261127.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_2: ${{ secrets.WB_TOKEN_2 }}
