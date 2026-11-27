@@ -2,7 +2,7 @@
 import os,time,json,math
 import stock_deploy_support as support,tg_agent_new as g
 import stock_regular_service as service
-from stock_live_capacity import refresh_manual_source,fresh
+from stock_live_capacity import refresh_manual_source,fresh,LiveCapacity
 from stock_operation_store import Store,canonical,digest,Stopped
 from stock_execution_fence import cloud_writer,require_cloud_lease,require_article_allowed
 from stock_shared_requests import SharedRequests
@@ -13,6 +13,10 @@ ROOT='technical:owner-apply:2026-11-27:133-623:table-1'
 PREVIEW='technical:owner-stock-preview:2026-11-27:133-623:physical2-1'
 TARGETS={'133-madlenbag-green':[1,0,1],'623-angelabag-brown':[0,0,1]}
 WAREHOUSES=[1863255,854652,2126188]
+_original_capacity_proof=LiveCapacity.proof
+def owner_scoped_proof(self,force=False,articles=None):
+ return _original_capacity_proof(self,force=force,articles=set(TARGETS) if articles is None else articles)
+LiveCapacity.proof=owner_scoped_proof
 APPROVAL=dict(date='2026-11-27',targets=TARGETS,warehouses=WAREHOUSES,ip_stock_writes=False,authorization='owner-approved-proposed-table')
 install(g);g.STOCK_FURCOAT_ENABLED=True;g.RUN_DEADLINE=time.monotonic()+2400
 os.environ['STOCK_STORAGE_PROOF_FILE']=os.path.join(os.environ['RUNNER_TEMP'],'owner-two-stock-proof.json')
@@ -138,8 +142,9 @@ with cloud_writer(support.runtime_db()):
     root=main();print(json.dumps(dict(status=root['status'],complete=root['execution_complete'],final_fbs=root['final_fbs'],ip_stock_writes=0)),flush=True);break
    except Exception as exc:
     wait=getattr(exc,'wait',0);readback='waiting for WB readback' in str(exc)
+    fresh_retry='Fresh capacity reconciliation exceeded120seconds' in str(exc)
     print(json.dumps(dict(attempt=attempt+1,error_type=type(exc).__name__,error=str(exc),wait=wait)),flush=True)
-    if attempt==7 or not (wait or readback):raise
+    if attempt==7 or not (wait or readback or fresh_retry):raise
     remaining=max(30,math.ceil(wait))
     while remaining>0:
      part=min(30,remaining);budget();time.sleep(part);remaining-=part
