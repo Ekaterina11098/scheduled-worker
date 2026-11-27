@@ -30,7 +30,8 @@ try:
  raw=r.content
  assert raw[:8]==b'\x89PNG\r\n\x1a\n'and len(raw)==6426149
  e['source_sha256']=hashlib.sha256(raw).hexdigest()
- check=card();keys=('nmID','vendorCode','title','brand','description','characteristics','dimensions','sizes','photos','video');assert all(check.get(k)==e['before'].get(k)for k in keys),'Content changed before upload'
+ check=card();e['prewrite_read']=check;save();keys=('nmID','vendorCode','title','brand','description','characteristics','dimensions','sizes','photos','video');canon=lambda v:sorted([json.dumps(x,sort_keys=True,ensure_ascii=False)for x in v])if isinstance(v,list)else v
+ diff=[k for k in keys if canon(check.get(k))!=canon(e['before'].get(k))];assert not diff,'Content changed:'+','.join(diff)
  e['operation']={'status':'submitting','at':now(),'slot':1};save()
  r=requests.post('https://content-api.wildberries.ru/content/v3/media/file',headers={**h,'X-Nm-Id':str(NM),'X-Photo-Number':'1'},files={'uploadfile':('674-pink.png',raw,'image/png')},timeout=90)
  e['operation'].update(http_status=r.status_code,response=r.text[:2000],status='accepted'if r.ok else'rejected');save();r.raise_for_status()
