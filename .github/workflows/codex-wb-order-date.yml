@@ -57,60 +57,30 @@ jobs:
               return any(digest(row.get(k)) in ids for k in ("srid","rid","sticker","stickerId","shkId","shk_id","supplyId","id"))
           def stamp(month, day):
               return int(datetime.datetime(2026, month, day, tzinfo=tz).timestamp())
-          def fbs():
+          supply = next(s for n in range(301345000, 301346000) if digest(s := f"WB-GI-{n}") == ids[0])
+          detail = api("Exact supply", market + "/api/v3/supplies/" + supply)
+          refs = api("Exact supply order IDs", market + "/api/marketplace/v3/supplies/" + supply + "/order-ids")
+          if detail:
+              emit("supply", detail, {"id","createdAt","closedAt","scanDt","done","warehouseId"})
+          if isinstance(refs, dict):
+              wanted = set(refs.get("orderIds", []))
+              print(f"Supply order count: {len(wanted)}", flush=True)
+              matched = {}
               cursor = 0
-              supply = None
-              candidates = []
-              for page in range(30):
-                  query = urllib.parse.urlencode({"limit":1000,"next":cursor,"dateFrom":stamp(10,27),"dateTo":stamp(11,17)})
-                  data = api("FBS orders", market + "/api/v3/orders?" + query)
+              for page in range(40):
+                  query = urllib.parse.urlencode({"limit":1000,"next":cursor,"dateFrom":stamp(10,10),"dateTo":stamp(11,9)})
+                  data = api("Archive", market + "/api/v3/orders?" + query)
                   if not data or not data.get("orders"):
                       break
                   for row in data["orders"]:
-                      if digest(row.get("supplyId")) == ids[0]:
-                          supply = row["supplyId"]
-                          candidates.append(row)
-                  next_cursor = data.get("next")
-                  if not next_cursor or next_cursor == cursor:
+                      if row.get("id") in wanted or row.get("supplyId") == supply:
+                          matched[row["id"]] = row
+                  nxt = data.get("next")
+                  if (wanted and wanted <= matched.keys()) or not nxt or nxt == cursor:
                       break
-                  cursor = next_cursor
+                  cursor = nxt
                   time.sleep(0.25)
-              if not supply:
-                  cursor = 0
-                  for page in range(20):
-                      data = api("FBS supplies", market + f"/api/v3/supplies?limit=1000&next={cursor}")
-                      if not data or not data.get("supplies"):
-                          break
-                      supply = next((row["id"] for row in data["supplies"] if digest(row["id"]) == ids[0]), None)
-                      if supply or not data.get("next") or data["next"] == cursor:
-                          break
-                      cursor = data["next"]
-                      time.sleep(0.25)
-              print(f"Supply found: {bool(supply)}; matching articles in supply: {sum(r.get('nmId') == 453951161 or key({k:v for k,v in r.items() if k!='supplyId'}) for r in candidates)}", flush=True)
-              if supply:
-                  detail = api("FBS supply details", market + "/api/v3/supplies/" + supply)
-                  refs = api("FBS supply order IDs", market + "/api/marketplace/v3/supplies/" + supply + "/order-ids")
-                  if detail:
-                      emit("supply", detail, {"id","createdAt","closedAt","scanDt","done","warehouseId","name"})
-                  print(f"FBS supply order IDs: {len((refs or {}).get('orderIds', []))}", flush=True)
-                  for row in candidates:
-                      if row.get("nmId") == 453951161 or key({k:v for k,v in row.items() if k!="supplyId"}):
-                          emit("FBS", row, {"id","rid","createdAt","supplyId","warehouseId","nmId","article","price","salePrice","convertedPrice","currencyCode"})
-          def reports():
-              for name,url,body in [
-                ("stats sales",stats+"/sales?dateFrom=2026-11-16&flag=0",None),
-                ("stats orders",stats+"/orders?dateFrom=2026-10-28&flag=1",None),
-                ("finance",finance,{"dateFrom":"2026-10-26","dateTo":"2026-11-22","limit":100000,"period":"weekly",
-                 "fields":["rrdId","giId","nmId","docTypeName","sellerOperName","orderDt","saleDt","rrDate","shkId","stickerId","orderId","srid","retailPrice","retailAmount","forPay","penalty","bonusTypeName"]})]:
-                  data = api(name,url,body)
-                  if data is None:
-                      continue
-                  matches=[r for r in data if key(r)]
-                  extra=[r for r in data if r.get("nmId")==453951161 and (str(r.get("date",""))[:10] in {"2026-10-28","2026-11-16"} or str(r.get("saleDt",""))[:10]=="2026-11-16") and not key(r)]
-                  print(f"{name}: {len(data)} rows; {len(matches)} ID matches; {len(extra)} article/date matches", flush=True)
-                  fields={"srid","gNumber","saleID","date","lastChangeDate","warehouseName","nmId","finishedPrice","forPay","isCancel","cancelDate","sticker","orderDt","saleDt","rrDate","docTypeName","sellerOperName","shkId","stickerId","orderId","giId","retailPrice","retailAmount","penalty","bonusTypeName"}
-                  for row in matches[:40]+extra[:25]:
-                      emit(name,row,fields)
-          fbs()
-          reports()
+              print(f"Supply orders recovered: {len(matched)}", flush=True)
+              for row in matched.values():
+                  emit("order", row, {"id","nmId","article","createdAt","supplyId"})
           PY
