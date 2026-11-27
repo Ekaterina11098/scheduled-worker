@@ -191,7 +191,7 @@ def collect(io,day,current=False):
     if not isinstance(rows,list) or any(r.get('advertId')!=cid for r in rows):raise ValueError('Scoped campaign statistics identity mismatch')
     for b in s['batches'].values():
      if any(c['id']==cid for c in b['campaigns']['adverts']):b['stats']+=rows
-   save(io,key,s)
+   if missing:save(io,key,s)
    from china_morning_readiness import ensure
    ensure(io,s,day,key)
   return s
