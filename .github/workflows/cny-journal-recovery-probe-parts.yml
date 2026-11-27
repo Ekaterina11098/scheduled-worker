@@ -1,0 +1,25 @@
+name: Verify bounded currency journal recovery read only
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/cny-journal-recovery-probe-parts.yml']
+permissions:
+  contents: read
+concurrency:
+  group: ms-cny-selected-chain
+  cancel-in-progress: false
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Verify journal and read actual MS state
+        env:
+          MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: python scripts/cny_journal_recovery_probe_parts.py
