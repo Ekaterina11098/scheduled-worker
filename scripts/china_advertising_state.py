@@ -9,9 +9,22 @@ class AdvertisingIO(IO):
         return bool(allowed) and len(json.dumps(p,ensure_ascii=False,separators=(',',':')).encode('utf-8'))>1000000
 
     def _report_write(self,key,p,create):
-        result=self.db('rpc/china_advertising_report_state_v1','POST',dict(p_key=key,p_payload=p,p_create=create))
-        if type(result)is not bool:raise RuntimeError('Report state RPC response invalid')
-        return result
+        for attempt in range(3):
+            try:
+                result=self.db('rpc/china_advertising_report_state_v1','POST',dict(p_key=key,p_payload=p,p_create=create))
+                if type(result)is not bool:raise RuntimeError('Report state RPC response invalid')
+                if not result and attempt and self.get(key)==p:return True
+                return result
+            except (requests.Timeout,requests.ConnectionError,RuntimeError) as error:
+                transient=isinstance(error,(requests.Timeout,requests.ConnectionError)) or str(error) in {
+                    'State HTTP 429','State HTTP 500','State HTTP 502','State HTTP 503','State HTTP 504','State HTTP 520','State HTTP 522','State HTTP 524'}
+                if not transient:raise
+                # Only scoped, idempotent report state; recover an acknowledged-late commit.
+                try:
+                    if self.get(key)==p:return True
+                except (requests.Timeout,requests.ConnectionError,RuntimeError):pass
+                if attempt==2:raise
+                time.sleep((2,5)[attempt])
 
     def _completion(self,key,p):
         if isinstance(p,dict) and p.get('completion_notice'):
