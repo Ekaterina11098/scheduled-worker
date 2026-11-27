@@ -46,7 +46,11 @@ for first,last in [('2026-10-21','2026-11-20'),('2026-11-21','2026-11-27')]:
   elif r.status_code==200:
    p=r.json()
    if not isinstance(p,list):save(k,dict(s,status='unexpected_shape'));break
-   s['rows']+=p
+   ids={str(v) for x in sup for v in (io.get(ROOT+':orderids:'+x['id'])or{}).get('data',{}).get('orderIds',[])}
+   fields=['rrdId','reportId','orderId','orderUid','srid','stickerId','nmId','vendorCode','rrDate','saleDt','orderDt','sellerOperName','bonusTypeName','currency','penalty','deduction','additionalPayment','rebillLogisticCost','paidAcceptance','paidStorage','deliveryService','commissionPercent','kvw','kvwBase','supRatingUp','dlvPrc','warehouseLogisticsCoeff','giId']
+   fees=['penalty','deduction','additionalPayment','rebillLogisticCost','paidAcceptance']
+   kept=[{k:v for k,v in row.items()if k in fields}for row in p if str(row.get('orderId'))in ids or any(float(row.get(k)or 0)!=0 for k in fees)]
+   s['rows']+=kept;s['scanned_rows']=s.get('scanned_rows',0)+len(p)
    if p:s['rrd_id']=p[-1]['rrdId']
    else:save(k,dict(s,status='empty200'));break
   else:save(k,dict(s,status=r.status_code));break
