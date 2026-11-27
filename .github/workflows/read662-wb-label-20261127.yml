@@ -1,0 +1,67 @@
+name: Read662 WB barcode for label
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/read662-wb-label-20261127.yml']
+permissions: {}
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install --quiet requests==2.32.5
+      - env:
+          WB_TOKEN_1: ${{ secrets.WB_TOKEN_1 }}
+          WB_TOKEN_2: ${{ secrets.WB_TOKEN_2 }}
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        shell: python
+        run: |
+          import os,json,time,re,requests
+          from datetime import datetime,timezone
+          HOST='https://content-api.wildberries.cn'
+          WH={'Authorization':os.environ['WB_TOKEN_3'],'Content-Type':'application/json'}
+          SB=os.environ['SUPABASE_URL'].rstrip('/');SK=os.environ['SUPABASE_SECRET_KEY']
+          SH={'apikey':SK,'Authorization':'Bearer '+SK,'Content-Type':'application/json'}
+          KEY='label662:wb_read:20261127:v1'
+          
+          def now():return datetime.now(timezone.utc).isoformat()
+          def cache(k):
+           r=requests.get(SB+'/rest/v1/telegram_api_cache',headers=SH,params={'cache_key':'eq.'+k,'select':'payload'},timeout=40);r.raise_for_status()
+           return r.json()[0]['payload'] if r.json() else None
+          def save(e):
+           r=requests.post(SB+'/rest/v1/telegram_api_cache?on_conflict=cache_key',headers={**SH,'Prefer':'resolution=merge-duplicates,return=minimal'},json={'cache_key':KEY,'payload':e,'updated_at':now(),'expires_at':'2099-01-01T00:00:00Z'},timeout=40);r.raise_for_status()
+          def read(path,body=None):
+           for attempt in range(3):
+            r=requests.get(HOST+path,headers=WH,timeout=60) if body is None else requests.post(HOST+path,headers=WH,json=body,timeout=60)
+            if r.status_code==429:
+             time.sleep(max(6,min(60,int(r.headers.get('X-Ratelimit-Retry','10')))));continue
+            r.raise_for_status();j=r.json();assert not j.get('error'),path
+            return j
+           raise RuntimeError('Read rate limited')
+          def cards(trash=False):
+           cur={'limit':100};rows=[]
+           for page in range(80):
+            j=read('/content/v2/get/cards/trash' if trash else '/content/v2/get/cards/list',{'settings':{'sort':{'ascending':True},'cursor':cur,'filter':{'withPhoto':-1}}})
+            rows.extend(j.get('cards',[]));cu=j.get('cursor',{})
+            if cu.get('total',0)<100:return rows
+            date='trashedAt' if trash else 'updatedAt';cur={'limit':100,date:cu[date],'nmID':cu['nmID']};time.sleep(.8)
+           raise RuntimeError('Incomplete pagination')
+          def core(c):
+           x={k:v for k,v in c.items() if k not in ('updatedAt',)}
+           x['characteristics']=sorted(x.get('characteristics',[]),key=lambda a:str(a['id']))
+           return x
+          
+          out={'status':'read_complete','items':[],'business_writes':0}
+          for cab in (1,2,3):
+           WH={'Authorization':os.environ['WB_TOKEN_'+str(cab)],'Content-Type':'application/json'}
+           for trash in (False,True):
+            for c in cards(trash):
+             if c.get('vendorCode','').split('-')[0].lstrip('0')=='662':
+              out['items'].append({'cabinet':cab,'trash':trash,'article':c['vendorCode'],'nmID':c['nmID'],'barcodes':[str(b) for z in c.get('sizes',[]) for b in z.get('skus',[])]})
+          save(out)
+          print('662 WB read complete')
+          
