@@ -4,6 +4,7 @@ from datetime import datetime,timezone,timedelta
 from statistics import median
 from urllib.parse import urlsplit
 from ip_cloud_dialog import State,ROOT,Halt,digest
+from ip_daily_png_contract import plan_digest
 ROOT_REPORT=ROOT+'report-analysis:v4:'
 RULES={'cabinet':'token_2','currency':'RUB','tax_reserve_rate':.15,'tax_base':'positive net seller realized revenue',
  'financial_ads':'already included in reconciled for_pay; never deduct twice','raise_max_pct':5,
@@ -157,7 +158,7 @@ def review_report(store,view,contract):
   'add':'Добавления и новые кампании не предлагаются: действует согласованный режим сокращения расходов.',
   'reduce':'По сохранённым данным подготовлено снижений ставки: '+str(selected['lower_bid'])+'.',
   'exclude':'По сохранённым данным подготовлено точечных исключений: '+str(selected['remove'])+'.'}
- out=copy.deepcopy(candidate);out['actions']=actions;out['plan_sha256']=digest(actions)
+ out=copy.deepcopy(candidate);out['actions']=actions;out['plan_sha256']=plan_digest(actions)
  coverage=out['review_coverage'];coverage['conditional_basis_used']=0
  for direction,kind in [('raise',None),('add',None),('reduce','lower_bid'),('exclude','remove')]:
   entry=coverage.setdefault('directions',{}).setdefault(direction,{})
