@@ -5,7 +5,7 @@ on:
     paths: [.github/workflows/owner-winners63-contract27-v3.yml]
 permissions: {contents: read}
 concurrency:
-  group: china-owner-content-media22
+  group: owner-winners63-cache-only-contract
   cancel-in-progress: false
 jobs:
   publish:
