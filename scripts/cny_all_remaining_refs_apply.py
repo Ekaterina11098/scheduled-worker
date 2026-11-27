@@ -40,7 +40,7 @@ def body(d,base,typ):
  if d.get('overhead') is not None:q['overhead']=copy.deepcopy(d['overhead'])
  return q
 def write(db,typ,bodies,key):
- assert typ in WRITABLE and 0<len(bodies)<=20
+ assert typ in WRITABLE and 0<len(bodies)<=100
  assert all(set(q)<={'id','rate','positions','sum','vatSum','operations','overhead'} for q in bodies)
  assert db.claim(b.ROOT+P+key+':intent',{'at':m.now(),'type':typ,'bodies':bodies}),'Existing intent: reconcile, never replay'
  headers={'Authorization':'Bearer '+os.environ['MOYSKLAD_API_TOKEN'],'Content-Type':'application/json','Accept':'application/json;charset=utf-8','Accept-Encoding':'gzip'}
@@ -59,7 +59,7 @@ def write(db,typ,bodies,key):
   except Exception:detail={'status':e.code}
   save(db,key+':response',{'at':m.now(),'http_status':e.code,'detail':detail})
  except (TimeoutError,urllib.error.URLError):save(db,key+':response',{'at':m.now(),'uncertain':True})
-def run(typ,start,end):
+def run(typ,start,end,batch_size=20):
  t=b.ReadOnly();db=m.Cache(t);auth=db.get(b.ROOT+P+'authorization:v1');pf=db.get(b.ROOT+P+'preflight:v1');initial=db.get(b.ROOT+P+'start:v1')
  assert auth and auth['authorized'] and auth['scope']=='remaining_ms_currency_references_only'
  assert auth['preserve_prices_sums_quantities_rows_stores_documents'] and not auth['outside_ms_changes']
@@ -76,8 +76,9 @@ def run(typ,start,end):
  for o in range(0,info['count'],1000):
   for d in db.get(b.ROOT+P+'headers:'+typ+':'+str(o))['documents']:baseline[d['id']]=d
  verified=written=0
- for off in range(start,min(end,len(ids)),20):
-  chunk=ids[off:off+20];key='apply:'+typ+':'+str(off)
+ assert batch_size in (20,100)
+ for off in range(start,min(end,len(ids)),batch_size):
+  chunk=ids[off:min(off+batch_size,end)];key='apply:'+typ+':'+str(off)
   snapshot=db.get(b.ROOT+P+key+':snapshot');intent=db.get(b.ROOT+P+key+':intent')
   current=r.live(t,typ,chunk)
   if snapshot:
@@ -118,8 +119,8 @@ def run(typ,start,end):
  save(db,'section:'+typ+':'+str(start),{'status':'verified','at':m.now(),'type':typ,'start':start,'end':end,'verified':verified,'written':written,'all_store_quantities_preserved':True})
  print('Reference-only section verified; quantities, prices and nominal totals preserved.')
 if __name__=='__main__':
- ap=argparse.ArgumentParser();ap.add_argument('type');ap.add_argument('--start',type=int,default=0);ap.add_argument('--end',type=int,default=1000);args=ap.parse_args()
- try:run(args.type,args.start,args.end)
+ ap=argparse.ArgumentParser();ap.add_argument('type');ap.add_argument('--start',type=int,default=0);ap.add_argument('--end',type=int,default=1000);ap.add_argument('--batch-size',type=int,default=20);args=ap.parse_args()
+ try:run(args.type,args.start,args.end,args.batch_size)
  except Exception as e:
   try:save(m.Cache(b.ReadOnly()),'error:apply:'+args.type+':'+str(args.start),{'at':m.now(),'reason':str(e),'trace':traceback.format_exc()})
   except Exception:pass
