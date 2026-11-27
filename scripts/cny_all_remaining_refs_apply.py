@@ -45,6 +45,25 @@ def body(d,base,typ):
 def write(db,typ,bodies,key):
  assert typ in WRITABLE and 0<len(bodies)<=100
  assert all(set(q)<={'id','rate','positions','sum','vatSum','operations','overhead'} for q in bodies)
+ if len(bodies)>20:
+  snap=db.get(b.ROOT+P+key+':snapshot')
+  assert snap and {q['id'] for q in bodies}==set(snap['before'])
+  assert db.claim(b.ROOT+P+key+':intent',{'at':m.now(),'type':typ,'bodies':bodies,'partitioned':True}),'Existing intent: reconcile, never replay'
+  t=b.ReadOnly()
+  for offset in range(0,len(bodies),20):
+   part=bodies[offset:offset+20];label=key+':part:'+str(offset)
+   write(db,typ,part,label)
+   for attempt in range(13):
+    current=r.live(t,typ,[q['id'] for q in part])
+    if all(signature(d,typ)==signature(snap['goals'][i],typ) for i,d in current.items()):break
+    if attempt<12:time.sleep(10)
+   save(db,label+':readback',{'at':m.now(),'documents':current})
+   for i,d in current.items():
+    invariant(snap['before'][i],d,typ)
+    assert signature(d,typ)==signature(snap['goals'][i],typ),'Small request not settled; no blind replay'
+   save(db,label+':checked',{'at':m.now(),'count':len(part),'status':'verified'})
+  save(db,key+':response',{'at':m.now(),'received':True,'partitioned':True,'parts':(len(bodies)+19)//20})
+  return
  assert db.claim(b.ROOT+P+key+':intent',{'at':m.now(),'type':typ,'bodies':bodies}),'Existing intent: reconcile, never replay'
  headers={'Authorization':'Bearer '+os.environ['MOYSKLAD_API_TOKEN'],'Content-Type':'application/json','Accept':'application/json;charset=utf-8','Accept-Encoding':'gzip'}
  req=urllib.request.Request(m.MS+'entity/'+typ,data=json.dumps(bodies).encode(),headers=headers,method='POST')
