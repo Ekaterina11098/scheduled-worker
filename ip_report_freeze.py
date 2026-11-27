@@ -12,6 +12,21 @@ from ip_budget_table_png import render_budget_png
 ROOT='advertising:ip:report_clock:v1:'
 CHAT=-1004378639510;BOT=8987327588
 
+def json_native(value):
+ return json.loads(json.dumps(value,ensure_ascii=False,allow_nan=False))
+
+def wake_prepared(day,slot,artifact):
+ """Resume the existing deduplicated clock after a late successful freeze."""
+ if artifact.get('status')!='ready'or artifact.get('day')!=day or artifact.get('slot')!=slot or artifact.get('chat_id')!=CHAT or artifact.get('bot_id')!=BOT:raise RuntimeError('Prepared scope mismatch')
+ if not artifact.get('images'):raise RuntimeError('Prepared PNGs missing')
+ for item in artifact['images']:
+  if hashlib.sha256(base64.b64decode(item['data'],validate=True)).hexdigest()!=item['sha256']:raise RuntimeError('Prepared media hash mismatch')
+ if (store.cache_get(ROOT+'delivery:'+day+':'+slot)or{}).get('status')=='complete':return
+ import hmac,requests
+ signature=hmac.new(os.environ['SUPABASE_SECRET_KEY'].encode(),f'{day}|{slot}|prepared'.encode(),hashlib.sha256).hexdigest()
+ response=requests.post(os.environ['SUPABASE_URL'].rstrip('/')+'/functions/v1/ip-report-clock',headers={'x-ip-prepared-signature':signature},json={'prepared_event':True,'day':day,'slot':slot},timeout=(10,90))
+ store.cache_set(ROOT+'prepared_event:'+day+':'+slot,{'http_status':response.status_code,'observed_at':datetime.now(timezone.utc).isoformat()},ttl_days=32)
+
 def credentials():
  from cryptography.hazmat.primitives.ciphers.aead import AESGCM
  secret=os.environ['SUPABASE_SECRET_KEY'].strip();token=os.environ['ADVERTISING_TELEGRAM_BOT_TOKEN'].strip()
@@ -62,7 +77,11 @@ def main():
  now=datetime.now(timezone.utc);day=str(now.astimezone(ZoneInfo('Europe/Moscow')).date());slot=os.environ.get('IP_REPORT_SLOT','morning');verify=os.environ.get('IP_REPORT_VERIFY_ONLY')=='true'
  if slot not in('morning','midday'):raise ValueError('slot')
  key=ROOT+'artifact:'+day+':'+slot
- if not verify and(store.cache_get(key)or{}).get('status')=='ready':return {'status':'frozen_artifact_reused','source_calls':0}
+ if not verify:
+  retained=store.cache_get(key)or{}
+  if retained.get('status')=='ready':
+   wake_prepared(day,slot,retained)
+   return {'status':'frozen_artifact_reused','source_calls':0}
  source=store.cache_get('advertising:ip:scheduled_source:v1:'+day+':'+slot)or{}
  if verify:source=store.cache_get('advertising:ip:morning_recovery:'+day+':v1')or{}
  if source.get('status')!='complete':raise RuntimeError('Complete dated source required; no empty PNGs')
@@ -106,18 +125,14 @@ def main():
  credentials()
  store.cache_set('advertising:ip:report-analysis:v1:'+full['period']+':prepared',dict(contract=contract,view=full,images=[{k:i[k]for k in('kind','sha256')}for i in images],verified_saved_only=verify),ttl_days=32)
  payload=dict(status='ready',slot=slot,day=day,data_period=full['period'],images=images,chat_id=CHAT,bot_id=BOT,plan_key=plan_key,new_actions=len(contract['actions']),budget_coverage=coverage,prepared_at=now.isoformat(),intraday=slot=='midday',own_summary=source.get('own_summary'))
+ payload=json_native(payload)
  store.cache_set(key,payload,ttl_days=32)
  if store.cache_get(key)!=payload:raise RuntimeError('Frozen PNG readback mismatch')
  # Event wakeup also covers a late runner, without another periodic collector or a blind resend.
- import hmac,requests
- signature=hmac.new(os.environ['SUPABASE_SECRET_KEY'].encode(),f'{day}|{slot}|prepared'.encode(),hashlib.sha256).hexdigest()
- response=requests.post(os.environ['SUPABASE_URL'].rstrip('/')+'/functions/v1/ip-report-clock',headers={'x-ip-prepared-signature':signature},json={'prepared_event':True,'day':day,'slot':slot},timeout=(10,90))
- store.cache_set(ROOT+'prepared_event:'+day+':'+slot,{'http_status':response.status_code,'observed_at':datetime.now(timezone.utc).isoformat()},ttl_days=32)
+ wake_prepared(day,slot,payload)
  return dict(status='ready',images=len(images),source_calls=0,wb_writes=0,telegram_calls=0)
 
 if __name__=='__main__':
  try:
   result=main();print(json.dumps({k:result[k]for k in('status','period','source_calls','wb_writes','telegram_calls')if k in result}))
  except Exception as e:print(json.dumps({'status':'report_freeze_blocked','error_type':type(e).__name__}));raise SystemExit(1)
-
-
