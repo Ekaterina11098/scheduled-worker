@@ -6,6 +6,9 @@ TYPES=('customerorder','demand','purchaseorder','invoicein','move','loss','purch
 def main():
  t=b.ReadOnly();db=m.Cache(t);pf=db.get(b.ROOT+p.P+'preflight:v1')
  assert pf and pf['status']=='complete'
+ if not pf['warehouse_quantities_unchanged'] and not db.get(b.ROOT+p.P+'baseline_reconciliation:v1'):
+  import cny_all_remaining_refs_reconcile_baseline as reconcile
+  reconcile.main()
  done=[]
  for typ in TYPES:
   info=db.get(b.ROOT+p.P+'type:'+typ)
