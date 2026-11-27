@@ -69,3 +69,5 @@ jobs:
 # Shared stock reader returns integer-valued floats; missing/fractional values remain forbidden.
 
 # Reverify storage health by real write/readback immediately before owner dispatch.
+
+# Batch two exact size reads per cabinet; resume prepared only, reconcile claimed operations first.
