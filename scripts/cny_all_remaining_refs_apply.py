@@ -76,7 +76,9 @@ def run(typ,start,end,batch_size=20):
  # The current warehouse map is rechecked before the first write and after this section.
  wh0=h.warehouse(t);assert wh0==initial['warehouse_quantities'],'Warehouse changed since inventory; reconcile before writing'
  baseline={}
- for o in range(0,info['count'],1000):
+ selected=set(ids[start:min(end,len(ids))])
+ header_pages=sorted({(j//1000)*1000 for j,i in enumerate(info['ids']) if i in selected})
+ for o in header_pages:
   for d in db.get(b.ROOT+P+'headers:'+typ+':'+str(o))['documents']:baseline[d['id']]=d
  verified=written=0
  assert batch_size in (20,100)
