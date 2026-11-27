@@ -293,6 +293,9 @@ def notify():
  if legacy.get('status')in('verified','repair_attention'):rows.append({'cache_key':LEGACY+':execution','payload':legacy})
  for row in rows:
   a=row['payload'];s=a.get('execution',a)
+  delivery=a.get('completion_delivery')
+  if delivery and delivery.get('status')=='verified' and delivery.get('delivered_at') and a.get('status')=='verified' and (delivery.get('result_status')=='attention'or s.get('prior_safe_error')) and delivery.get('delivered_at','')<s.get('verified_at',''):
+   a['prior_attention_delivery']=a.pop('completion_delivery');db.update(row['cache_key'],a)
   if a.get('completion_delivery'):continue
   if a.get('status')=='verified':text='Пакет отчёта выполнен и проверен в WB. Принятые действия повторно не отправлялись.'
   elif s.get('advertising_verified_at'):
@@ -303,7 +306,7 @@ def notify():
    elif provider:detail='WB отклонил запрос. Ответ сохранён для разбора: '+json.dumps(provider,ensure_ascii=False)[:500]
    text='Рекламные изменения выполнены и проверены. Пополнение не выполнено: '+detail[:600]+'. Принятые изменения не повторяю.'
   else:text='Исполнение остановлено для проверки: '+str(s.get('safe_error','неполный ответ WB'))[:500]+'. Принятые или неопределённые запросы повторно не отправляю.'
-  a['completion_delivery']={'status':'uncertain','attempted_at':stamp()};db.update(row['cache_key'],a)
+  a['completion_delivery']={'status':'uncertain','result_status':a.get('status'),'attempted_at':stamp()};db.update(row['cache_key'],a)
   try:
    receipt=dialog.tg('sendMessage',{'chat_id':CHAT,'text':text})
    if receipt.get('chat',{}).get('id')!=CHAT or receipt.get('from',{}).get('id')!=BOT or type(receipt.get('message_id'))is not int:raise Stop('Unverified Telegram receipt')

@@ -113,6 +113,23 @@ class Flow(unittest.TestCase):
    def tg(s,method,body):sent.append(body);return {'chat':{'id':CHAT},'from':{'id':BOT},'message_id':71}
   with patch('ooo_report_executor.DB',return_value=self.db),patch('ooo_report_executor.Dialogue',TG):notify();notify()
   self.assertEqual(len(sent),1);self.assertEqual(self.db.get(LEGACY+':execution')['completion_delivery']['message_id'],71)
+ def test_recovered_attention_gets_one_success_notification(self):
+  self.db.data[LEGACY+':execution']={'status':'verified','verified_at':'2026-11-27T07:10:43Z','prior_safe_error':'Invalid funding','completion_delivery':{'status':'verified','message_id':84,'delivered_at':'2026-11-27T05:46:07Z'}}
+  sent=[]
+  class TG:
+   def __init__(s,db):pass
+   def preflight(s):return {}
+   def tg(s,method,body):sent.append(body);return {'chat':{'id':CHAT},'from':{'id':BOT},'message_id':85}
+  with patch('ooo_report_executor.DB',return_value=self.db),patch('ooo_report_executor.Dialogue',TG):notify();notify()
+  self.assertEqual(len(sent),1)
+  self.assertEqual(self.db.get(LEGACY+':execution')['prior_attention_delivery']['message_id'],84)
+ def test_uncertain_recovery_notification_is_not_replayed(self):
+  self.db.data[LEGACY+':execution']={'status':'verified','verified_at':'2026-11-27T07:10:43Z','prior_safe_error':'Invalid funding','completion_delivery':{'status':'uncertain','attempted_at':'2026-11-27T05:46:07Z'}}
+  class TG:
+   def __init__(s,db):pass
+   def preflight(s):return {}
+   def tg(s,*a):raise AssertionError('Uncertain send replayed')
+  with patch('ooo_report_executor.DB',return_value=self.db),patch('ooo_report_executor.Dialogue',TG):notify()
  def test_unknown_completion_is_not_resent(self):
   self.db.data[LEGACY+':execution']={'status':'verified'};sent=[]
   class TG:
