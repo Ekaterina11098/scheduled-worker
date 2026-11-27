@@ -34,7 +34,9 @@ def run_batch(offset,expected_pending=None):
  assert elapsed.total_seconds()>600,'Allow prior request to settle before explicit reconciliation'
  before=r.live(t,'customerorder',list(snap['before']))
  pending=[i for i,d in before.items() if a.signature(d,'customerorder')!=a.signature(snap['goals'][i],'customerorder')]
- if expected_pending is not None:assert len(pending)==expected_pending
+ if expected_pending is not None:
+  prior_pending={i for i,d in last['documents'].items() if a.signature(d,'customerorder')!=a.signature(snap['goals'][i],'customerorder')}
+  assert len(prior_pending)==expected_pending and set(pending)<=prior_pending
  for i,d in before.items():
   a.invariant(snap['before'][i],d,'customerorder')
   assert a.signature(d,'customerorder') in (a.signature(snap['before'][i],'customerorder'),a.signature(snap['goals'][i],'customerorder'))
