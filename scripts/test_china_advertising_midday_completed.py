@@ -40,9 +40,17 @@ class CompletedMidday(unittest.TestCase):
   stale=IO(3)
   with patch.object(v,'http',side_effect=RuntimeError('fresh collection requested')):
    with self.assertRaisesRegex(RuntimeError,'fresh collection requested'):v.collect(stale,day,current=True)
-  archives=[x for k,x in stale.d.items()if ':rejected_stale:'in k]
+  archives=[x for k,x in stale.d.items()if '_rejected_stale_'in k]
   self.assertEqual(1,len(archives));self.assertEqual('complete',archives[0]['status'])
   self.assertEqual('collecting',stale.d[key]['status'])
+  # An oversized archive must use the scoped RPC, never the failing REST insert.
+  from china_advertising_state import AdvertisingIO
+  archive_key=next(k for k in stale.d if '_rejected_stale_'in k)
+  large=dict(archives[0],large_statistics='x'*1000001)
+  adapter=AdvertisingIO.__new__(AdvertisingIO)
+  with patch.object(adapter,'_report_write',return_value=True)as rpc, patch.object(adapter,'get',return_value=large), patch.object(adapter,'db',side_effect=AssertionError('REST insert must not be used')):
+   self.assertTrue(adapter.create(archive_key,large))
+   rpc.assert_called_once_with(archive_key,large,True)
  def test_all_four_directions_and_unready_addition_do_not_become_execution(self):
   r=self.review()
   r['recommendation_directions']={k:dict(status='checked',count=0,rows=[])for k in ['raise','add','reduce','exclude']}
