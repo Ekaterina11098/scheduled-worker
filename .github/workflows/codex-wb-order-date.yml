@@ -71,25 +71,15 @@ jobs:
               print(f"Order list shape: {list(refs) if isinstance(refs, dict) else 'list'}", flush=True)
               print(f"Target task in supply IDs: {any(digest(v) == target_order for v in wanted)}", flush=True)
               print(f"Supply order count: {len(wanted)}", flush=True)
-              matched = {}
-              cursor = 0
-              for page in range(40):
-                  query = urllib.parse.urlencode({"limit":1000,"next":cursor,"dateFrom":stamp(10,23),"dateTo":stamp(11,21)})
-                  data = api("Archive", market + "/api/v3/orders?" + query)
-                  if not data or not data.get("orders"):
-                      break
-                  for row in data["orders"]:
-                      if str(row.get("id")) in wanted or row.get("supplyId") == supply:
-                          matched[str(row["id"])] = row
-                  nxt = data.get("next")
-                  if (wanted and wanted <= matched.keys()) or not nxt or nxt == cursor:
-                      break
-                  cursor = nxt
-                  time.sleep(0.25)
-              print(f"Supply orders recovered: {len(matched)}", flush=True)
-              print(f"Belt orders: {sum(r.get('nmId') == 453951161 for r in matched.values())}; scarf orders: {sum(r.get('nmId') == 493953813 for r in matched.values())}", flush=True)
-              for row in matched.values():
-                  if row.get("nmId") not in (453951161,493953813) and digest(row.get("id")) != target_order:
-                      continue
-                  emit("order", row, {"id","nmId","article","createdAt","supplyId"})
+              chosen = [int(v) for v in wanted if digest(v) == target_order]
+              if chosen:
+                  status = api("Current status", market + "/api/v3/orders/status", {"orders":chosen})
+                  for row in (status or {}).get("orders", []):
+                      emit("scarf status",row,{"id","supplierStatus","wbStatus"})
+                  for name in ("orders","sales"):
+                      data = api("Statistics "+name, "https://statistics-api.wildberries.ru/api/v1/supplier/"+name+"?dateFrom=2026-10-28&flag=1")
+                      rows = [r for r in (data or []) if r.get("nmId")==493953813]
+                      print(f"Statistics {name} scarf rows: {len(rows)}", flush=True)
+                      for row in rows:
+                          emit(name,row,{"srid","saleID","date","lastChangeDate","sticker","isCancel","cancelDate","forPay"})
           PY
