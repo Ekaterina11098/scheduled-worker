@@ -4,7 +4,28 @@ import cny_all_remaining_refs_preflight as p
 h=p.h;r=p.r;b=p.b;m=p.m;P=p.P
 FIN={'paymentin','paymentout','cashin','cashout'}
 WRITABLE={'customerorder','demand','invoicein','loss','move','paymentin','paymentout','cashout','purchaseorder','purchasereturn','salesreturn','supply','enter','invoiceout','cashin'}
-def save(db,k,v):p.save(db,k,v)
+def read_snapshot(db,key):
+ out={}
+ for field in ('at','before','goals','bodies'):
+  rows=db.t.request(db.base,'telegram_api_cache',params={'cache_key':'eq.'+b.ROOT+P+key,'select':'value:payload->'+field,'limit':1})
+  assert len(rows)<=1
+  if not rows:
+   assert not out,'Snapshot disappeared between read parts'
+   return None
+  out[field]=rows[0]['value']
+ assert set(out['before'])==set(out['goals'])=={q['id'] for q in out['bodies']},'Incomplete snapshot parts'
+ return out
+def save(db,k,v):
+ if k.startswith('apply:') and k.endswith(':snapshot'):
+  assert set(v)=={'at','before','goals','bodies'}
+  stored={'cache_key':b.ROOT+P+k,'payload':v,'expires_at':'2036-11-27T00:00:00Z','updated_at':m.now()}
+  try:db.t._request_once(db.base,'telegram_api_cache','POST',stored,{'on_conflict':'cache_key'},cache_prefer='resolution=merge-duplicates,return=minimal')
+  except m.Stop:
+   if read_snapshot(db,k)==v:return
+   raise
+  assert read_snapshot(db,k)==v,'Snapshot write not verified'
+  return
+ p.save(db,k,v)
 def refs(d,k):return sorted(m.href(x).split('?')[0] for x in d.get(k,[]))
 def signature(d,typ):
  s=r.signature(d,typ)
@@ -46,7 +67,7 @@ def write(db,typ,bodies,key):
  assert typ in WRITABLE and 0<len(bodies)<=100
  assert all(set(q)<={'id','rate','positions','sum','vatSum','operations','overhead'} for q in bodies)
  if len(bodies)>20:
-  snap=db.get(b.ROOT+P+key+':snapshot')
+  snap=read_snapshot(db,key+':snapshot')
   assert snap and {q['id'] for q in bodies}==set(snap['before'])
   assert db.claim(b.ROOT+P+key+':intent',{'at':m.now(),'type':typ,'bodies':bodies,'partitioned':True}),'Existing intent: reconcile, never replay'
   t=b.ReadOnly()
@@ -104,7 +125,7 @@ def run(typ,start,end,batch_size=20):
  assert batch_size in (20,100)
  for off in range(start,min(end,len(ids)),batch_size):
   chunk=ids[off:min(off+batch_size,end)];key='apply:'+typ+':'+str(off)
-  snapshot=db.get(b.ROOT+P+key+':snapshot');intent=db.get(b.ROOT+P+key+':intent')
+  snapshot=read_snapshot(db,key+':snapshot');intent=db.get(b.ROOT+P+key+':intent')
   current=r.live(t,typ,chunk)
   if snapshot:
    assert intent,'Snapshot without intent requires reconciliation'
