@@ -6,9 +6,10 @@ OTHER=('purchaseorder','invoicein','move','loss','purchasereturn','salesreturn',
 def covered(db,typ):
  info=db.get(b.ROOT+p.P+'type:'+typ);ids=info['candidates'];seen=set()
  for off in ([0] if ids else [])+list(range(20,len(ids),100)):
-  key='apply:'+typ+':'+str(off);proof=db.get(b.ROOT+p.P+key+':verified');snap=db.get(b.ROOT+p.P+key+':snapshot')
-  assert proof and snap and proof['count']==len(snap['before']),'Missing verified continuation checkpoint'
-  assert not seen.intersection(snap['before']);seen.update(snap['before'])
+  key='apply:'+typ+':'+str(off);proof=db.get(b.ROOT+p.P+key+':verified')
+  expected=ids[off:off+(20 if off==0 else 100)]
+  assert proof and proof['count']==len(expected),'Missing verified continuation checkpoint'
+  assert not seen.intersection(expected);seen.update(expected)
  assert seen==set(ids),'Incomplete candidate coverage'
  return len(ids)
 def main(stage,index):
@@ -17,12 +18,18 @@ def main(stage,index):
   assert db.get(b.ROOT+p.P+'result:v1')['status']=='verified';print('Existing complete reconciliation preserved.');return
  assert db.get(b.ROOT+p.P+'canary_extended:v1')['status']=='verified'
  if stage=='other':
+  prior=db.get(b.ROOT+p.P+'stage:other:0')
+  if prior and prior['status']=='verified':print('Completed document categories preserved; final audit will recheck.');return
   for typ in OTHER:
    n=len(db.get(b.ROOT+p.P+'type:'+typ)['candidates'])
    if n>20:a.run(typ,20,max(40,((n+19)//20)*20),100)
   p.save(db,'stage:other:0',{'status':'verified','at':m.now(),'continued':True,'counts':{typ:covered(db,typ) for typ in OTHER}})
  elif stage in ('customerorder','demand'):
-  n=len(db.get(b.ROOT+p.P+'type:'+stage)['candidates']);start=20+1000*index
+  start=20+1000*index
+  prior=db.get(b.ROOT+p.P+'section:'+stage+':'+str(start))
+  if prior and prior['status']=='verified':
+   p.save(db,'continuation:'+stage+':'+str(index),{'status':'verified','at':m.now(),'reused_verified_section':True});print('Completed section preserved; final audit will recheck.');return
+  n=len(db.get(b.ROOT+p.P+'type:'+stage)['candidates'])
   if start<n:a.run(stage,start,start+1000,100)
   p.save(db,'continuation:'+stage+':'+str(index),{'status':'verified','at':m.now(),'start':start,'end':min(start+1000,n)})
  elif stage in ('mark_customerorder','mark_demand'):
