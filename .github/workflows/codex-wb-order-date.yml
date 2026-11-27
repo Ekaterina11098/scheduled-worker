@@ -71,15 +71,41 @@ jobs:
               print(f"Order list shape: {list(refs) if isinstance(refs, dict) else 'list'}", flush=True)
               print(f"Target task in supply IDs: {any(digest(v) == target_order for v in wanted)}", flush=True)
               print(f"Supply order count: {len(wanted)}", flush=True)
-              chosen = [int(v) for v in wanted if digest(v) == target_order]
-              if chosen:
-                  status = api("Current status", market + "/api/v3/orders/status", {"orders":chosen})
-                  for row in (status or {}).get("orders", []):
-                      emit("scarf status",row,{"id","supplierStatus","wbStatus"})
-                  for name in ("orders","sales"):
-                      data = api("Statistics "+name, "https://statistics-api.wildberries.ru/api/v1/supplier/"+name+"?dateFrom=2026-10-28&flag=1")
-                      rows = [r for r in (data or []) if r.get("nmId")==493953813]
-                      print(f"Statistics {name} scarf rows: {len(rows)}", flush=True)
-                      for row in rows:
-                          emit(name,row,{"srid","saleID","date","lastChangeDate","sticker","isCancel","cancelDate","forPay"})
+              targets = set(ids[1:] + [target_order] + ["77a01335fc1e6bdc305568b8fcaf8b3f261495a42ac11998efe6439e79a2086d","cffea2086eb841b772ebc9e5a62ae9406db110c0ad9800d710e02bcf2b9640d8","843ef040c871f44dd8acefa61218af54bd5e323898fa99d5213153e372edf11f","aa83897c47d29ab005c4bb526877298d02fd8e6cb6f52124e32058a8d021ce54","7610fcb627e0481e8e5b8e065497192754404078fb87926ab2845b11f3966540"])
+              chosen = [int(v) for v in wanted if digest(v) in targets]
+              status = api("FBS status", market + "/api/v3/orders/status", {"orders":chosen})
+              for row in (status or {}).get("orders", []):
+                  emit("FBS",row,{"id","supplierStatus","wbStatus"})
+          sku_ids = {"453951161","493953813"}
+          ar = "https://seller-analytics-api.wildberries.ru/api/analytics/v1/"
+          def lookup(kind):
+              offset = 0
+              limit = 1000
+              while True:
+                  dates = ("2026-10-28","2026-11-27")
+                  qs = urllib.parse.urlencode(dict(dateFrom=dates[0], dateTo=dates[1], limit=limit, offset=offset))
+                  data = api(kind, ar + kind + "?" + qs)
+                  if not isinstance(data, dict):
+                      print(f"{kind} response: {type(data).__name__}", flush=True)
+                      break
+                  block = data.get("data", data)
+                  rows = block.get("report", block.get("reports", []))
+                  count = block.get("count", block.get("total", len(rows)))
+                  hit = [row for row in rows if str(row.get("nmId")) in sku_ids or
+                         any(digest(row.get(k)) in targets for k in ("srid","shkId","stickerId","orderId","oldShkId","newShkId","oldSku","newSku","sku"))]
+                  print(f"{kind} rows: {len(rows)}; total: {count}; matches: {len(hit)}", flush=True)
+                  for row in hit:
+                      row["photoCount"] = len(row.get("photoUrls") or [])
+                      emit(kind, row, {"sku","barcode","completedDt","dstOfficeAddress","dstOfficeId","expiredDt","nmId",
+                         "orderDt","orderId","readyToReturnDt","returnReason","returnType","shkId","srid","returnStatus","status",
+                         "stickerId","dtBonus","oldShkId","oldSku","oldVendorCode","newShkId","newSku","newVendorCode",
+                         "bonusSumm","bonusType","photoCount"})
+                  offset += len(rows)
+                  if not rows or offset >= count or offset >= 10000:
+                      break
+                  time.sleep(61)
+          with concurrent.futures.ThreadPoolExecutor() as pool:
+              # Serialize encrypted record output per report.
+              lookup("item-returns")
+              lookup("deductions")
           PY
