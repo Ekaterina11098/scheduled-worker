@@ -63,3 +63,5 @@ jobs:
         run: |
           python warehouse_id_patch.py private-source
           python owner_stock_apply_133_623_20261127.py
+
+# Resume exact saved owner scope after narrowing reservation reads to two articles.
