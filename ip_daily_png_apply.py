@@ -1,12 +1,12 @@
 """Human reply to one frozen daily PNG. No old queues, automatic restoration or budgets."""
 import argparse,copy,datetime,hashlib,json,math,os,time,urllib.error
 from ip_apply_nine_20261103 import SixTransport,projection,stamp,HOST
-from ip_daily_png_contract import PREFIX,CHAT,BOT,digest,action_id,ready
+from ip_daily_png_contract import PREFIX,CHAT,BOT,digest,action_id,ready,plan_digest_matches
 from ip_bags_growth_20261104 import active_ids
 def validate(p,a,key):
  if not key.startswith(PREFIX) or not key.endswith(':approval') or not p or not a:raise PermissionError('Unknown daily PNG approval')
  if p.get('version')!='ip-daily-png-v1' or p.get('delivery_status')!='sent' or p.get('chat_id')!=CHAT or p.get('bot_id')!=BOT:raise PermissionError('PNG scope mismatch')
- if not p['actions'] or p['plan_sha256']!=digest(p['actions']) or any(not ready(x,p['period']) for x in p['actions']):raise PermissionError('Frozen ready actions missing')
+ if not p['actions'] or not plan_digest_matches(p['actions'],p['plan_sha256']) or any(not ready(x,p['period']) for x in p['actions']):raise PermissionError('Frozen ready actions missing')
  if a.get('chat_id')!=CHAT or a.get('bot_id')!=BOT or a.get('reply_message_id')!=p.get('message_id') or a.get('plan_sha256')!=p['plan_sha256'] or a.get('command')!='Сделай всё' or type(a.get('sender_id')) is not int:raise PermissionError('Reply approval binding mismatch')
  if datetime.datetime.now(datetime.timezone.utc)>=datetime.datetime.fromisoformat(p['expires_at']):raise PermissionError('Expired daily plan')
 def expected_state(p,before):
@@ -98,9 +98,15 @@ def run(key):
      intermediate[str(cid)]['nm_settings'].append(copy.deepcopy(matches[0]))
    if any(projection(stage[k])!=projection(intermediate[k]) for k in stage):raise ValueError('Removal readback differs; no bid changes')
   if bids:write('bids','/api/advert/v1/bids',{'bids':[dict(advert_id=cid,nm_bids=nms) for cid,nms in sorted(bids.items())]})
-  after=t.configs(ids);verified=all(projection(after[k])==projection(expected[k]) for k in expected)
+  after=t.configs(ids) if bids else stage;verified=all(projection(after[k])==projection(expected[k]) for k in expected)
   state.update(after=after,readback_at=stamp(),status='verified' if verified else 'attention_readback');save()
   if verified:
+   for a in p['actions']:
+    t.save('advertising:ip:action-once:v1:'+action_id(a),dict(status='verified',plan_key=plan_key,execution_key=ek,readback_at=state['readback_at']))
+   t.save(key,dict(approval,status='fulfilled',execution_key=ek,verified_count=len(p['actions']),verified_at=state['readback_at']))
+   registry=t.get('advertising:ip:execution-registry:v1') or {'records':[]}
+   if not any(r.get('execution_key')==ek for r in registry.get('records',[])):
+    registry.setdefault('records',[]).append(dict(approval_key=plan_key,execution_key=ek,show_recent=True));t.save('advertising:ip:execution-registry:v1',registry)
    nk=ek+':notification'
    if t.create(nk,dict(status='sending')):
     try:
@@ -110,6 +116,6 @@ def run(key):
  except Exception as e:state.update(status='attention',error=str(e) if isinstance(e,(PermissionError,RuntimeError,ValueError)) else type(e).__name__);save()
  finally:state.update(finished_at=stamp());save()
  print(json.dumps({k:state.get(k) for k in ('status','wb_write_attempts','wb_accepted_requests')}))
+ if state['status']!='verified':raise RuntimeError('Execution not verified: '+state['status'])
 if __name__=='__main__':
  parser=argparse.ArgumentParser();parser.add_argument('--approval-key',required=True);run(parser.parse_args().approval_key)
-
