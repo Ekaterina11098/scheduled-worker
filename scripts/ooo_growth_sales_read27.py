@@ -67,7 +67,7 @@ def main():
    return r.json()
   def pages(self,path,params):
    value=super().pages(path,params)
-   if path=='/entity/product':self.products=value
+   if path=='/entity/product':self.products+=value
    return value
  msk=db.get(ROOT+':moysklad')or{}
  if msk.get('status')!='complete':
