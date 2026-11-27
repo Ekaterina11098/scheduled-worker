@@ -44,6 +44,11 @@ jobs:
                       return json.load(res) if res.status != 204 else []
               except urllib.error.HTTPError as exc:
                   print(f"{name} HTTP {exc.code}", flush=True)
+                  if name == "deductions" and exc.code == 400:
+                      try:
+                          emit("API error", json.load(exc), {"title","detail"})
+                      except ValueError:
+                          pass
                   return None
           def emit(name, row, fields):
               subset = {k: v for k, v in row.items() if k in fields}
@@ -80,9 +85,9 @@ jobs:
           ar = "https://seller-analytics-api.wildberries.ru/api/analytics/v1/"
           def lookup(kind):
               offset = 0
-              limit = 1000
+              limit = 100
               while True:
-                  dates = ("2026-10-28","2026-11-27")
+                  dates = ("2026-11-13T00:00:00+03:00","2026-11-24T00:00:00+03:00")
                   qs = urllib.parse.urlencode(dict(dateFrom=dates[0], dateTo=dates[1], limit=limit, offset=offset))
                   data = api(kind, ar + kind + "?" + qs)
                   if not isinstance(data, dict):
@@ -106,6 +111,5 @@ jobs:
                   time.sleep(61)
           with concurrent.futures.ThreadPoolExecutor() as pool:
               # Serialize encrypted record output per report.
-              lookup("item-returns")
               lookup("deductions")
           PY
