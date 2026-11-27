@@ -89,3 +89,5 @@ jobs:
 #23Nov: verified current SKU bids are decision facts; completed actions cannot block today's report.
 
 #27Nov: preserve stale source using the existing large-report RPC key scope.
+
+# Regression covers RPC route for oversized archived source.
