@@ -132,6 +132,7 @@ def _render_legacy(bundle):
  footer='ДРР = сумма расходов / сумма рекламных заказов до скидок WB. Дни без заказов входят в расходы. Нет заказов — сумма заказов 0, ДРР не вычисляется. Исторические расходы исключённых товаров и архивных РК включены в итог. Атрибуция не равна выкупам и прибыли. Новые тесты отмечены; период может включать прежний состав. Итог относится только к кабинету Китай.'
  if bundle.get('report_scope_label'):footer='ДРР = сумма расходов / сумма рекламных заказов до скидок WB. Показаны только три РК дополнения, не весь кабинет. Шуба: доступны 12–13.11; отсутствующая строка 11.11 не заменена нулём. Атрибуция не равна выкупам и прибыли. Все изменения — только после подтверждения.'
  if bundle.get('approved_statistics_exceptions'):footer+=' РК '+', '.join(bundle['approved_statistics_exceptions'])+': новый запуск; статистика WB не сформирована, в числовой итог не включена.'
+ footer=bundle.get('report_footer_text')or footer
  for j,line in enumerate(wrap(d,footer,W-88,24)):d.text((44,y+218+j*31),line,font=font(24),fill='#536b79')
  finish(im,y+240+len(wrap(d,footer,W-88,24))*31,'drr',actions)
  # Owner-approved three columns; no row without a known cash shortfall.
