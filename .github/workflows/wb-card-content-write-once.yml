@@ -1,0 +1,268 @@
+name: WB card content write once
+on:
+  push:
+    branches: [wb-mira-content-once-20261127]
+    paths: ['.github/workflows/wb-card-content-write-once.yml']
+permissions:
+  contents: read
+jobs:
+  write:
+    runs-on: ubuntu-latest
+    timeout-minutes: 85
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests==2.32.5
+      - name: Update and verify cards sequentially
+        env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_URL: https://abxgjoqlddhtcmjcjwxw.supabase.co
+        run: |
+          python - <<'PYTHON'
+          import datetime as dt
+          import json
+          import os
+          import time
+
+          from urllib.parse import urlencode
+          import requests
+          
+          class Stop(Exception):
+              pass
+          
+          class Client:
+              def __init__(self):
+                  self.base = os.environ['SUPABASE_URL']
+                  self.secret = os.environ['SUPABASE_SECRET_KEY']
+                  self.last_wb = 0
+          
+              def call(self, url, method='GET', body=None, headers=None, limit=8_000_000):
+                  headers = dict(headers or {})
+                  if url.startswith(self.base + '/'):
+                      headers['apikey'] = self.secret
+                      if not self.secret.startswith('sb_secret_'):
+                          headers['Authorization'] = 'Bearer ' + self.secret
+                  retry = method == 'GET' or url.endswith('/get/cards/list')
+                  for attempt in range(3 if retry else 1):
+                      try:
+                          response = requests.request(method, url, json=body, headers=headers,
+                                                      timeout=(15, 75), allow_redirects=False)
+                      except requests.RequestException:
+                          if retry and attempt < 2:
+                              time.sleep(3 * (attempt + 1))
+                              continue
+                          raise Stop('transport_error') from None
+                      if retry and attempt < 2 and response.status_code in (429, 500, 502, 503, 504):
+                          time.sleep(4 * (attempt + 1))
+                          continue
+                      if not 200 <= response.status_code < 300:
+                          raise Stop('http_' + str(response.status_code))
+                      if len(response.content) > limit:
+                          raise Stop('response_size_limit')
+                      return response.content
+          
+              def cache(self, query, method='GET', body=None, prefer='return=representation'):
+                  endpoint = self.base + '/rest/v1/telegram_api_cache?' + urlencode(query)
+                  raw = self.call(endpoint, method, body, {'Prefer': prefer})
+                  return json.loads(raw) if raw else []
+          
+              def get(self, key):
+                  rows = self.cache({'cache_key': 'eq.' + key, 'select': 'payload'})
+                  if len(rows) > 1:
+                      raise Stop('duplicate_private_rows')
+                  return rows[0]['payload'] if rows else None
+          
+              def catalog(self):
+                  cursor = {'limit': 100}
+                  seen = set()
+                  cards = []
+                  for _ in range(100):
+                      time.sleep(max(0, 1 - (time.monotonic() - self.last_wb)))
+                      self.last_wb = time.monotonic()
+                      body = {'settings': {'sort': {'ascending': True}, 'cursor': cursor,
+                                           'filter': {'withPhoto': -1}}}
+                      raw = self.call('https://content-api.wildberries.cn/content/v2/get/cards/list',
+                                      'POST', body, {'Authorization': os.environ['WB_TOKEN_3']})
+                      data = json.loads(raw)
+                      data = data if 'cards' in data else data['data']
+                      rows = data['cards']
+                      if not isinstance(rows, list):
+                          raise Stop('invalid_card_page')
+                      cards.extend(rows)
+                      if len(rows) < 100:
+                          return cards
+                      marker = (data['cursor']['updatedAt'], data['cursor']['nmID'])
+                      if marker in seen:
+                          raise Stop('pagination_loop')
+                      seen.add(marker)
+                      cursor = {'limit': 100, 'updatedAt': marker[0], 'nmID': marker[1]}
+                  raise Stop('incomplete_catalog')
+          
+
+          key = 'wb_card_once:20261127:mira'
+          client = Client()
+          now = dt.datetime.now(dt.timezone.utc)
+          host = 'https://content-api.wildberries.cn'
+          headers = {'Authorization': os.environ['WB_TOKEN_3']}
+
+          def save(report, claim=False):
+              row = {'cache_key': key + ':write', 'payload': report,
+                     'updated_at': dt.datetime.now(dt.timezone.utc).isoformat(),
+                     'expires_at': (now + dt.timedelta(days=30)).isoformat()}
+              mode = 'ignore' if claim else 'merge'
+              rows = client.cache({'on_conflict': 'cache_key'}, 'POST', row,
+                                  f'resolution={mode}-duplicates,return=representation')
+              if len(rows) != 1 or client.get(key + ':write') != report:
+                  raise Stop('journal_write_or_claim_failed')
+
+          def read(nm, article):
+              hits = [c for c in client.catalog() if c.get('nmID') == nm or c.get('vendorCode') == article]
+              if len(hits) != 1 or hits[0]['nmID'] != nm or hits[0]['vendorCode'] != article:
+                  raise Stop('identity_mismatch')
+              return hits[0]
+
+          def chars(card):
+              return {v['id']: sorted(v['value']) if isinstance(v['value'], list) else v['value']
+                      for v in card.get('characteristics') or []}
+
+          def core(card):
+              return {k: v for k, v in card.items()
+                      if k not in ('description', 'characteristics', 'dimensions', 'updatedAt', 'documents')}
+
+          def document_content(card):
+              docs = card.get('documents') or {}
+              return (docs.get('excludeDocuments'), docs.get('items') or [])
+
+          def matches(card, payload):
+              return (card.get('description') == payload['description']
+                      and chars(card) == chars(payload)
+                      and all(card.get('dimensions', {}).get(k) == v
+                              for k, v in payload['dimensions'].items()))
+
+          def process(report, baseline, item, schema, dimensions):
+              nm, article = item['nmID'], item['vendorCode']
+              card = read(nm, article)
+              row = {'nmID': nm, 'vendorCode': article, 'status': 'read'}
+              report['cards'].append(row)
+              save(report)
+              if card.get('subjectID') != baseline['subjectID']:
+                  raise Stop('subject_changed_since_preflight')
+              def note_empty(actual):
+                  populated = chars(actual)
+                  row['empty_characteristics'] = [f['name'] for f in schema
+                      if f['charcID'] < 14177446 and f['charcID'] not in (88952, 90745, 90846, 90849)
+                      and not populated.get(f['charcID'])]
+                  row['empty_media'] = [name for name in ('photos', 'video') if not actual.get(name)]
+              if not card.get('sizes') or any(not size.get('chrtID') or not size.get('skus') for size in card['sizes']):
+                  raise Stop('missing_size_or_barcode')
+              fields = ('nmID', 'vendorCode', 'brand', 'title', 'gtin', 'kizMarked')
+              payload = {k: card[k] for k in fields if k in card and card[k] is not None}
+              if 'documents' in card and card['documents'] is not None:
+                  docs = card['documents']
+                  writable = ('id', 'type', 'number', 'productNumber', 'tradeName',
+                              'applicant', 'startDate', 'endDate', 'isEndless')
+                  payload['documents'] = {k: docs[k] for k in ('excludeDocuments',) if k in docs}
+                  if isinstance(docs.get('items'), list):
+                      payload['documents']['items'] = [{k: d[k] for k in writable if k in d} for d in docs['items']]
+              payload['sizes'] = [{k: size[k] for k in ('chrtID', 'techSize', 'wbSize', 'skus') if k in size}
+                                  for size in card['sizes']]
+              payload['description'] = item['description']
+              payload['dimensions'] = dimensions
+              old = {v['id']: v['value'] for v in card.get('characteristics') or []}
+              changes = {v['id']: v['value'] for v in item['characteristics']}
+              old.update(changes)
+              payload['characteristics'] = [{'id': cid, 'value': value} for cid, value in old.items()]
+              if matches(card, payload):
+                  note_empty(card)
+                  row.update(status='already_verified')
+                  save(report)
+                  return
+              row.update(status='write_pending_readback')
+              save(report)
+              try:
+                  reply = json.loads(client.call(host + '/content/v2/cards/update', 'POST', [payload], headers))
+                  row['response'] = 'accepted' if reply.get('error') is False else 'error'
+              except Exception as error:
+                  row['response'] = str(error) if isinstance(error, Stop) else type(error).__name__
+              save(report)
+              for delay in (6, 12, 24, 45, 70, 90, 120, 150, 180, 240):
+                  time.sleep(delay)
+                  actual = read(nm, article)
+                  if core(actual) != core(card) or document_content(actual) != document_content(card):
+                      row['different_fields'] = sorted(k for k in core(actual).keys() | core(card).keys()
+                                                       if core(actual).get(k) != core(card).get(k))
+                      raise Stop('unrequested_card_difference')
+                  if matches(actual, payload):
+                      note_empty(actual)
+                      row['status'] = 'updated_verified'
+                      save(report)
+                      return
+                  if row['response'] in ('http_400', 'http_401', 'http_403', 'http_404', 'http_422', 'error'):
+                      raise Stop('write_rejected')
+              raise Stop('write_not_verified')
+
+          report = {'run_id': os.environ['GITHUB_RUN_ID'], 'status': 'running', 'cards': []}
+          save(report, claim=True)
+          try:
+              codes = client.get(key + ':input')['articles']
+              spec = client.get(key + ':spec')
+              if len(codes) != 3 or len(set(codes)) != 3:
+                  raise Stop('invalid_scope')
+              catalog = client.catalog()
+              references = [c for c in catalog if c.get('vendorCode') == codes[0]]
+              if len(references) != 1 or not references[0].get('description'):
+                  raise Stop('reference_not_verified')
+              reference = references[0]['description']
+              hs = {'Authorization': os.environ['WB_TOKEN_3']}
+              palette = {c['name'] for c in json.loads(client.call(
+                  host + '/content/v2/directory/colors?locale=ru', headers=hs))['data']}
+              for index, code in enumerate(codes[1:]):
+                  hits = [c for c in catalog if c.get('vendorCode') == code]
+                  if len(hits) != 1:
+                      report['cards'].append({'vendorCode': code, 'status': 'identity_not_verified'})
+                      save(report)
+                      continue
+                  card = hits[0]
+                  subject = int(card['subjectID'])
+                  schema = json.loads(client.call(host + f'/content/v2/object/charcs/{subject}?locale=ru', headers=hs))['data']
+                  schema_by_id = {f['charcID']: f for f in schema}
+                  shades = [c for c in spec['colors'][index] if c in palette][:5]
+                  if len(shades) != 5:
+                      raise Stop('five_valid_shades_unavailable')
+                  characteristics = spec['characteristics'] + [{'id': 14177449, 'value': shades}]
+                  for char in characteristics:
+                      f = schema_by_id[char['id']]
+                      val = char['value']
+                      if isinstance(val, list):
+                          valid = f['charcType'] == 1 and len(val) <= f['maxCount']
+                      else:
+                          valid = f['charcType'] == 4
+                      if not valid:
+                          raise Stop('characteristic_schema_mismatch')
+                  tone, adjective = spec['phrases'][index]
+                  swaps = {
+                      'Саманта': spec['model'],
+                      'Глубокий чёрный': tone,
+                      'Чёрная кожаная': adjective + ' кожаная',
+                      'из гладкой натуральной кожи с тиснением под рептилию': 'из зернистой воловьей кожи первого слоя',
+                      'Сумочку можно носить на руке, через плечо или на запястье.': 'Сумочку можно носить на руке, через плечо или на запястье. Длина плечевого ремня — 130 см.',
+                      'высота — 20 см, ширина — 33 см, глубина — 11 см. Вес — 700 г.': 'высота — 17 см, ширина — 32 см, глубина — 11 см. Вес — 950 г.'
+                  }
+                  description = reference
+                  for before, after in swaps.items():
+                      if before not in description:
+                          raise Stop('reference_text_changed')
+                      description = description.replace(before, after)
+                  item = {'vendorCode': card['vendorCode'], 'nmID': card['nmID'],
+                          'description': description, 'characteristics': characteristics}
+                  process(report, card, item, schema, spec['dims'])
+              report['status'] = 'complete' if all(c['status'] in ('updated_verified', 'already_verified') for c in report['cards']) else 'partial'
+          except Exception as error:
+              report['status'] = 'stopped'
+              report['reason'] = str(error) if isinstance(error, Stop) else type(error).__name__
+          save(report)
+          if report['status'] != 'complete':
+              raise SystemExit('Card update stopped; see private journal')
+          PYTHON
