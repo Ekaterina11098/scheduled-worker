@@ -1,8 +1,5 @@
 name: Create approved two manishki search draft 27Nov
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/ip-manishki-search2-create-20261127.yml']
   workflow_dispatch:
 permissions: {contents: read}
 concurrency:
