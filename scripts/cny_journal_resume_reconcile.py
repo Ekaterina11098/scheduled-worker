@@ -50,7 +50,13 @@ def run_batch(offset,expected_pending=None):
  wh=h.warehouse(t);assert wh==initial['warehouse_quantities']
  demand_ids=sorted({m.href(x).split('?')[0].split('/')[-1] for i in pending for x in before[i].get('demands',[])})
  linked=r.live(t,'demand',demand_ids) if demand_ids else {}
- save(db,'snapshot:v1',{'at':m.now(),'pending_ids':pending,'before':before,'linked_demands':linked,'warehouse':wh,'currencies':cc,'prior_batch_key':key,'prior_request_elapsed_seconds':elapsed.total_seconds()})
+ for first in range(0,len(before),20):
+  subset={i:before[i] for i in list(before)[first:first+20]}
+  save(db,'before:'+str(first),{'at':m.now(),'documents':subset})
+ for first in range(0,len(linked),20):
+  subset={i:linked[i] for i in list(linked)[first:first+20]}
+  save(db,'linked:'+str(first),{'at':m.now(),'documents':subset})
+ save(db,'snapshot:v1',{'at':m.now(),'pending_ids':pending,'before_hash':b.digest(before),'before_pages':list(range(0,len(before),20)),'linked_hash':b.digest(linked),'linked_pages':list(range(0,len(linked),20)),'warehouse':wh,'currencies':cc,'prior_batch_key':key,'prior_request_elapsed_seconds':elapsed.total_seconds()})
  written=0
  for i in pending:
   fresh=r.live(t,'customerorder',[i])[i];a.invariant(snap['before'][i],fresh,'customerorder')
@@ -74,7 +80,10 @@ def run_batch(offset,expected_pending=None):
    a.invariant(linked[i],d,'demand');assert a.signature(linked[i],'demand')==a.signature(d,'demand')
  assert h.warehouse(t)==wh
  assert h.h.ccstate(b.fullrows(t,'entity/currency'))==h.h.ccstate(cc)
- save(db,'final_readback:v1',{'at':m.now(),'documents':after})
+ for first in range(0,len(after),20):
+  subset={i:after[i] for i in list(after)[first:first+20]}
+  save(db,'final_readback:'+str(first),{'at':m.now(),'documents':subset})
+ save(db,'final_readback:v1',{'at':m.now(),'sha256':b.digest(after),'pages':list(range(0,len(after),20))})
  p.save(db,key+':verified',{'at':m.now(),'count':len(after),'reconciled':True,'outstanding_references_verified':True,'prices_sums_quantities_rows_stores_links_preserved':True})
  save(db,'result:v1',{'status':'verified','at':m.now(),'written':written,'resolved_ids':pending,'batch_documents_verified':len(after),'documents':[{'id':i,'name':after[i]['name'],'sum_minor':after[i]['sum'],'rate':after[i]['rate']} for i in pending],'all_store_quantities_preserved':True,'all_prices_sums_rows_links_preserved':True,'outside_ms_changes':False})
  print('Outstanding references reconciled individually; all original batch documents verified.')
