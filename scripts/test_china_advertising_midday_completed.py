@@ -51,6 +51,18 @@ class CompletedMidday(unittest.TestCase):
   with patch.object(adapter,'_report_write',return_value=True)as rpc, patch.object(adapter,'get',return_value=large), patch.object(adapter,'db',side_effect=AssertionError('REST insert must not be used')):
    self.assertTrue(adapter.create(archive_key,large))
    rpc.assert_called_once_with(archive_key,large,True)
+ def test_complete_coverage_does_not_rewrite_large_completed_source(self):
+  import china_advertising_v2 as v
+  from unittest.mock import patch
+  from datetime import datetime,timedelta
+  day=str(datetime.now(v.MSK).date());key='china_agent:advertising_source:'+day+':v2'
+  source=dict(status='complete',period_to=str(datetime.now(v.MSK).date()-timedelta(days=1)),batches={'0':dict(campaigns={'adverts':[{'id':1,'status':9}]},stats=[{'advertId':1}])})
+  class IO:
+   def get(self,k):return dict(status='approved',version=v.VERSION)if k==v.FORMAT else source if k==key else None
+   def put(self,*args):raise AssertionError('Complete unchanged source must not be rewritten')
+   def create(self,*args):raise AssertionError('Complete source must not be recreated')
+  with patch('china_morning_readiness.ensure'):
+   self.assertIs(source,v.collect(IO(),day))
  def test_all_four_directions_and_unready_addition_do_not_become_execution(self):
   r=self.review()
   r['recommendation_directions']={k:dict(status='checked',count=0,rows=[])for k in ['raise','add','reduce','exclude']}
