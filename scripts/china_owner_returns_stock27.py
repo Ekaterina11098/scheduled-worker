@@ -8,6 +8,7 @@ io=AdvertisingIO();ROOT='china_agent:owner_returns_stock27:v1'
 scope=io.get(ROOT+':scope');assert scope['start']=='2026-11-23'and scope['products']==163 and scope['unique_units']==933
 articles=[x['article']for x in scope['rows']]
 e=io.get(ROOT+':result')or dict(status='collecting',created_at=datetime.now(timezone.utc).isoformat(),warehouses={},wb_writes=0,moysklad_writes=0,telegram_calls=0)
+if not io.get(ROOT+':result'):assert io.create(ROOT+':result',copy.deepcopy(e))
 def save():io.put(ROOT+':result',copy.deepcopy(e))
 original=requests.sessions.Session.request
 def guard(s,method,url,*a,**kw):
