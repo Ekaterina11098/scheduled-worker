@@ -3,7 +3,7 @@ import copy,sys,traceback
 import cny_all_remaining_refs_apply as a
 p=a.p;h=a.h;r=a.r;b=a.b;m=a.m
 def main():
- t=b.ReadOnly();db=m.Cache(t);start=db.get(b.ROOT+p.P+'start:v1');pf=db.get(b.ROOT+p.P+'preflight:v1')
+ t=b.ReadOnly();db=m.Cache(t);start=db.get(b.ROOT+p.P+'reconciled_start:v1') or db.get(b.ROOT+p.P+'start:v1');pf=db.get(b.ROOT+p.P+'preflight:v1')
  assert pf['status']=='complete' and db.get(b.ROOT+p.P+'canary:v1')['status']=='verified'
  for stage in ('other','finance'):
   assert db.get(b.ROOT+p.P+'stage:'+stage+':0')['status']=='verified'
