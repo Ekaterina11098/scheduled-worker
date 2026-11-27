@@ -1,8 +1,5 @@
 name: Recover missing IP midday report 27Nov
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/ip-midday-recovery-20261127.yml']
   workflow_dispatch:
 permissions: {contents: read}
 concurrency:
