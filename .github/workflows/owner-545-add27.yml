@@ -59,3 +59,5 @@ jobs:
 
 
 # Initialize missing checkpoint before readback.
+
+# Recheck after zero-write minimum quote rejection.
