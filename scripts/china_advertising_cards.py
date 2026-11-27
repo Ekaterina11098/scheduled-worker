@@ -4,6 +4,8 @@ from china_advertising_v2 import history,price_map,daily_metrics,sums,ratio,MSK
 ZERO=dict(spend=0,amount=0,orders=0,views=0,clicks=0)
 def money(x):return f'{x:,.2f}'.replace(',',' ').replace('.',',')
 def enhance(bundle,source):
+ from china_advertising_target import target_pct
+ target=target_pct(bundle,source)
  labels=price_map(source['catalogue']);changes=history(source.get('executions',[]))
  intraday=source.get('intraday') or {};today_raw={r['advertId']:r for b in intraday.get('ad_batches',[]) for r in b.get('data',[])}
  today_date=bundle['day']
@@ -34,6 +36,7 @@ def enhance(bundle,source):
   c['attention']=[r for r in c['focus'] if r.get('action') and r['nm'] in members]
   if c.get('budget_action',{} ) and c['budget_action']['kind']=='pause_campaign':
    c['budget_action']=None;c['budget_recommendation']='Не пополнять. РК остаётся активной: пауза не согласована.'
+  c['target_drr_pct']=target
   c['notes']=notes(c)
  bundle['presentation']='three_day_attention_table_v4'
  bundle['today_observed_at']=intraday.get('observed_at')
@@ -43,9 +46,11 @@ def enhance(bundle,source):
  return apply(bundle,(source.get('config') or {}).get('minTopUp',10000)/100)
 
 def notes(c):
+ from china_advertising_target import target_pct
+ target=target_pct(c)
  if c.get('missing_stats'):return ['Статистика WB за период отсутствует; расход и ДРР не подтверждены.']
  if c['status']!=9:return ['РК не активна. Изменений не нужно.']
- out=[];high=c.get('drr') is not None and c['drr']>5
+ out=[];high=c.get('drr') is not None and c['drr']>target
  ex=c.get('confirmed_exclusions',[])
  if ex and (high or c.get('attention')):
   listed='; '.join(x['article']+' ('+x['date']+')' for x in ex[:3])
@@ -64,7 +69,7 @@ def notes(c):
    out.append('Первый полный день нового состава ещё не завершён. Максимум расхода одного SKU — '+money(c.get('max_member_spend',0))+' ¥.')
   elif p['orders']==0:
    out.append('Максимум расхода одного SKU — '+money(c.get('max_member_spend',0))+' ¥; подтверждённого сигнала для нового исключения нет.')
-  elif ratio(c.get('last')) is not None and ratio(c['last'])<=5:
+  elif ratio(c.get('last')) is not None and ratio(c['last'])<=target:
    out.append('За последний полный день ДРР '+money(ratio(c['last']))+'%, в пределах цели. Новых изменений не нужно.')
   else:
    out.append('По текущим SKU '+str(int(p['orders']))+' прямых заказов; ДРР прямой атрибуции '+(money(ratio(p))+'%' if ratio(p) is not None else 'не определена')+'. Данные после изменений ещё оцениваются.')
