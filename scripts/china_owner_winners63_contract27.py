@@ -12,9 +12,9 @@ def guard(s,m,u,*a,**k):
 requests.sessions.Session.request=guard
 try:
  fresh=io.get(root+':result');stock=io.get(root+':stock')['stock'];scope=io.get(root+':scope')['items'];wanted={x['nm']for x in scope};labels={x['nm']:x['article']for x in scope}
- source=copy.deepcopy(io.get('china_agent:advertising_source:2026-11-26:v2'));inp=io.get('china_agent:advertising_full_growth:2026-11-26:v1:inputs:midday')
+ source=copy.deepcopy(io.get(root+':contract_input'));inp=io.get('china_agent:advertising_full_growth:2026-11-26:v1:inputs:midday')
  existing={r['advertId']:copy.deepcopy(r)for b in source['batches'].values()for r in b.get('stats',[])}
- for r in io.get('china_agent:hourly_sales_api:v1:snapshot:2026-11-26T23:MSK')['advertising']['stats']:
+ for r in []:
   cp=existing.setdefault(r['advertId'],dict(advertId=r['advertId'],days=[]));cp['days']=[d for d in cp['days']if d['date'][:10]!='2026-11-26']+copy.deepcopy(r['days'])
  source['batches']={'scope':dict(campaigns=dict(adverts=fresh['campaigns']['data']),stats=list(existing.values()))};source['config']=fresh['config']['data'];source['period_to']='2026-11-26';source['target_drr_pct']=8
  source['full_growth_inputs']=dict(prices=fresh['prices']['data'],published_stock=fresh['published']['data']);source['catalogue']=dict(rows=[dict(nmID=x['nm'],vendorCode=x['article'])for x in scope])
@@ -25,7 +25,7 @@ try:
   if free>0 and m.get('buyout')is not None:m.update(own_cogs_rub=cost*m['fx_rub_per_cny'],expected_margin_before_ads_cny=m['buyout']*(price*(1-(m['commission_pct']+m['tax_pct']+m['payment_reserve_pct'])/100)-cost)-m['logistics_cny']-m['handling_rub']/m['fx_rub_per_cny'],cost_source_currency='CNY')
  source['economics']=econ
  for key in('china_agent:owner_decline179_price26:v1:execution','china_agent:owner_missed58_price26:v1:execution','china_agent:owner_checkout47_price27:v2:execution'):
-  e=io.get(key);source.setdefault('executions',[]).append(e)
+  e=io.get(key);pass # Exact price timestamps below; do not load unrelated execution snapshots into review
   source.setdefault('experience',[]).append(dict(status='verified',started_at=e['verified_at'],action=dict(kind='price_change',nm_ids=[int(n)for n in e['after']if int(n)in wanted])))
  minima={}
  for key,v in fresh.items():
