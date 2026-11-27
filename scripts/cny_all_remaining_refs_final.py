@@ -32,7 +32,7 @@ def main():
   # Canary offset zero has at most twenty records; remaining sections use chunks of one hundred.
   offsets=([0] if ids else [])+list(range(20,len(ids),100))
   for off in offsets:
-   key='apply:'+typ+':'+str(off);snap=db.get(b.ROOT+p.P+key+':snapshot')
+   key='apply:'+typ+':'+str(off);snap=a.read_snapshot(db,key+':snapshot')
    assert snap and db.get(b.ROOT+p.P+key+':verified'),'Missing verified checkpoint'
    current=r.live(t,typ,list(snap['before']))
    for i,d in current.items():
