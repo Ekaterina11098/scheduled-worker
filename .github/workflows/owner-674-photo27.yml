@@ -59,3 +59,5 @@ jobs:
 
 
 # Initialize missing checkpoint before readback.
+
+# Continue zero-write preflight; preserve original photo.
