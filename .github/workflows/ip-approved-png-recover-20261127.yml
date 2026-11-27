@@ -1,8 +1,5 @@
 name: Recover exact approved IP PNG 27Nov
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/ip-approved-png-recover-20261127.yml']
   workflow_dispatch:
 permissions:
   contents: read
