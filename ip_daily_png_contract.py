@@ -7,6 +7,24 @@ from PIL import Image,ImageDraw
 CHAT=-1004378639510;BOT=8987327588
 PREFIX='advertising:ip:daily-png-plan:v1:'
 def digest(v):return hashlib.sha256(json.dumps(v,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+def plan_digest(v):
+ """Stable across JSONB's loss of integral float notation (0.0 -> 0)."""
+ def normal(x):
+  if isinstance(x,float) and math.isfinite(x) and x.is_integer():return int(x)
+  if isinstance(x,list):return [normal(i) for i in x]
+  if isinstance(x,dict):return {k:normal(i) for k,i in x.items()}
+  return x
+ return digest(normal(v))
+def plan_digest_matches(actions,expected):
+ if expected in (digest(actions),plan_digest(actions)):return True
+ # Compatibility for already delivered v1 plans: reconstruct only the computed
+ # zero conversion percentage, never any operation, ID, bid or evidence value.
+ restored=copy.deepcopy(actions)
+ for a in restored:
+  m=a.get('analysis_metrics') or {}
+  if m.get('cr_pct')==0 and m.get('orders')==0 and m.get('clicks',0)>0:
+   m['cr_pct']=100*m['orders']/m['clicks']
+ return digest(restored)==expected
 def action_id(a):return digest({k:a.get(k) for k in ('campaign','nm','kind','placement','stored_bid_minor','target_bid_minor')})
 def completed_or_claimed(store,a):return bool(store.cache_get('advertising:ip:action-once:v1:'+action_id(a)))
 def ready(a,period):
@@ -127,7 +145,7 @@ def build_contract(store,view):
   details['days']=compatible[-3:] or [period];details['period_label']='–'.join((details['days'][0],details['days'][-1])) if len(details['days'])>1 else period
  saved_notes=store.cache_get('advertising:ip:daily-notes:v1:'+period) or {}
  campaign_notes={cid:n['notes'] for cid,n in saved_notes.items() if isinstance(n,dict) and n.get('rows_sha256')==digest(next((c.get('sku_rows') for c in view['campaigns'] if str(c['campaign_id'])==cid),None))}
- result=dict(version='ip-daily-png-v1',chat_id=CHAT,bot_id=BOT,period=period,actions=actions,plan_sha256=digest(actions),campaign_notes=campaign_notes,
+ result=dict(version='ip-daily-png-v1',chat_id=CHAT,bot_id=BOT,period=period,actions=actions,plan_sha256=plan_digest(actions),campaign_notes=campaign_notes,
   details=details,excluded_incomplete=cached.get('excluded_incomplete') or [],display_only=display,
   campaign_labels={str(cid):dict(name=c['settings'].get('name'),payment=c['settings'].get('payment_type')) for cid,c in configs.items()},review_coverage=review_coverage,
   historical_profit_only=True,automatic_execution=False)
