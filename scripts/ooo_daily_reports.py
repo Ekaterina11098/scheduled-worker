@@ -1,10 +1,26 @@
 """OOO report-only worker. No model credentials or mutation endpoints."""
 import os,json,datetime,re,runpy,tempfile,base64,hashlib,time
 from pathlib import Path
-from china_codex_cloud import DB,stamp
+from china_codex_cloud import DB as RawDB,stamp
+from urllib.error import HTTPError,URLError
 from ooo_daily_review import review
 from ooo_composition_review import context as composition_context
 MSK=datetime.timezone(datetime.timedelta(hours=3))
+class ReadRetryDB:
+ def __init__(self,db):self.db=db
+ def __getattr__(self,name):return getattr(self.db,name)
+ def read(self,fn):
+  for attempt in range(3):
+   try:return fn()
+   except (HTTPError,URLError,TimeoutError,ConnectionError)as error:
+    if isinstance(error,HTTPError)and error.code!=429 and not 500<=error.code<=599:raise
+    if attempt==2:raise
+    time.sleep(2*(attempt+1))
+ def get(self,key):return self.read(lambda:self.db.get(key))
+ def api(self,method,*args,**kw):
+  if method=='GET':return self.read(lambda:self.db.api(method,*args,**kw))
+  return self.db.api(method,*args,**kw)
+def DB():return ReadRetryDB(RawDB())
 def execute(code,path):
  path.write_text(code,encoding='utf-8');return runpy.run_path(str(path),run_name='__main__')
 def canonical(v):return json.dumps(v,sort_keys=True,separators=(',',':'))
