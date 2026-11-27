@@ -87,3 +87,5 @@ jobs:
 #20Nov: confirmed terminal archive before the report window cannot block active-campaign review; history retained.
 
 #23Nov: verified current SKU bids are decision facts; completed actions cannot block today's report.
+
+#27Nov: preserve stale source using the existing large-report RPC key scope.
