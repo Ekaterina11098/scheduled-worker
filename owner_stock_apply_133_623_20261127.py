@@ -59,7 +59,9 @@ with cloud_writer(support.runtime_db()):
     locations[art]=locs
    fact[0]=dict(proof=proof,source=source,at=time.time());return fact[0]
   def validate():
-   require_cloud_lease();require_ready();p=fact[0]['proof']
+   require_cloud_lease()
+   verify_runtime_storage(probe_write,probe_read,dict(scope=ROOT,nonce=os.urandom(16).hex()));last[0]=time.monotonic()
+   require_ready();p=fact[0]['proof']
    if not fresh(p) or p.get('store_id')!='3c67619d-f25d-11ee-0a80-0c6f000a027a':raise Stopped('Fresh exact MSK reserve proof required')
    caps={}
    for art,target in TARGETS.items():
