@@ -67,3 +67,5 @@ jobs:
 # Resume exact saved owner scope after narrowing reservation reads to two articles.
 
 # Shared stock reader returns integer-valued floats; missing/fractional values remain forbidden.
+
+# Reverify storage health by real write/readback immediately before owner dispatch.
