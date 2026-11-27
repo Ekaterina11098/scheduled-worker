@@ -1,0 +1,152 @@
+name: WB card content identity and readback once
+on:
+  push:
+    branches: [wb-mira-content-once-20261127]
+    paths: ['.github/workflows/wb-card-content-diagnostic-once.yml']
+permissions:
+  contents: read
+jobs:
+  write:
+    runs-on: ubuntu-latest
+    timeout-minutes: 85
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests==2.32.5
+      - name: Update and verify cards sequentially
+        env:
+          WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_URL: https://abxgjoqlddhtcmjcjwxw.supabase.co
+        run: |
+          python - <<'PYTHON'
+          import datetime as dt
+          import json
+          import os
+          import time
+
+          from urllib.parse import urlencode
+          import requests
+          
+          class Stop(Exception):
+              pass
+          
+          class Client:
+              def __init__(self):
+                  self.base = os.environ['SUPABASE_URL']
+                  self.secret = os.environ['SUPABASE_SECRET_KEY']
+                  self.last_wb = 0
+          
+              def call(self, url, method='GET', body=None, headers=None, limit=8_000_000):
+                  headers = dict(headers or {})
+                  if url.startswith(self.base + '/'):
+                      headers['apikey'] = self.secret
+                      if not self.secret.startswith('sb_secret_'):
+                          headers['Authorization'] = 'Bearer ' + self.secret
+                  retry = method == 'GET' or url.endswith('/get/cards/list')
+                  for attempt in range(3 if retry else 1):
+                      try:
+                          response = requests.request(method, url, json=body, headers=headers,
+                                                      timeout=(15, 75), allow_redirects=False)
+                      except requests.RequestException:
+                          if retry and attempt < 2:
+                              time.sleep(3 * (attempt + 1))
+                              continue
+                          raise Stop('transport_error') from None
+                      if retry and attempt < 2 and response.status_code in (429, 500, 502, 503, 504):
+                          time.sleep(4 * (attempt + 1))
+                          continue
+                      if not 200 <= response.status_code < 300:
+                          raise Stop('http_' + str(response.status_code))
+                      if len(response.content) > limit:
+                          raise Stop('response_size_limit')
+                      return response.content
+          
+              def cache(self, query, method='GET', body=None, prefer='return=representation'):
+                  endpoint = self.base + '/rest/v1/telegram_api_cache?' + urlencode(query)
+                  raw = self.call(endpoint, method, body, {'Prefer': prefer})
+                  return json.loads(raw) if raw else []
+          
+              def get(self, key):
+                  rows = self.cache({'cache_key': 'eq.' + key, 'select': 'payload'})
+                  if len(rows) > 1:
+                      raise Stop('duplicate_private_rows')
+                  return rows[0]['payload'] if rows else None
+          
+              def catalog(self):
+                  cursor = {'limit': 100}
+                  seen = set()
+                  cards = []
+                  for _ in range(100):
+                      time.sleep(max(0, 1 - (time.monotonic() - self.last_wb)))
+                      self.last_wb = time.monotonic()
+                      body = {'settings': {'sort': {'ascending': True}, 'cursor': cursor,
+                                           'filter': {'withPhoto': -1}}}
+                      raw = self.call('https://content-api.wildberries.cn/content/v2/get/cards/list',
+                                      'POST', body, {'Authorization': os.environ['WB_TOKEN_3']})
+                      data = json.loads(raw)
+                      data = data if 'cards' in data else data['data']
+                      rows = data['cards']
+                      if not isinstance(rows, list):
+                          raise Stop('invalid_card_page')
+                      cards.extend(rows)
+                      if len(rows) < 100:
+                          return cards
+                      marker = (data['cursor']['updatedAt'], data['cursor']['nmID'])
+                      if marker in seen:
+                          raise Stop('pagination_loop')
+                      seen.add(marker)
+                      cursor = {'limit': 100, 'updatedAt': marker[0], 'nmID': marker[1]}
+                  raise Stop('incomplete_catalog')
+          
+
+          key = 'wb_card_once:20261127:mira'
+          client = Client()
+          now = dt.datetime.now(dt.timezone.utc)
+          host = 'https://content-api.wildberries.cn'
+          headers = {'Authorization': os.environ['WB_TOKEN_3']}
+
+          def save(report, claim=False):
+              row = {'cache_key': key + ':diagnostic', 'payload': report,
+                     'updated_at': dt.datetime.now(dt.timezone.utc).isoformat(),
+                     'expires_at': (now + dt.timedelta(days=30)).isoformat()}
+              mode = 'ignore' if claim else 'merge'
+              rows = client.cache({'on_conflict': 'cache_key'}, 'POST', row,
+                                  f'resolution={mode}-duplicates,return=representation')
+              if len(rows) != 1 or client.get(key + ':diagnostic') != report:
+                  raise Stop('journal_write_or_claim_failed')
+
+          report = {'run_id': os.environ['GITHUB_RUN_ID'], 'status': 'reading', 'cards': []}
+          save(report, claim=True)
+          try:
+              codes = client.get(key + ':input')['articles']
+              spec = client.get(key + ':spec')
+              cards = client.catalog()
+              wanted = {code.split('-')[0] for code in codes[1:]}
+              for card in cards:
+                  code = card.get('vendorCode', '')
+                  if code.split('-')[0] not in wanted:
+                      continue
+                  values = {v['id']: v['value'] for v in card.get('characteristics', [])}
+                  absent_or_different = []
+                  for v in spec['characteristics']:
+                      actual = values.get(v['id'])
+                      desired = v['value']
+                      if isinstance(actual, list) and isinstance(desired, list):
+                          actual, desired = sorted(actual), sorted(desired)
+                      if actual != desired:
+                          absent_or_different.append(v['id'])
+                  report['cards'].append({
+                      'vendorCode': code, 'nmID': card['nmID'],
+                      'diff_ids': absent_or_different,
+                      'color_count': len(values.get(14177449) or []),
+                      'package_matches': all(card.get('dimensions', {}).get(k) == v for k, v in spec['dims'].items()),
+                      'description_matches_mira': all(x in card.get('description', '') for x in ('Mira', '130 см', '950 г'))
+                  })
+              report['status'] = 'complete'
+          except Exception as error:
+              report['status'] = 'stopped'
+              report['reason'] = str(error) if isinstance(error, Stop) else type(error).__name__
+          save(report)
+          PYTHON
