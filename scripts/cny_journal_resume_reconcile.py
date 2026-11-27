@@ -1,6 +1,7 @@
 """Reconcile a timed-out batch; normalize only the three confirmed outstanding references."""
 import copy,datetime,gzip,json,os,sys,time,traceback,urllib.request,urllib.error
 import cny_all_remaining_refs_apply as a
+from cny_journal_clean_get import JournalTransport
 p=a.p;h=a.h;r=a.r;b=a.b;m=a.m
 Q='journal_resume_reference_reconcile:'
 def save(db,k,v):p.save(db,Q+k,v)
@@ -25,7 +26,7 @@ def put_one(db,i,body):
  except (TimeoutError,urllib.error.URLError):save(db,'response:'+i,{'at':m.now(),'uncertain':True})
 def run_batch(offset,expected_pending=None):
  global Q;Q='journal_resume_reference_reconcile:'+str(offset)+':'
- t=b.ReadOnly();db=m.Cache(t);auth=db.get(b.ROOT+p.P+'authorization:v1')
+ t=JournalTransport();db=m.Cache(t);auth=db.get(b.ROOT+p.P+'authorization:v1')
  assert auth and auth['authorized'] and auth['scope']=='remaining_ms_currency_references_only' and auth['preserve_prices_sums_quantities_rows_stores_documents'] and not auth['outside_ms_changes']
  key='apply:customerorder:'+str(offset);snap=a.read_snapshot(db,key+':snapshot');last=db.get(b.ROOT+p.P+key+':readback');response=db.get(b.ROOT+p.P+key+':response')
  intent=db.get(b.ROOT+p.P+key+':intent')
@@ -90,13 +91,13 @@ def run_batch(offset,expected_pending=None):
 def main():
  run_batch(18820)
  run_batch(19220)
- db=m.Cache(b.ReadOnly())
+ db=m.Cache(JournalTransport())
  parts=[db.get(b.ROOT+p.P+'journal_resume_reference_reconcile:'+str(off)+':result:v1') for off in (18820,19220)]
  assert all(x and x['status']=='verified' for x in parts)
  p.save(db,'journal_resume_reconcile:result:v1',{'status':'verified','at':m.now(),'written':sum(x['written'] for x in parts),'batch_documents_verified':sum(x['batch_documents_verified'] for x in parts),'batches':[18820,19220],'all_store_quantities_preserved':True,'all_prices_sums_rows_links_preserved':True})
 if __name__=='__main__':
  try:main()
  except Exception as e:
-  try:save(m.Cache(b.ReadOnly()),'error:v1',{'at':m.now(),'reason':str(e),'trace':traceback.format_exc()})
+  try:save(m.Cache(JournalTransport()),'error:v1',{'at':m.now(),'reason':str(e),'trace':traceback.format_exc()})
   except Exception:pass
   print('Single-document reconciliation stopped; inspect private readback.');sys.exit(1)
