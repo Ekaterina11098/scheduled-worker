@@ -1,8 +1,5 @@
 name: Exact owner-approved three IP FBO additions 27Nov
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/ip-owner-add3-20261127.yml']
   workflow_dispatch:
 permissions:
   contents: read
