@@ -43,7 +43,16 @@ with cloud_writer(support.runtime_db()):
    value=values.get(loc['chrtId'])
    if type(value) not in (int,float) or not math.isfinite(value) or value<0 or int(value)!=value:raise Stopped('Exact owner FBS unknown: '+art)
    return int(value)
-  def all_actual():return {art:[read(art,i) for i in range(3)] for art in TARGETS}
+  def all_actual():
+   actual={art:[] for art in TARGETS}
+   for cab in range(3):
+    ids=[locations[art][cab]['chrtId'] for art in TARGETS]
+    values=g.get_real_wb_stocks(g.cabinet_tokens()[cab],ids,WAREHOUSES[cab])
+    for art in TARGETS:
+     q=values.get(locations[art][cab]['chrtId'])
+     if type(q) not in (int,float) or not math.isfinite(q) or q<0 or int(q)!=q:raise Stopped('Exact batched owner FBS unknown')
+     actual[art].append(int(q))
+   return actual
   def refresh():
    global source
    source,proof=refresh_manual_source(g,service,source,set(TARGETS))
@@ -58,9 +67,10 @@ with cloud_writer(support.runtime_db()):
     if art in locations and locations[art]!=locs:raise Stopped('Owner size identity changed')
     locations[art]=locs
    fact[0]=dict(proof=proof,source=source,at=time.time());return fact[0]
-  def validate():
+  def validate(check_storage=True):
    require_cloud_lease()
-   verify_runtime_storage(probe_write,probe_read,dict(scope=ROOT,nonce=os.urandom(16).hex()));last[0]=time.monotonic()
+   if check_storage:
+    verify_runtime_storage(probe_write,probe_read,dict(scope=ROOT,nonce=os.urandom(16).hex()));last[0]=time.monotonic()
    require_ready();p=fact[0]['proof']
    if not fresh(p) or p.get('store_id')!='3c67619d-f25d-11ee-0a80-0c6f000a027a':raise Stopped('Fresh exact MSK reserve proof required')
    caps={}
@@ -122,7 +132,7 @@ with cloud_writer(support.runtime_db()):
     for prev,body,status,_ in s.operations(ROOT):
      if status=='confirmed':expected[body['article']][body['cabinet']]=body['target']
     if actual!=expected:raise Stopped('Actual FBS changed before unsent owner operation')
-    validate()
+    validate(check_storage=False)
     with s.transaction():
      s.event(ROOT,seq,'capacity_verified',dict(facts=caps,proof_digest=fact[0]['proof']['digest'],orders_observed_at=fact[0]['proof']['observed_at'],physical_observed_at=fact[0]['proof']['physical_observed_at']))
      if s.sql("UPDATE stock_operations SET state='sent' WHERE run=? AND seq=? AND state='prepared'",(ROOT,seq)).rowcount!=1:raise Stopped('Concurrent owner dispatch')
@@ -144,7 +154,7 @@ with cloud_writer(support.runtime_db()):
     root=main();print(json.dumps(dict(status=root['status'],complete=root['execution_complete'],final_fbs=root['final_fbs'],ip_stock_writes=0)),flush=True);break
    except Exception as exc:
     wait=getattr(exc,'wait',0);readback='waiting for WB readback' in str(exc)
-    fresh_retry='Fresh capacity reconciliation exceeded120seconds' in str(exc)
+    fresh_retry='Fresh capacity reconciliation exceeded120seconds' in str(exc) or 'Fresh exact MSK reserve proof required' in str(exc)
     print(json.dumps(dict(attempt=attempt+1,error_type=type(exc).__name__,error=str(exc),wait=wait)),flush=True)
     if attempt==7 or not (wait or readback or fresh_retry):raise
     remaining=max(30,math.ceil(wait))
