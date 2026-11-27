@@ -1,8 +1,5 @@
 name: IP approved PNG signature offline regression
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/ip-signature-offline-20261127.yml']
   workflow_dispatch:
 permissions: {contents: read}
 concurrency:
