@@ -9,8 +9,8 @@ io=AdvertisingIO();root='china_agent:owner_fourrc27:v1';scope=io.get(root+':scop
 if out.get('status')=='complete':raise SystemExit('Saved')
 if not io.get(root+':result'):assert io.create(root+':result',out)
 orig=requests.sessions.Session.request
-def guard(s,m,url,*a,**k):
- u=urlparse(url);p=u.path;m=m.upper()
+def guard(s,method,url,*a,**k):
+ u=urlparse(url);p=u.path;m=method.upper()
  ok=u.hostname==urlparse(io.url).hostname and m in('GET','POST','PATCH')and p.startswith('/rest/v1/')or u.hostname=='advert-api.wildberries.ru'and(m=='GET'and p=='/api/advert/v2/adverts'or m=='POST'and p=='/api/advert/v1/bids/min')or u.hostname=='api.moysklad.ru'and m=='GET'and p.startswith('/api/remap/1.2/')or u.hostname=='discounts-prices-api.wildberries.ru'and m=='GET'and p=='/api/v2/list/goods/filter'or u.hostname=='marketplace-api.wildberries.ru'and m=='POST'and p=='/api/v3/stocks/2126188'
  assert ok,'Read-only endpoints only';return orig(s,m,url,*a,**k)
 requests.sessions.Session.request=guard
