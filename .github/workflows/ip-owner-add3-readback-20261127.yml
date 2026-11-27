@@ -1,0 +1,35 @@
+name: Read accepted three IP additions after definite bid rejection
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/ip-owner-add3-readback-20261127.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: wb-ip-advertising-agent
+  cancel-in-progress: false
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: b8a67a3a3cec6a8cc993cccd8ec5ba3464d9fdc1
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ip_owner_add3_20261127.py
+            scripts/ip_owner_add3_readback_20261127.py
+            scripts/owner_ad_tests23.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests==2.32.5 > "$RUNNER_TEMP/dependencies.log" 2>&1
+      - name: Read-only final configuration and placement diagnosis
+        run: python scripts/ip_owner_add3_readback_20261127.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          WB_TOKEN_2: ${{ secrets.WB_TOKEN_2 }}
