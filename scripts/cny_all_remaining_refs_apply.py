@@ -90,6 +90,9 @@ def run(typ,start,end,batch_size=20):
   if snapshot:
    assert intent,'Snapshot without intent requires reconciliation'
    before=snapshot['before'];goals=snapshot['goals']
+   for attempt in range(13):
+    if all(signature(current[i],typ)==signature(goals[i],typ) for i in chunk):break
+    if attempt<12:time.sleep(15);current=r.live(t,typ,chunk)
    for i,z in current.items():
     invariant(before[i],z,typ);assert signature(z,typ)==signature(goals[i],typ),'Prior mutation unresolved; no replay'
    save(db,key+':verified',{'at':m.now(),'count':len(chunk),'reconciled':True})
