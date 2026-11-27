@@ -12,9 +12,9 @@ plan=io.get('china_agent:shared_memory:v1:work:note:reach15-proposal-20261127')[
 targets=[dict(x,nm=next(y['nm']for y in scope if y['article']==x['a']))for x in plan if not x['action'].startswith('hold')]
 assert len(targets)==11 and sum(x['current'] is not None for x in targets)==10
 e=io.get(ROOT+':execution')
-if e:raise SystemExit('Existing journal; reconcile only, never replay')
+if e:assert not e.get('ops') and e.get('status')=='blocked','Existing write journal; reconcile only'
 e=dict(status='preflight',created_at=now(),owner_instruction='усиль 10 товаров и верни 92, остальные четыре оставь без изменений',targets=targets,ops={},groups=[],errors={},telegram_calls=0,funding_calls=0,price_writes=0)
-assert io.create(ROOT+':execution',e)
+io.put(ROOT+':execution',e) if io.get(ROOT+':execution') else io.create(ROOT+':execution',e)
 def save():io.put(ROOT+':execution',copy.deepcopy(e))
 orig=requests.sessions.Session.request;allowed=None
 def guard(s,method,url,*a,**kw):
@@ -63,7 +63,7 @@ try:
   existing=[x['nm']for x in xs if x['nm']in members];mins=quote(cid,existing,zone)
   assert all(mins[x['nm']]<=round(x['proposed']*100) and round(x['proposed']*100)%cfg['cpcStep']==0 for x in xs if x['nm']in members)
   if missing:assert c['restrictions']['can_change_nms'] and max(mins.values())<=30
-  e['groups'].append(dict(cid=cid,zone=zone,before=c,targets=xs,missing=missing,minima=mins,status='ready'))
+  e['groups'].append(dict(cid=cid,zone=zone,before=c,targets=xs,missing=missing,minima={str(k):v for k,v in mins.items()},status='ready'))
  save()
  for g in e['groups']:
   cid=g['cid'];zone=g['zone'];c=camp(cid);assert norm(c)==norm(g['before']),'Concurrent campaign change'
@@ -78,7 +78,7 @@ try:
    new=[copy.deepcopy(n)for n in c['nm_settings']if n['nm_id']in g['missing']]
    expected['nm_settings']+=new
    assert norm(c)==norm(expected),'Unrelated campaign fields changed'
-   g['new_minima']=quote(cid,g['missing'],zone);assert all(v<=30 for v in g['new_minima'].values());save()
+   g['new_minima']={str(k):v for k,v in quote(cid,g['missing'],zone).items()};assert all(v<=30 for v in g['new_minima'].values());save()
   actual={n['nm_id']:n for n in c['nm_settings']}
   bids=[dict(nm_id=x['nm'],bid_kopecks=round(x['proposed']*100),placement=zone)for x in g['targets']if actual[x['nm']]['bids_kopecks'][zone]!=round(x['proposed']*100)]
   if bids:write(str(cid)+':bids','/api/advert/v1/bids',dict(bids=[dict(advert_id=cid,nm_bids=bids)]))
