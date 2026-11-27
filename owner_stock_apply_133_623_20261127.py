@@ -41,8 +41,8 @@ with cloud_writer(support.runtime_db()):
   def read(art,cab):
    loc=locations[art][cab];values=g.get_real_wb_stocks(g.cabinet_tokens()[cab],[loc['chrtId']],loc['warehouse'])
    value=values.get(loc['chrtId'])
-   if type(value) is not int or value<0:raise Stopped('Exact owner FBS unknown: '+art)
-   return value
+   if type(value) not in (int,float) or not math.isfinite(value) or value<0 or int(value)!=value:raise Stopped('Exact owner FBS unknown: '+art)
+   return int(value)
   def all_actual():return {art:[read(art,i) for i in range(3)] for art in TARGETS}
   def refresh():
    global source
