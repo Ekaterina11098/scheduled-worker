@@ -3,7 +3,16 @@ import argparse,sys,traceback
 import cny_all_remaining_refs_apply as a
 p=a.p;b=a.b;m=a.m
 def main(stage,index):
- db=m.Cache(b.ReadOnly());assert db.get(b.ROOT+p.P+'canary:v1')['status']=='verified'
+ t=b.ReadOnly();db=m.Cache(t);canary=db.get(b.ROOT+p.P+'canary:v1');assert canary['status']=='verified'
+ if stage=='other':
+  for typ in canary['types']:
+   snap=db.get(b.ROOT+p.P+'apply:'+typ+':0:snapshot')
+   current=a.r.live(t,typ,list(snap['before']))
+   for i,d in current.items():
+    a.invariant(snap['before'][i],d,typ)
+    assert a.signature(d,typ)==a.signature(snap['goals'][i],typ)
+  p.save(db,'canary_extended:v1',{'status':'verified','at':m.now(),'reservation_and_tracking_fields_preserved':True})
+ else:assert db.get(b.ROOT+p.P+'canary_extended:v1')['status']=='verified'
  if stage=='other':types=('purchaseorder','invoicein','move','loss','purchasereturn','salesreturn','supply','enter','invoiceout')
  elif stage=='finance':types=('cashin','cashout','paymentin','paymentout')
  else:types=(stage,)
