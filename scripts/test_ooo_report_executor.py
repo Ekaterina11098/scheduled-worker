@@ -80,6 +80,18 @@ class Flow(unittest.TestCase):
   m=copy.deepcopy(self.m);m['actions']=[];m['topups']=[{'cid':39605581,'amount_kgs':500}];validate(m)
   m['topups'][0]['cid']=41517533
   with self.assertRaises(Stop):validate(m)
+ def test_new_campaign_funding_and_actions_validate(self):
+  m=copy.deepcopy(self.m);m['actions'][0]['cid']=42217183;m['topups']=[{'cid':42217557,'amount_kgs':1200}];validate(m)
+  for cid in (0,-1,True,'42217557'):
+   m['topups'][0]['cid']=cid
+   with self.assertRaises(Stop):validate(m)
+ def test_new_campaign_requires_complete_token_readback_before_funding(self):
+  m=copy.deepcopy(self.m);m['actions']=[];m['topups']=[{'cid':42217557,'amount_kgs':1200}]
+  a={'manifest':m,'manifest_sha256':digest(m),'report_message_id':4,'expires_at':self.exp,'status':'approved_pending_execution'}
+  self.db.data[ROOT+'report_binding:'+str(CHAT)+':4']['manifest_sha256']=digest(m)
+  x=Executor(self.db,'test',self.request);x.process('new',a)
+  self.assertEqual(self.db.get('new')['status'],'attention')
+  self.assertFalse(any(p.endswith('/deposit')for _,p,_ in self.calls))
  def test_binding_waits_for_all_photo_receipts(self):
   key=ROOT+'publication:test';self.db.data[key]={'status':'prepared','chat_id':CHAT,'manifest':self.m,'manifest_sha256':digest(self.m),'plan_id':'tomorrow','expires_at':self.exp,'receipt_keys':['ooo_agent:test:ad','ooo_agent:test:budget'],'artifact_sha256':['abc','def']}
   self.db.data['ooo_agent:test:ad']={'status':'sent','chat_id':CHAT,'message_id':30,'sha256':'abc'}

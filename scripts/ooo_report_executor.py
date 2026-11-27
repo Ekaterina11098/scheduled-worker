@@ -5,7 +5,7 @@ from ooo_sol_dialog import DB as DialogueDB,Worker as Dialogue,ROOT,CHAT,BOT
 from ooo_report_command import digest
 
 LEGACY='ooo_agent:report_apply:2026-11-09:v1'
-IDS={39605581,39605579,40385586,41515989,41516310,41516903,41517233,41517533,39605582}
+# Campaign IDs are discovered through the approved binding and token_1 readback.
 def stamp():return datetime.now(timezone.utc).isoformat()
 class Deferred(Exception):pass
 class Stop(Exception):pass
@@ -28,7 +28,7 @@ def validate(m):
  if not(m.get('actions')or m.get('topups')):raise Stop('Empty report')
  seen=set()
  for a in m.get('actions',[]):
-  if type(a.get('cid'))is not int or a['cid']not in IDS:raise Stop('Unknown campaign')
+  if type(a.get('cid'))is not int or a['cid']<=0:raise Stop('Unknown campaign')
   kind=a.get('kind')
   if kind not in('exclude_sku','reduce_bid','raise_bid','add_sku','pause_campaign','resume_campaign'):raise Stop('Unsupported action')
   if kind not in('pause_campaign','resume_campaign')and(type(a.get('nm'))is not int or a['nm']<=0):raise Stop('Invalid SKU')
@@ -39,7 +39,7 @@ def validate(m):
    if a.get('placement')not in('search','recommendations')or type(a.get('to_minor'))is not int or a['to_minor']<=0:raise Stop('Invalid bid')
    if kind!='add_sku'and(type(a.get('from_minor'))is not int or (a['to_minor']>=a['from_minor']if kind=='reduce_bid'else a['to_minor']<=a['from_minor'])):raise Stop('Invalid exact transition')
  for t in m.get('topups',[]):
-  if t.get('cid')not in IDS or type(t.get('amount_kgs'))is not int or t['amount_kgs']<=0:raise Stop('Invalid funding')
+  if type(t.get('cid'))is not int or t['cid']<=0 or type(t.get('amount_kgs'))is not int or t['amount_kgs']<=0:raise Stop('Invalid funding')
   if t['cid']==41517533:raise Stop('Campaign funding explicitly disabled by owner')
  if len({t['cid']for t in m.get('topups',[])})!=len(m.get('topups',[])):raise Stop('Duplicate funding')
  if any(a['cid']==41517533 and a['kind']=='resume_campaign'for a in m.get('actions',[])):raise Stop('Campaign start explicitly disabled by owner')
