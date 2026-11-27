@@ -1,0 +1,25 @@
+name: Stop superseded MS diagnosis26Nov
+on:
+  push:
+    paths: ['.github/workflows/stop-regina-broad-read-20261127.yml']
+permissions:
+  actions: write
+  contents: read
+jobs:
+  stop:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel only the superseded collection diagnosis
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import os,json,urllib.request
+          base='https://api.github.com/repos/Ekaterina11098/scheduled-worker/actions/runs/45945468869'
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'}
+          with urllib.request.urlopen(urllib.request.Request(base,headers=headers)) as r:d=json.load(r)
+          assert d['path']=='.github/workflows/owner-regina-full-trace-20261127.yml' and d['head_sha']=='31f848aa7ec9ec381b884c7ced5d5c22824a5d1b'
+          if d['status']!='completed':
+              with urllib.request.urlopen(urllib.request.Request(base+'/cancel',headers=headers,method='POST')) as r:print('cancel_status',r.status)
+          else:print('already_completed',d['conclusion'])
+          PY
