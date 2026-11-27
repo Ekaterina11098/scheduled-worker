@@ -4,9 +4,11 @@ from china_advertising_state import AdvertisingIO
 io=AdvertisingIO();ROOT='china_agent:owner_674_photo27:v1';NM=1473243829
 def now():return datetime.now(timezone.utc).isoformat()
 e=io.get(ROOT+':execution')
-if e:raise SystemExit('Existing journal; no replay')
+if e:assert not e.get('operation') and e['wb_writes']==0,'Existing upload: reconcile only'
+previous=e
 e=dict(status='preflight',created_at=now(),wb_writes=0,telegram_calls=0)
-assert io.create(ROOT+':execution',e)
+if previous:e['previous_preflight']=previous;io.put(ROOT+':execution',e)
+else:assert io.create(ROOT+':execution',e)
 def save():io.put(ROOT+':execution',copy.deepcopy(e))
 h={'Authorization':io.token,'Cache-Control':'no-cache'}
 def card():
@@ -19,10 +21,6 @@ try:
  assert not e['before'].get('photos'),'Existing photos; preserve and reconcile'
  sh={'Authorization':'Bearer '+os.environ['SUPABASE_SECRET_KEY'],'apikey':os.environ['SUPABASE_SECRET_KEY']}
  obj='674-photo27/source.png';bucket='owner-media-recovery'
- r=requests.post(io.url+'/storage/v1/object/upload/sign/'+bucket+'/'+obj,headers=sh,json={'upsert':False},timeout=40);r.raise_for_status()
- signed=r.json()['url'];signed=io.url+signed if signed.startswith('/')else signed
- io.create(ROOT+':transfer',{'upload_url':signed,'created_at':now()})
- e['status']='awaiting_source';save()
  for i in range(84):
   r=requests.get(io.url+'/storage/v1/object/authenticated/'+bucket+'/'+obj,headers=sh,timeout=40)
   if r.ok:break
@@ -32,7 +30,7 @@ try:
  raw=r.content
  assert raw[:8]==b'\x89PNG\r\n\x1a\n'and len(raw)==6426149
  e['source_sha256']=hashlib.sha256(raw).hexdigest()
- assert card()==e['before'],'Card changed before upload'
+ check=card();keys=('nmID','vendorCode','title','brand','description','characteristics','dimensions','sizes','photos','video');assert all(check.get(k)==e['before'].get(k)for k in keys),'Content changed before upload'
  e['operation']={'status':'submitting','at':now(),'slot':1};save()
  r=requests.post('https://content-api.wildberries.ru/content/v3/media/file',headers={**h,'X-Nm-Id':str(NM),'X-Photo-Number':'1'},files={'uploadfile':('674-pink.png',raw,'image/png')},timeout=90)
  e['operation'].update(http_status=r.status_code,response=r.text[:2000],status='accepted'if r.ok else'rejected');save();r.raise_for_status()
