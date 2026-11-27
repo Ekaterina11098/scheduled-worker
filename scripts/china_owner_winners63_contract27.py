@@ -53,4 +53,8 @@ try:
  out.update(scope_nm_ids=sorted(wanted),wb_writes=0,telegram_calls=0,executed=False,warning='26Nov hourly advertising is23:07partial snapshot; not full26day. No completed post26price day exists. Candidate bids remain proposals, not ready actions.',observed_at=datetime.now(timezone.utc).isoformat())
  assert io.create(root+':contract_review',out)
  print('Saved shared-contract preview')
+except Exception as ex:
+ key=root+':contract_error';value=dict(error=type(ex).__name__+': '+str(ex),observed_at=datetime.now(timezone.utc).isoformat())
+ io.put(key,value)if io.get(key)else io.create(key,value)
+ raise
 finally:requests.sessions.Session.request=orig
