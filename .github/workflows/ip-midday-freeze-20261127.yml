@@ -1,0 +1,125 @@
+name: Freeze recovered IP midday report only27Nov
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/ip-midday-freeze-20261127.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency:
+  group: ip-report-preparation
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 9eabfaf3fdacf6b0328f8630d92af3ae8014f93d
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*.py
+      - uses: actions/checkout@v4
+        with:
+          repository: Ekaterina11098/VESCHI_AI
+          ref: dfa9651d7f18589ca1c8a1c8de020774be963261
+          token: ${{ secrets.SOURCE_READ_TOKEN }}
+          persist-credentials: false
+          path: private-source
+      - name: Apply isolated IP rules review
+        uses: actions/checkout@v4
+        with:
+          ref: 7b5891722c21613d1944b0222b6f9e288ecb3560
+          path: ip-rules-patch
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /ip_daily_png_contract.py
+            /ip_report_analysis.py
+            /test_ip_report_analysis.py
+      - name: Install reviewed rules module
+        run: |
+          cp ip-rules-patch/ip_daily_png_contract.py ip-rules-patch/ip_report_analysis.py ip-rules-patch/test_ip_report_analysis.py .
+          cp ip-rules-patch/ip_daily_png_contract.py ip-rules-patch/ip_report_analysis.py private-source/
+      - name: Apply campaign scope reconciliation
+        uses: actions/checkout@v4
+        with:
+          ref: 22b202d06e3480f8ed526377be158fb42ad979b2
+          path: ip-scope-patch
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /ip_report_freeze.py
+            /ip_campaign_table_png.py
+            /ip_scheduled_source.py
+            /test_ip_catalog_scope.py
+      - name: Install reviewed scope reconciliation
+        run: |
+          cp ip-scope-patch/ip_report_freeze.py ip-scope-patch/ip_scheduled_source.py ip-scope-patch/test_ip_catalog_scope.py .
+          cp ip-scope-patch/ip_campaign_table_png.py .
+          cp ip-scope-patch/ip_campaign_table_png.py private-source/
+      - name: Apply exact-ID snapshot and stable midday reuse repair
+        uses: actions/checkout@v4
+        with:
+          ref: 1caddb79a8f2c364f308ecfa5d97078f50c8a6ad
+          path: ip-source-repair
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /ip_scheduled_source.py
+            /test_ip_source_timeout.py
+      - name: Install reviewed missing-only source repair
+        run: cp ip-source-repair/ip_scheduled_source.py ip-source-repair/test_ip_source_timeout.py .
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests==2.32.5 cryptography==46.0.2 Pillow==12.3.0 > "$RUNNER_TEMP/dependencies.log" 2>&1
+      - name: Offline economic, scope, budget and dedup regression
+        run: python -m unittest test_ip_cloud_dialog test_ip_report_analysis test_full_retained_review test_ip_restrictions test_ip_catalog_scope test_ip_source_timeout
+      - name: Reuse dated data and read only missing report fields; no WB credentials
+        if: ${{ false }}
+        env:
+          IP_REPORT_SLOT: midday
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          MPSTATS_API_TOKEN: ${{ secrets.MPSTATS_API_TOKEN }}
+        run: python ip_scheduled_source.py
+      - name: Freeze private PNGs or verify saved example; never send from the runner
+        env:
+          IP_REPORT_SLOT: midday
+          IP_REPORT_VERIFY_ONLY: 'false'
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          ADVERTISING_TELEGRAM_BOT_TOKEN: ${{ secrets.ADVERTISING_TELEGRAM_BOT_TOKEN }}
+          OPENAI_API_KEY: ""
+        run: |
+          python - <<'PY'
+          import os,json,time,traceback,requests
+          from urllib.parse import urlsplit
+          import ip_report_freeze as f
+          original=requests.sessions.Session.request
+          trace=[]
+          def traced(session,method,url,*a,**kw):
+              host=urlsplit(url).hostname
+              if host!=urlsplit(os.environ['SUPABASE_URL']).hostname:raise PermissionError('Saved-only freeze: unexpected external host')
+              p=kw.get('params')or{}
+              safe={k:v for k,v in p.items()if k in ('source','cabinet','period_from','period_to','id','select','limit','order','collected_at')}
+              item={'method':method,'path':urlsplit(url).path,'params':safe};trace.append(item)
+              start=time.time()
+              try:return original(session,method,url,*a,**kw)
+              except Exception as e:
+                  item['error_type']=type(e).__name__
+                  raise
+              finally:item['seconds']=round(time.time()-start,3)
+          requests.sessions.Session.request=traced
+          try:
+              result=f.main()
+              print(json.dumps({k:result.get(k)for k in ('status','images','wb_writes','telegram_calls')}))
+          except Exception as e:
+              frames=[{'file':os.path.basename(x.filename),'line':x.lineno,'function':x.name}for x in traceback.extract_tb(e.__traceback__)]
+              diagnostic={'status':'freeze_failed','error_type':type(e).__name__,'trace':trace[-8:],'frames':frames}
+              print(json.dumps(diagnostic))
+              try:f.store.cache_set('advertising:ip:report-freeze-diagnostic:2026-11-27:midday',diagnostic,ttl_days=32)
+              except Exception:pass
+              raise SystemExit(1)
+          PY
