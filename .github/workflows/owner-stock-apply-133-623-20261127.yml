@@ -65,3 +65,5 @@ jobs:
           python owner_stock_apply_133_623_20261127.py
 
 # Resume exact saved owner scope after narrowing reservation reads to two articles.
+
+# Shared stock reader returns integer-valued floats; missing/fractional values remain forbidden.
