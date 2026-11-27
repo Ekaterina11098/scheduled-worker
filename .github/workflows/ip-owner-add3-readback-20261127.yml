@@ -1,8 +1,5 @@
 name: Read accepted three IP additions after definite bid rejection
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/ip-owner-add3-readback-20261127.yml']
   workflow_dispatch:
 permissions:
   contents: read
