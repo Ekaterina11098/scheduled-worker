@@ -1,8 +1,5 @@
 name: Addressed IP manishki read-only review 27Nov
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/ip-manishki-review-20261127.yml']
   workflow_dispatch:
 permissions: {contents: read}
 concurrency:
