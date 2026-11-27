@@ -23,25 +23,36 @@ def get(k):
  return r[0]['payload'] if r else None
 def put(k,p):database('POST','telegram_api_cache',params={'on_conflict':'cache_key'},body={'cache_key':k,'payload':p,'updated_at':datetime.now(timezone.utc).isoformat(),'expires_at':'2027-11-03T00:00:00Z'})
 def digest(v):return hashlib.sha256(json.dumps(v,sort_keys=True,ensure_ascii=False,separators=(',',':')).encode()).hexdigest()
+def reuse_cutoff():
+ # One midday preparation window, stable across retry hours. A retry must not
+ # recollect the same saved day merely because the wall clock crossed an hour.
+ if SLOT=='midday':return (datetime.fromisoformat(REPORT_DAY)+timedelta(hours=11,minutes=30)).replace(tzinfo=timezone.utc).isoformat()
+ return (datetime.fromisoformat(DAY)+timedelta(days=1,hours=-3)).replace(tzinfo=timezone.utc).isoformat()
 state={'status':'starting','report_day':REPORT_DAY,'data_day':DAY,'run_id':RUN_ID,'started_at':NOW.isoformat(),'saved':[],'reused':[],'normalization_errors':[],'wb_calls':0,'wb_writes':0,'telegram_calls':0,'decoded_response_bytes':0}
 def save():put(KEY,state)
 def snapshot(source,p,a,b,status='complete'):
- database('POST','analytics_snapshots',body={'source':source,'cabinet':'token_2','period_from':a,'period_to':b,'run_id':RUN_ID,'payload':[p],'status':status,'detail':'Scheduled IP missing-only dated report; no WB/TG'})
- rows=decode_rows(database('GET','analytics_snapshots',params={'source':'eq.'+source,'cabinet':'eq.token_2','run_id':'eq.'+RUN_ID,'select':'id,payload','order':'id.desc','limit':1}) or [])
+ created=database('POST','analytics_snapshots',params={'select':'id'},body={'source':source,'cabinet':'token_2','period_from':a,'period_to':b,'run_id':RUN_ID,'payload':[p],'status':status,'detail':'Scheduled IP missing-only dated report; no WB/TG'})
+ if not isinstance(created,list)or len(created)!=1 or type(created[0].get('id'))is not int:raise RuntimeError('Snapshot inserted but exact ID not returned; do not repeat source read')
+ rows=decode_rows(database('GET','analytics_snapshots',params={'id':'eq.'+str(created[0]['id']),'select':'id,payload','limit':1}) or [])
  if not rows or digest(rows[0]['payload'])!=digest([p]):raise RuntimeError('Saved snapshot full readback mismatch')
  return rows[0]['id']
-memo={}
+memo={};memo_ids={}
 def existing(tool,args):
  key='token_2:'+tool+':'+json.dumps(args,sort_keys=True)
- if key in memo:return memo[key]
+ if key in memo:
+  if memo_ids.get(key)not in state['reused']:state['reused'].append(memo_ids[key])
+  return memo[key]
  a,b=period(args)
- rows=database('GET','analytics_snapshots',params={'source':'eq.mpstats_'+tool,'cabinet':'eq.token_2','period_from':'eq.'+a,'period_to':'eq.'+b,'collected_at':'gte.'+(NOW.replace(minute=0,second=0,microsecond=0) if SLOT=='midday' else (datetime.fromisoformat(DAY)+timedelta(days=1,hours=-3)).replace(tzinfo=timezone.utc)).isoformat(),'select':'id,state:payload->0->>status,key:payload->0->>request_key','order':'id.desc','limit':100}) or []
+ rows=database('GET','analytics_snapshots',params={'source':'eq.mpstats_'+tool,'cabinet':'eq.token_2','period_from':'eq.'+a,'period_to':'eq.'+b,'collected_at':'gte.'+reuse_cutoff(),'select':'id','order':'id.desc','limit':100}) or []
  for r in rows:
   if r.get('key') in (key,None) and r.get('state') in ('received',None):
    full=decode_rows(database('GET','analytics_snapshots',params={'id':'eq.'+str(r['id']),'select':'id,payload','limit':1}))[0]
    obs=full['payload'][0]
-   if obs.get('tool')!=tool or obs.get('arguments')!=args or obs.get('status')!='received':continue
+   if obs.get('tool')!=tool or obs.get('status')!='received':continue
    if tool=='lk_wb_products' and obs.get('data',{}).get('data',{}).get('need_update')!=0:continue
+   observed_key='token_2:'+tool+':'+json.dumps(obs.get('arguments'),sort_keys=True)
+   memo[observed_key]=obs;memo_ids[observed_key]=r['id']
+   if obs.get('arguments')!=args:continue
    memo[key]=obs;state['reused'].append(r['id']);return obs
  return None
 def request(tool,args):
@@ -53,7 +64,7 @@ def saved(cabinet,obs):
  global own
  if cabinet!='token_2':raise PermissionError('Unexpected cabinet')
  a,b=period(obs['arguments']);ident=snapshot('mpstats_'+obs['tool'],obs,a,b,'complete' if obs.get('status')=='received' else 'partial')
- memo[obs['request_key']]=obs;state['saved'].append({'id':ident,'key':obs['request_key'],'status':obs.get('status')})
+ memo[obs['request_key']]=obs;memo_ids[obs['request_key']]=ident;state['saved'].append({'id':ident,'key':obs['request_key'],'status':obs.get('status')})
  if obs.get('retry_after'):
   until=datetime.now(timezone.utc)+timedelta(seconds=obs['retry_after'])
   put('mpstats:cooldown',{'pending':True,'retry_after':obs['retry_after']})
@@ -66,7 +77,10 @@ def ingest(obs,ident=None):
  try:
   source,p=normalize(obs,'token_2')
   if source:
-   if ident:p['raw_snapshot_id']=ident;snapshot(source,p,p.get('period_from') or period(obs['arguments'])[0],p.get('period_to') or period(obs['arguments'])[1])
+   if ident:
+    p['raw_snapshot_id']=ident;a=p.get('period_from')or period(obs['arguments'])[0];b=p.get('period_to')or period(obs['arguments'])[1]
+    retained=database('GET','analytics_snapshots',params={'source':'eq.'+source,'cabinet':'eq.token_2','period_from':'eq.'+a,'period_to':'eq.'+b,'select':'id,raw_id:payload->0->>raw_snapshot_id','order':'id.desc','limit':100})or[]
+    if not any(str(r.get('raw_id'))==str(ident)for r in retained):snapshot(source,p,a,b)
    if source=='mpstats_campaign_catalog':catalogs.append(p)
    elif source=='mpstats_campaign_report':reports[p['campaign_id']]=p
  except (ValueError,KeyError,TypeError) as e:state['normalization_errors'].append({'tool':obs['tool'],'error':str(e)})
@@ -93,7 +107,7 @@ def collect(call,checks,known):
   if any(r['status']!='received' for r in out):state['provider_gaps']=out
  def obtain(tool,args):
   old=existing(tool,args)
-  if old is not None:ingest(old)
+  if old is not None:ingest(old,memo_ids.get('token_2:'+tool+':'+json.dumps(args,sort_keys=True)))
   else:run([request(tool,args)])
  for kind in ('stats','state'):
   args={'tokens':[BIDDER['token_2']['id']],'report':kind,'d1':DAY,'d2':DAY,'limit':100,'start_row':0,'bidder_only':False,'sort':'wb_id','sort_dir':'desc'}
@@ -154,6 +168,8 @@ def main():
   domain=urlsplit(url).hostname
   if domain not in (host,'mcp.mpstats.io'):raise PermissionError('Recovery source outside MPStats/Supabase')
   if domain=='mcp.mpstats.io' and state['decoded_response_bytes']>=100_000_000:raise RuntimeError('100MB collection boundary')
+  if domain==host and method.upper()=='POST'and urlsplit(url).path=='/rest/v1/analytics_snapshots':
+   headers=dict(kw.get('headers')or{});headers['Prefer']=headers.get('Prefer','resolution=merge-duplicates')+',return=representation';kw['headers']=headers
   r=original(session,method,url,*a,**kw);state['decoded_response_bytes']+=len(r.content);return r
  requests.sessions.Session.request=guarded
  try:
@@ -189,6 +205,3 @@ def main():
  state['finished_at']=datetime.now(timezone.utc).isoformat();save()
  print(json.dumps({k:state.get(k) for k in ('status','scope_count','complete_campaigns','decoded_response_bytes','wb_calls','wb_writes','telegram_calls')}))
 if __name__=='__main__':main()
-
-
-
