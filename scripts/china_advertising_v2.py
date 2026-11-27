@@ -158,7 +158,7 @@ def collect(io,day,current=False):
   except (ValueError,TypeError,AttributeError):fresh=False
   if not fresh:
    # Preserve the source that produced an earlier report; never relabel it as current.
-   save(io,key+':rejected_stale:'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%f'),s)
+   save(io,key+'_rejected_stale_'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%f'),s)
    s=None
  if s and s.get('status')=='complete':
   if not current:
