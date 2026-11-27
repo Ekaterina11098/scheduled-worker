@@ -27,59 +27,90 @@ jobs:
           python - <<'PY'
           import datetime, hashlib, json, os, subprocess, time, urllib.error, urllib.parse, urllib.request
 
-          target = "7610fcb627e0481e8e5b8e065497192754404078fb87926ab2845b11f3966540"
-          token = os.environ.get("WB_STATISTICS_TOKEN")
-          if not token:
-              raise SystemExit("WB token is unavailable")
-          moscow = datetime.timezone(datetime.timedelta(hours=3))
-          import base64
-          root = "https://marketplace-api.wildberries.cn"
-          headers = {"Authorization": token, "Content-Type": "application/json"}
-          allowed = {"id", "createdAt", "warehouseId", "supplyId", "nmId", "chrtId", "article", "skus", "price",
-                     "convertedPrice", "salePrice", "currencyCode", "convertedCurrencyCode", "deliveryType",
-                     "sellerStatus", "wbStatus", "status", "updatedAt", "isB2b"}
-          def request(url, payload=None):
-              req = urllib.request.Request(url, data=json.dumps(payload).encode() if payload else None, headers=headers)
-              with urllib.request.urlopen(req, timeout=60) as response:
-                  return json.load(response)
-          def emit(source, row):
-              for field, value in row.items():
-                  if field not in allowed:
-                      continue
-                  blob = subprocess.check_output(
-                      ["openssl", "pkeyutl", "-encrypt", "-pubin", "-inkey", "/tmp/order-public.pem",
-                       "-pkeyopt", "rsa_padding_mode:oaep"], input=json.dumps([source, field, value]).encode())
-                  print("WB_LOOKUP_RESULT=" + base64.b64encode(blob).decode())
-          def same(row):
-              return any(hashlib.sha256(str(row.get(field, "")).encode()).hexdigest() == target
-                         for field in ("rid", "srid")) or hashlib.sha256(str(row.get("id", "")).encode()).hexdigest() == "8bb9f3c33659a454df541181f5e62923ae76c0c64d94961eec7a9c0c29a2219b"
-          match = None
-          try:
-              period = {"dateFrom": int(datetime.datetime(2026, 10, 26, tzinfo=moscow).timestamp()),
-                        "dateTo": int(datetime.datetime(2026, 11, 23, tzinfo=moscow).timestamp()),
-                        "limit": 1000, "next": 0}
+          import base64, concurrent.futures
+          token = os.environ["WB_STATISTICS_TOKEN"]
+          ids = ["f9a08c9e9fc3621258342a44d204f310c5f7aa1553f4de547becacde1c4c6527","9b790b1b32407caeb433c19112620a87a139bb60b49779c43164f53a65239506","20dd90e836cd2014bd25e819ea161ee93b8e49d1a50797e50137b70511dadecd","a6cbeeab6336a14fadfc5eaa8539d62dca03ff6d8ebeec315e4f1dbaa92aba20"]
+          market = "https://marketplace-api.wildberries.cn"
+          stats = "https://statistics-api.wildberries.cn/api/v1/supplier"
+          finance = "https://finance-api.wildberries.cn/api/finance/v1/sales-reports/detailed"
+          tz = datetime.timezone(datetime.timedelta(hours=3))
+          def digest(value):
+              return hashlib.sha256(str(value).replace(chr(92), "").encode()).hexdigest()
+          def api(name, url, body=None):
+              req = urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None,
+                      headers={"Authorization": token, "Content-Type": "application/json"})
+              try:
+                  with urllib.request.urlopen(req, timeout=90) as res:
+                      return json.load(res) if res.status != 204 else []
+              except urllib.error.HTTPError as exc:
+                  print(f"{name} HTTP {exc.code}", flush=True)
+                  return None
+          def emit(name, row, fields):
+              subset = {k: v for k, v in row.items() if k in fields}
+              blob = json.dumps([name, subset], ensure_ascii=False, separators=(",", ":")).encode()
+              for offset in range(0, len(blob), 180):
+                  enc = subprocess.check_output(["openssl","pkeyutl","-encrypt","-pubin","-inkey",
+                     "/tmp/order-public.pem","-pkeyopt","rsa_padding_mode:oaep"], input=blob[offset:offset+180])
+                  print("WB_LOOKUP_RESULT=" + base64.b64encode(enc).decode(), flush=True)
+              print("WB_LOOKUP_END", flush=True)
+          def key(row):
+              return any(digest(row.get(k)) in ids for k in ("srid","rid","sticker","stickerId","shkId","shk_id","supplyId","id"))
+          def stamp(month, day):
+              return int(datetime.datetime(2026, month, day, tzinfo=tz).timestamp())
+          def fbs():
+              cursor = 0
+              supply = None
+              candidates = []
               for page in range(30):
-                  data = request(root + "/api/v3/orders?" + urllib.parse.urlencode(period))
-                  match = next((row for row in data["orders"] if same(row)), None)
-                  if match or not data["orders"] or not data.get("next") or data["next"] == period["next"]:
+                  query = urllib.parse.urlencode({"limit":1000,"next":cursor,"dateFrom":stamp(10,27),"dateTo":stamp(11,17)})
+                  data = api("FBS orders", market + "/api/v3/orders?" + query)
+                  if not data or not data.get("orders"):
                       break
-                  period["next"] = data["next"]
+                  for row in data["orders"]:
+                      if digest(row.get("supplyId")) == ids[0]:
+                          supply = row["supplyId"]
+                          candidates.append(row)
+                  next_cursor = data.get("next")
+                  if not next_cursor or next_cursor == cursor:
+                      break
+                  cursor = next_cursor
                   time.sleep(0.25)
-              print(f"FBS match: {bool(match)}")
-              if match:
-                  emit("FBS", match)
-                  for row in request(root + "/api/v3/orders/status", {"orders": [match["id"]]}).get("orders", []):
-                      emit("status", row)
-          except urllib.error.HTTPError as exc:
-              print(f"FBS HTTP {exc.code}")
-          try:
-              feed = request("https://seller-analytics-api.wildberries.cn/api/analytics/v1/order-feed",
-                      {"selectedPeriod": {"start": "2026-11-16T00:00:00+03:00", "end": "2026-11-23T00:00:00+03:00"},
-                       "nmIds": [493953813], "pagination": {"offset": 0, "limit": 5000}})
-              rows = [row for row in feed["data"]["orders"] if same(row)]
-              print(f"Feed matches: {len(rows)}")
-              for row in rows:
-                  emit("feed", row)
-          except urllib.error.HTTPError as exc:
-              print(f"Feed HTTP {exc.code}")
+              if not supply:
+                  cursor = 0
+                  for page in range(20):
+                      data = api("FBS supplies", market + f"/api/v3/supplies?limit=1000&next={cursor}")
+                      if not data or not data.get("supplies"):
+                          break
+                      supply = next((row["id"] for row in data["supplies"] if digest(row["id"]) == ids[0]), None)
+                      if supply or not data.get("next") or data["next"] == cursor:
+                          break
+                      cursor = data["next"]
+                      time.sleep(0.25)
+              print(f"Supply found: {bool(supply)}; matching articles in supply: {sum(r.get('nmId') == 453951161 or key({k:v for k,v in r.items() if k!='supplyId'}) for r in candidates)}", flush=True)
+              if supply:
+                  detail = api("FBS supply details", market + "/api/v3/supplies/" + supply)
+                  refs = api("FBS supply order IDs", market + "/api/marketplace/v3/supplies/" + supply + "/order-ids")
+                  if detail:
+                      emit("supply", detail, {"id","createdAt","closedAt","scanDt","done","warehouseId","name"})
+                  print(f"FBS supply order IDs: {len((refs or {}).get('orderIds', []))}", flush=True)
+                  for row in candidates:
+                      if row.get("nmId") == 453951161 or key({k:v for k,v in row.items() if k!="supplyId"}):
+                          emit("FBS", row, {"id","rid","createdAt","supplyId","warehouseId","nmId","article","price","salePrice","convertedPrice","currencyCode"})
+          def reports():
+              for name,url,body in [
+                ("stats sales",stats+"/sales?dateFrom=2026-11-16&flag=0",None),
+                ("stats orders",stats+"/orders?dateFrom=2026-10-28&flag=1",None),
+                ("finance",finance,{"dateFrom":"2026-10-26","dateTo":"2026-11-22","limit":100000,"period":"weekly",
+                 "fields":["rrdId","giId","nmId","docTypeName","sellerOperName","orderDt","saleDt","rrDate","shkId","stickerId","orderId","srid","retailPrice","retailAmount","forPay","penalty","bonusTypeName"]})]:
+                  data = api(name,url,body)
+                  if data is None:
+                      continue
+                  matches=[r for r in data if key(r)]
+                  extra=[r for r in data if r.get("nmId")==453951161 and (str(r.get("date",""))[:10] in {"2026-10-28","2026-11-16"} or str(r.get("saleDt",""))[:10]=="2026-11-16") and not key(r)]
+                  print(f"{name}: {len(data)} rows; {len(matches)} ID matches; {len(extra)} article/date matches", flush=True)
+                  fields={"srid","gNumber","saleID","date","lastChangeDate","warehouseName","nmId","finishedPrice","forPay","isCancel","cancelDate","sticker","orderDt","saleDt","rrDate","docTypeName","sellerOperName","shkId","stickerId","orderId","giId","retailPrice","retailAmount","penalty","bonusTypeName"}
+                  for row in matches[:40]+extra[:25]:
+                      emit(name,row,fields)
+          fbs()
+          reports()
           PY
