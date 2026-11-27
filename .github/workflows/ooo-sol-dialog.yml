@@ -68,7 +68,7 @@ jobs:
 
   execute-reports:
     needs: dialogue
-    if: ${{ success() }} # Owner reenabled exact approved report execution 2026-11-18
+    if: ${{ success() && github.event_name != 'push' }} # Deployment checks never execute WB writes or send confirmations
     runs-on: ubuntu-latest
     timeout-minutes: 8
     concurrency:
@@ -109,3 +109,4 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
         run: python scripts/ooo_report_executor.py --notify
+

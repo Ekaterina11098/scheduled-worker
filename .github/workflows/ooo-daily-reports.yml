@@ -3,11 +3,15 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['.github/workflows/ooo-daily-reports.yml', 'scripts/ooo_daily_reports.py', 'scripts/ooo_daily_review.py', 'scripts/ooo_report_templates.json', 'scripts/test_ooo_report_recovery.py', 'scripts/test_ooo_discovery.py', 'scripts/ooo_composition_review.py', 'scripts/test_ooo_composition_review.py']
+    paths: ['.github/workflows/ooo-daily-reports.yml', 'scripts/ooo_daily_reports.py', 'scripts/ooo_daily_review.py', 'scripts/ooo_report_templates.json', 'scripts/test_ooo_report_recovery.py', 'scripts/test_ooo_discovery.py', 'scripts/ooo_composition_review.py', 'scripts/test_ooo_composition_review.py', 'scripts/ooo_wb_config_cache.py', 'scripts/test_ooo_wb_config_cache.py', 'scripts/test_ooo_report_timing.py']
   schedule:
+    - cron: '0 3 * * *'
     - cron: '0 4 * * *'
+    - cron: '25 4 * * *'
     - cron: '30 4 * * *'
+    - cron: '40 10 * * *'
     - cron: '50 11 * * *'
+    - cron: '55 11 * * *'
     - cron: '0 12 * * *'
 permissions: {contents: read}
 concurrency:
@@ -36,6 +40,9 @@ jobs:
           python scripts/test_ooo_funding.py
           python scripts/test_ooo_discovery.py
           python scripts/test_ooo_composition_review.py
+          python scripts/test_ooo_wb_config_cache.py
+          python scripts/test_ooo_report_timing.py
+          python scripts/test_ooo_report_cache_flow.py
       - name: Verify current cached report rendering without delivery
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -52,3 +59,4 @@ jobs:
           WB_TOKEN_1: ${{ secrets.WB_TOKEN_1 }}
           OOO_TELEGRAM_BOT_TOKEN: ${{ secrets.OOO_TELEGRAM_BOT_TOKEN }}
         run: python -u scripts/ooo_daily_reports.py
+

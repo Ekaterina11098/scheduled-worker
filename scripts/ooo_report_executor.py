@@ -3,6 +3,7 @@ import os,json,time,hashlib,copy,base64,requests
 from datetime import datetime,timezone
 from ooo_sol_dialog import DB as DialogueDB,Worker as Dialogue,ROOT,CHAT,BOT
 from ooo_report_command import digest
+from ooo_wb_config_cache import remember, invalidate, ROOT as CONFIG_CACHE
 
 LEGACY='ooo_agent:report_apply:2026-11-09:v1'
 # Campaign IDs are discovered through the approved binding and token_1 readback.
@@ -16,7 +17,7 @@ class DB(DialogueDB):
   if len(rows)!=1:raise Stop('Execution identity already claimed')
   return value
  def allowed(self,key):
-  if not(key.startswith(ROOT)or key.startswith(LEGACY+':')or key.startswith('wb-pause:')):raise PermissionError('Private execution scope')
+  if not(key.startswith(ROOT)or key.startswith(LEGACY+':')or key.startswith('wb-pause:')or key.startswith(CONFIG_CACHE)):raise PermissionError('Private execution scope')
  def update(self,key,value):
   self.allowed(key);value=json.loads(json.dumps(value))
   rows=self.api('PATCH',{'cache_key':'eq.'+key},dict(payload=value,updated_at=stamp()))
@@ -78,6 +79,9 @@ class Executor:
   pause='wb-pause:'+hashlib.sha256((self.token+'advert-api.wildberries.ru'+path).encode()).hexdigest()
   until=float((self.db.get(pause)or{}).get('until',0))
   if until>time.time():s.update(resume_after=until,waiting_path=path);save();raise Deferred()
+  if step and path in('/adv/v0/auction/nms','/api/advert/v1/bids','/adv/v0/start','/adv/v0/pause'):
+   touched=[v['advert_id']for v in (body or{}).get('nms',(body or{}).get('bids',[]))]if body else[(params or{})['id']]
+   invalidate(self.db,touched)
   if step:s['steps'][step]={'status':'submitting','path':path,'method':method,'body':body,'params':params,'submitted_at':stamp()};save()
   try:r=self.request(method,'https://advert-api.wildberries.ru'+path,headers={'Authorization':self.token},json=body,params=params,timeout=(10,60),allow_redirects=False)
   except requests.RequestException:
@@ -102,6 +106,7 @@ class Executor:
  def configs(self,s,save,ids):
   out={str(c['id']):c for c in self.call(s,save,'GET','/api/advert/v2/adverts',params={'ids':','.join(map(str,sorted(ids)))})['adverts']}
   if set(out)!=set(map(str,ids)):raise Stop('Incomplete campaign readback')
+  remember(self.db,list(out.values()))
   return out
  def prepare(self,m,before):
   expected=copy.deepcopy(before);members={};bids={};statuses=[];adds={}
@@ -318,4 +323,5 @@ if __name__=='__main__':
  import sys
  if '--notify'in sys.argv:notify()
  else:Executor().run()
+
 

@@ -1,5 +1,5 @@
 """OOO report-only worker. No model credentials or mutation endpoints."""
-import os,json,datetime,re,runpy,tempfile,base64,hashlib
+import os,json,datetime,re,runpy,tempfile,base64,hashlib,time
 from pathlib import Path
 from china_codex_cloud import DB,stamp
 from ooo_daily_review import review
@@ -135,25 +135,66 @@ def worker(slot,day=None,verify=False,prepare_only=False):
   final=db.get(root+':telegram:execution')or{}
   if final.get('status')!='verified':raise RuntimeError('Delivery requires attention; never replay unknown attempt')
   return {'status':'verified','receipts':final.get('receipts')}
+def warm_midday(day):
+ db=DB();root='ooo_agent:midday:'+day+':1500'
+ if (db.get(root+':read')or{}).get('warm_completed_at'):return {'status':'configurations_already_prepared'}
+ policy=db.get('ooo_agent:daily_reports:v1:policy')or{}
+ if policy.get('enabled')is not True:raise PermissionError('Report policy disabled')
+ evidence=db.get('ooo_agent:morning:'+day+':evidence')or{}
+ configs=evidence.get('sources',{}).get('configurations',{}).get('data',{})
+ ids=sorted(map(int,configs))
+ if not ids:raise ReportNotReady('Morning campaign discovery not ready for configuration preparation')
+ if not db.get(root+':request'):db.once(root+':request',{'read_only':True,'cabinet':'token_1','day':day,'campaign_ids':ids})
+ assets=json.loads((Path(__file__).parent/'ooo_report_templates.json').read_text(encoding='utf-8'))
+ previous=os.environ.get('OOO_REPORT_CONFIG_WARM_ONLY');os.environ['OOO_REPORT_CONFIG_WARM_ONLY']='1'
+ try:
+  with tempfile.TemporaryDirectory()as temp:execute(assets['midreader'].replace('2026-11-11',day),Path(temp)/'warm.py')
+ finally:
+  if previous is None:os.environ.pop('OOO_REPORT_CONFIG_WARM_ONLY',None)
+  else:os.environ['OOO_REPORT_CONFIG_WARM_ONLY']=previous
+ if not(db.get(root+':read')or{}).get('warm_completed_at'):raise ReportNotReady('Configuration preparation pending provider quota')
+ return {'status':'configurations_prepared'}
+
+def send_target(now,slot):
+ hour,minute=(7,30)if slot=='morning'else(15,0)
+ return now.replace(hour=hour,minute=minute,second=0,microsecond=0)
+
+def arm_ready_report(slot,now):
+ root='ooo_agent:'+('morning:'+now.date().isoformat()if slot=='morning'else'midday:'+now.date().isoformat()+':1500')
+ delay=(send_target(now,slot)-now).total_seconds()
+ if 0<delay<=300 and(DB().get(root+':report')or{}).get('status')=='ready':
+  while datetime.datetime.now(MSK)<send_target(now,slot):time.sleep(min(20,max(.1,(send_target(now,slot)-datetime.datetime.now(MSK)).total_seconds())))
+  return datetime.datetime.now(MSK)
+ return now
+
 def run():
  if os.environ.get('OOO_REPORT_VERIFY_ONLY')=='1':
-  print(json.dumps(worker('morning',verify=True)));return
+  print(json.dumps({slot:worker(slot,verify=True)for slot in('morning','midday')}));return
  now=datetime.datetime.now(MSK);due=[]
- if(now.hour,now.minute)>=(7,0):due.append('morning')
- if(now.hour,now.minute)>=(14,50):due.append('midday')
+ if(now.hour,now.minute)>=(6,0):due.append('morning')
+ if(now.hour,now.minute)>=(13,40):due.append('midday')
  failures=[]
  for slot in due:
-  prepare_only=(now.hour,now.minute)<((7,30)if slot=='morning'else(15,0))
+  now=arm_ready_report(slot,datetime.datetime.now(MSK))
+  prepare_only=now<send_target(now,slot)
   retry_key='ooo_agent:daily_reports:v1:retry:'+now.date().isoformat()+':'+slot
   retry=DB().get(retry_key)or{}
   if retry.get('after',0)>now.timestamp():continue
-  try:print(json.dumps(worker(slot,prepare_only=prepare_only)))
+  try:
+   result=warm_midday(now.date().isoformat())if slot=='midday'and(now.hour,now.minute)<(14,50)else worker(slot,prepare_only=prepare_only)
+   if result.get('status')in('prepared','already_prepared'):
+    current=datetime.datetime.now(MSK)
+    if 0<(send_target(current,slot)-current).total_seconds()<=300:
+     now=arm_ready_report(slot,current);result=worker(slot,prepare_only=now<send_target(now,slot))
+   print(json.dumps(result))
+   if DB().get(retry_key):DB().update(retry_key,{'status':'recovered','attempt':0,'after':0,'recovered_at':stamp()})
   except Exception as error:
    db=DB();attempt=int(retry.get('attempt',0))+1
    delay=min(1800,300*2**min(attempt-1,3))
-   value={'attempt':attempt,'after':now.timestamp()+delay,'status':'retry_scheduled','last_failure_at':stamp()}
+   next_try=min(now.timestamp()+delay,send_target(now,slot).timestamp())if prepare_only else now.timestamp()+delay
+   value={'attempt':attempt,'after':next_try,'status':'retry_scheduled','last_failure_at':stamp()}
    db.update(retry_key,value)if db.get(retry_key)else db.once(retry_key,value)
-   if isinstance(error,ReportNotReady):
+   if prepare_only or isinstance(error,ReportNotReady):
     failures.append(slot);continue
    day=now.date().isoformat();key='ooo_agent:daily_reports:v1:attention:'+day+':'+slot
    if not db.get(key):
@@ -170,3 +211,4 @@ def run():
    failures.append(slot)
  if failures:raise RuntimeError('Report slots pending: '+','.join(failures))
 if __name__=='__main__':run()
+
