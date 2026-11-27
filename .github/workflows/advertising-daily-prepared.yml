@@ -47,7 +47,9 @@ jobs:
             /ip_report_analysis.py
             /test_ip_report_analysis.py
       - name: Install reviewed rules module
-        run: cp ip-rules-patch/ip_daily_png_contract.py ip-rules-patch/ip_report_analysis.py ip-rules-patch/test_ip_report_analysis.py .
+        run: |
+          cp ip-rules-patch/ip_daily_png_contract.py ip-rules-patch/ip_report_analysis.py ip-rules-patch/test_ip_report_analysis.py .
+          cp ip-rules-patch/ip_daily_png_contract.py ip-rules-patch/ip_report_analysis.py private-source/
       - name: Apply campaign scope reconciliation
         uses: actions/checkout@v4
         with:
