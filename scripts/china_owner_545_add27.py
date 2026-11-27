@@ -11,7 +11,7 @@ def now():return datetime.now(timezone.utc).isoformat()
 auth=io.get(ROOT+':approval');assert auth['status']=='approved'and auth['owner_id']==5122667182
 targets=[dict(a='545-GazelBag-darkbrown',nm=1473243452,campaign=41270309,price=503.5,current=None,proposed=.28)]
 e=io.get(ROOT+':execution')
-if e:raise SystemExit('Existing journal: reconcile only')
+if e:assert not e.get('ops') and e.get('status')=='blocked','Existing writes: reconcile only'
 e=dict(status='preflight',created_at=now(),owner_instruction='добавь 545 в41270309 по0.28 безпополнений/цен/ТГ',targets=targets,ops={},groups=[],errors={},telegram_calls=0,funding_calls=0,price_writes=0)
 io.put(ROOT+':execution',e) if io.get(ROOT+':execution') else io.create(ROOT+':execution',e)
 def save():io.put(ROOT+':execution',copy.deepcopy(e))
@@ -69,8 +69,8 @@ try:
   assert len(members)+len(missing)<=50
   for x in xs:
    if x['nm']in members:assert members[x['nm']]['bids_kopecks'][zone]in(round(x['current']*100)if x['current']is not None else 30,round(x['proposed']*100))
-  existing=[x['nm']for x in xs if x['nm']in members];mins=quote(cid,[x['nm']for x in xs],zone)
-  assert all(mins[x['nm']]<=round(x['proposed']*100) and round(x['proposed']*100)%cfg['cpcStep']==0 for x in xs)
+  existing=[x['nm']for x in xs if x['nm']in members];mins=quote(cid,existing or [c['nm_settings'][0]['nm_id']],zone)
+  assert all(mins[x['nm']]<=round(x['proposed']*100) and round(x['proposed']*100)%cfg['cpcStep']==0 for x in xs if x['nm']in members)
   if missing:assert c['restrictions']['can_change_nms'] and max(mins.values())<=28
   e['groups'].append(dict(cid=cid,zone=zone,before=c,targets=xs,missing=missing,minima={str(k):v for k,v in mins.items()},status='ready'))
  save()
