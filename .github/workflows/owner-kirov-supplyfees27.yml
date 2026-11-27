@@ -67,3 +67,5 @@ jobs:
 # Readonly verification, never repeat uploaded media.
 
 # Read current order IDs endpoint and historical finance only.
+
+# Compact private finance evidence after storage timeout.
