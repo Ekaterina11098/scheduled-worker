@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   publish:
-    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-kirov-supplyfees27] Find historical Kirov supplies'
+    if: github.run_attempt == 1 && github.event.head_commit.message == '[owner-kirov-finance27] Read historical fees'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -51,7 +51,7 @@ jobs:
           WB_TOKEN_3: ${{ secrets.WB_TOKEN_3 }}
           MOYSKLAD_API_TOKEN: ${{ secrets.MOYSKLAD_API_TOKEN }}
           CHINA_TELEGRAM_BOT_TOKEN: ""
-        run: PYTHONPATH=scripts:source python scripts/china_owner_kirov_supplyfees27.py
+        run: PYTHONPATH=scripts:source python scripts/china_owner_kirov_finance27.py
 
 
 
@@ -65,3 +65,5 @@ jobs:
 # Canonical compare unordered characteristic arrays.
 
 # Readonly verification, never repeat uploaded media.
+
+# Read current order IDs endpoint and historical finance only.
