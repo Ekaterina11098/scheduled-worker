@@ -25,6 +25,5 @@ def main(target):
         print(json.dumps(dict(stock_waiting_alert=receipt.get('state'))),flush=True)
     return result
 if __name__=='__main__':
-    try:main(sys.argv[1])
-    except BaseException as exc:
-        print(json.dumps(dict(supervised_stock='failed',error_type=type(exc).__name__)),flush=True);raise SystemExit(1)
+    from stock_supervision import run_cli
+    run_cli(lambda:main(sys.argv[1]))
