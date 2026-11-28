@@ -12,6 +12,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          sparse-checkout: |
+            stock_supervision.py
+            stock_supervised_entry.py
+            stock_schedule_watchdog.py
+            test_stock_supervision_20261128.py
+          sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
