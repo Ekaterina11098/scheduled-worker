@@ -25,8 +25,17 @@ jobs:
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
         run: |
           python - <<'PY'
-          import json
+          import json,socket,psycopg
           from stock_schedule_watchdog import read_status
-          data=read_status('technical:stock-daily:2026-11-28:0700') or {}
+          from stock_deploy_support import ROLE,password
+          host='db.abxgjoqlddhtcmjcjwxw.supabase.co'
+          addresses=socket.getaddrinfo(host,5432,type=socket.SOCK_STREAM)
+          ipv4=any(row[0]==socket.AF_INET for row in addresses)
+          print(json.dumps({'direct_ipv4_available':ipv4}),flush=True)
+          if ipv4:
+              with psycopg.connect(host=host,port=5432,dbname='postgres',user=ROLE,password=password(),sslmode='require',connect_timeout=5,options='-c default_transaction_read_only=on -c statement_timeout=8000') as db:
+                  row=db.execute("SELECT snapshot FROM stock_execution.stock_runs WHERE id=%s",('technical:stock-status:v1:2026-11-28:0700',)).fetchone()
+                  data=json.loads(row[0]) if row else {}
+          else:data=read_status('technical:stock-daily:2026-11-28:0700') or {}
           print(json.dumps({k:data.get(k) for k in ('status','phase','execution_complete','delivery_done','china_complete','updated_at','last_error_type')}),flush=True)
           PY
