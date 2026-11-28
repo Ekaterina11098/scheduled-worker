@@ -1,1 +1,1 @@
-2026-11-28: verify watchdog recognises the active recovery worker and does not dispatch duplicate collection.
+2026-11-28: resume current morning checkpoint after database collection timeout; preserve all confirmed operations and IP FBS zero.
