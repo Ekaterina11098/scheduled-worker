@@ -1,0 +1,38 @@
+name: Verify prefix lookup on isolated PostgreSQL17
+on:
+  push:
+    paths: ['.github/workflows/test-stock-prefix-index-20261128.yml']
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: local_test_only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - run: pip install 'psycopg[binary]==3.2.9'
+      - name: Confirm unchanged prefix results and indexed access
+        run: |
+          python - <<'PY'
+          import psycopg,json
+          with psycopg.connect('postgresql://postgres:local_test_only@localhost:5432/postgres',autocommit=True) as db:
+              db.execute('CREATE TABLE cache_probe(cache_key text PRIMARY KEY,payload text,updated_at timestamptz DEFAULT now())')
+              db.execute("INSERT INTO cache_probe(cache_key,payload) SELECT 'other:'||n,'{}' FROM generate_series(1,50000) n")
+              db.execute("INSERT INTO cache_probe(cache_key,payload) VALUES ('morning-clock:v1:2026-11-28:1','{}'),('morning-clock:v1:2026-11-28:2','{}')")
+              sql="SELECT payload FROM cache_probe WHERE starts_with(cache_key,'morning-clock:v1:2026-11-28:') ORDER BY updated_at"
+              before=db.execute(sql).fetchall()
+              db.execute('CREATE INDEX CONCURRENTLY prefix_probe ON cache_probe USING spgist(cache_key)')
+              db.execute('ANALYZE cache_probe')
+              after=db.execute(sql).fetchall();assert before==after and len(after)==2
+              plan=db.execute('EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) '+sql).fetchone()[0]
+              assert 'prefix_probe' in json.dumps(plan),plan
+              print(json.dumps({'same_rows':True,'index_used':True,'execution_ms':plan[0]['Execution Time']}))
+          PY
