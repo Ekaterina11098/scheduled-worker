@@ -1,0 +1,1 @@
+Owner-approved stock watchdog control, 2026-11-28. Ready for Codex independent missed-run checks.
