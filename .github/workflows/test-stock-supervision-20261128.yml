@@ -1,0 +1,19 @@
+name: Test stock supervision28Nov
+on:
+  push:
+    paths: ['.github/workflows/test-stock-supervision-20261128.yml','stock_supervision.py','stock_supervised_entry.py','stock_schedule_watchdog.py','test_stock_supervision_20261128.py']
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install cryptography 'psycopg[binary]==3.2.9'
+      - run: python -m unittest -v test_stock_supervision_20261128
