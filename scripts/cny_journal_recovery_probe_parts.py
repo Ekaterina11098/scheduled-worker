@@ -1,7 +1,7 @@
 """Verify private journal read/write and unsettled MS state without any MS mutation."""
 import copy,sys,traceback,uuid
 import cny_all_remaining_refs_apply as a
-p=a.p;h=a.h;r=a.r;b=a.b;m=a.m;Q='journal_recovery_probe_parts_20261127:'
+p=a.p;h=a.h;r=a.r;b=a.b;m=a.m;Q='journal_recovery_probe_parts_20261128:'
 def save(db,k,v):p.save(db,Q+k,v)
 def snapshot_parts(t,db,key):
  out={}
@@ -16,11 +16,13 @@ def main():
  assert auth and auth['authorized'] and auth['scope']=='remaining_ms_currency_references_only'
  proof={'at':m.now(),'nonce':uuid.uuid4().hex,'ms_writes':0}
  save(db,'write_read:v1',proof);assert db.get(b.ROOT+p.P+Q+'write_read:v1')==proof
+ save(db,'progress:v1',{'at':m.now(),'stage':'journal_read_write_verified','ms_writes':0})
  initial=db.get(b.ROOT+p.P+'reconciled_start:v1') or db.get(b.ROOT+p.P+'start:v1')
  currencies=b.fullrows(t,'entity/currency');assert h.h.ccstate(currencies)==h.h.ccstate(initial['currencies'])
  wh=h.warehouse(t);stats=[];errors=[]
  for offset in (18820,19220):
   key='apply:customerorder:'+str(offset);snap=snapshot_parts(t,db,key)
+  save(db,'progress:v1',{'at':m.now(),'stage':'snapshot_read','offset':offset,'ms_writes':0})
   assert snap and db.get(b.ROOT+p.P+key+':intent')
   current=r.live(t,'customerorder',list(snap['before']));pending=[];ready=[]
   for i,d in current.items():
