@@ -16,7 +16,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     env:
-      STOCK_SUPERVISION_CACHE_DIR: ${{ runner.temp }}/stock-supervision
       GH_TOKEN: ${{ github.token }}
       SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -42,6 +41,8 @@ jobs:
             ${{ runner.os }}-stock-supervision-v1-
       - name: Check current due slot and recover only missing or unfinished work
         id: supervision
+        env:
+          STOCK_SUPERVISION_CACHE_DIR: ${{ runner.temp }}/stock-supervision
         run: python stock_schedule_watchdog.py
       - uses: actions/cache/save@v4
         if: always() && steps.supervision.outputs.cache_changed == 'true'
