@@ -1,0 +1,29 @@
+name: Recover current stock slot28Nov
+on:
+  push:
+    paths: ['.github/workflows/stock-current-slot-recovery-20261128.yml']
+permissions:
+  contents: read
+  actions: write
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import os,json,urllib.request
+          from datetime import datetime,timezone,timedelta
+          now=datetime.now(timezone(timedelta(hours=3)))
+          assert now.date().isoformat()=='2026-11-28' and 5<=now.hour<20
+          base='https://api.github.com/repos/Ekaterina11098/scheduled-worker/actions/workflows/stock-daily-1630-prepared.yml'
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'}
+          with urllib.request.urlopen(urllib.request.Request(base+'/runs?per_page=20',headers=headers),timeout=30) as r:runs=json.load(r)['workflow_runs']
+          active=[r for r in runs if r['status'] in ('queued','pending','in_progress','waiting','requested')]
+          if active:print(json.dumps({'recovery':'existing_worker_active','run_ids':[r['id'] for r in active]}))
+          else:
+              payload=json.dumps({'ref':'main','inputs':{'slot':'0700'}}).encode()
+              with urllib.request.urlopen(urllib.request.Request(base+'/dispatches',data=payload,headers=headers,method='POST'),timeout=30) as r:print(json.dumps({'recovery':'requested','slot':'2026-11-28:0700','http_status':r.status}))
+          PY
