@@ -18,6 +18,9 @@ jobs:
           --health-cmd "pg_isready -U postgres"
           --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - run: pip install 'psycopg[binary]==3.2.9'
       - name: Confirm unchanged prefix results and indexed access
         run: |
