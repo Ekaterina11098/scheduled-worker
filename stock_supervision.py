@@ -82,3 +82,16 @@ def notify(scope,kind,text,sender=None):
     return notices[key]
 def remember(scope,value):
     cached=load_cache();cached['last_result']=dict(scope=scope,at=time.time(),**value);save_cache(cached)
+
+def run_cli(fn):
+    def checksum():
+        p=cache_path();return hashlib.sha256(p.read_bytes() if p.exists() else b'').hexdigest()
+    before=checksum();code=0
+    try:fn()
+    except BaseException as exc:
+        print(json.dumps(dict(stock_supervision='failed',error_type=type(exc).__name__)),flush=True);code=1
+    finally:
+        changed=checksum()!=before
+        if os.getenv('GITHUB_OUTPUT'):
+            with open(os.environ['GITHUB_OUTPUT'],'a') as stream:stream.write('cache_changed='+str(changed).lower()+'\n')
+    raise SystemExit(code)
