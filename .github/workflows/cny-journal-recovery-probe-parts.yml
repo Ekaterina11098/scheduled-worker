@@ -23,3 +23,5 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
         run: python scripts/cny_journal_recovery_probe_parts.py
+
+# Fresh read-only verification on 2026-11-28; previous MS writes are not replayed.
