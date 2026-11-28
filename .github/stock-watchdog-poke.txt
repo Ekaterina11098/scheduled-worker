@@ -1,1 +1,1 @@
-2026-11-28: resume current morning checkpoint after database collection timeout; preserve all confirmed operations and IP FBS zero.
+2026-11-28 09:42 MSK: check current morning stock recovery after bounded retry interval; IP independent audit 380 cards/383 sizes all zero.
