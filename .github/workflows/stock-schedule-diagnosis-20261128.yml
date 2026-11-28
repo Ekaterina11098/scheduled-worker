@@ -1,0 +1,27 @@
+name: Read stock schedule failure diagnosis28Nov
+on:
+  push:
+    paths: ['.github/workflows/stock-schedule-diagnosis-20261128.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read schedule state and recent run statuses only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import os,json,urllib.request
+          base='https://api.github.com/repos/Ekaterina11098/scheduled-worker'
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'}
+          def get(path):
+              with urllib.request.urlopen(urllib.request.Request(base+path,headers=headers),timeout=30) as r:return json.load(r)
+          w=get('/actions/workflows/385241421')
+          print(json.dumps({'workflow':{k:w.get(k) for k in ('id','name','path','state','created_at','updated_at')}}),flush=True)
+          runs=get('/actions/workflows/385241421/runs?per_page=40')['workflow_runs']
+          print(json.dumps({'runs':[{k:r.get(k) for k in ('id','event','status','conclusion','created_at','updated_at','run_started_at')} for r in runs]}),flush=True)
+          PY
