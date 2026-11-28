@@ -57,4 +57,6 @@ def main():
     cached['last_dispatch']['state']='requested';save_cache(cached)
     print(json.dumps(dict(stock_recovery_dispatch='requested',scope=due['scope'],alert=receipt.get('state'))),flush=True)
     return decision
-if __name__=='__main__':main()
+if __name__=='__main__':
+    from stock_supervision import run_cli
+    run_cli(main)
