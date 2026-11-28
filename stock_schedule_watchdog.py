@@ -22,20 +22,17 @@ def evaluate(due,status,runs,now):
     if current and now-max(stamp(r['created_at']) for r in current)<600:return dict(action='wait',reason='bounded_retry_interval')
     return dict(action='dispatch',reason='missing_start' if not current else 'unfinished_or_failed')
 def read_status(scope):
-    import psycopg
-    from stock_deploy_support import HOST,ROLE,PROJECT,password
-    with psycopg.connect(host=HOST,port=5432,dbname='postgres',user=ROLE+'.'+PROJECT,password=password(),sslmode='require',connect_timeout=5,
-        options='-c search_path=stock_execution,pg_catalog -c statement_timeout=8000') as db:
-        key='technical:stock-status:v1:'+scope.removeprefix('technical:stock-daily:')
-        row=db.execute('SELECT snapshot FROM stock_runs WHERE id=%s',(key,)).fetchone()
-        return json.loads(row[0]) if row else None
+    # The producer writes this authenticated receipt only after its journal
+    # checkpoint/result. Monitoring must not consume a scarce stock-writer DB session.
+    value=load_cache().get('last_result',{})
+    return value if value.get('scope')==scope else None
 def main():
     now=time.time();due=latest_due();state=github('/actions/workflows/'+WORKFLOW)
     runs=github('/actions/workflows/'+WORKFLOW+'/runs?per_page=50')['workflow_runs']
     cached=load_cache();status=None
     try:status=read_status(due['scope'])
     except Exception as exc:
-        print(json.dumps(dict(watchdog_database_status=type(exc).__name__)),flush=True)
+        print(json.dumps(dict(watchdog_receipt_status=type(exc).__name__)),flush=True)
         last=cached.get('last_result',{})
         if last.get('scope')==due['scope']:status=last
     decision=evaluate(due,status,runs,now)
