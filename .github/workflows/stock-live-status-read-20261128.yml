@@ -1,0 +1,32 @@
+name: Read live stock checkpoint28Nov
+on:
+  push:
+    paths: ['.github/workflows/stock-live-status-read-20261128.yml']
+permissions:
+  contents: read
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            stock_schedule_watchdog.py
+            stock_supervision.py
+            stock_deploy_support.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install cryptography 'psycopg[binary]==3.2.9'
+      - env:
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          python - <<'PY'
+          import json
+          from stock_schedule_watchdog import read_status
+          data=read_status('technical:stock-daily:2026-11-28:0700') or {}
+          print(json.dumps({k:data.get(k) for k in ('status','phase','execution_complete','delivery_done','china_complete','updated_at','last_error_type')}),flush=True)
+          PY
