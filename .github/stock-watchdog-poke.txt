@@ -1,1 +1,1 @@
-2026-11-28 09:42 MSK: check current morning stock recovery after bounded retry interval; IP independent audit 380 cards/383 sizes all zero.
+2026-11-28 10:21 MSK heartbeat: current morning slot remains waiting after collection timeout; no active producer. Invoke existing watchdog respecting provider cooldown and IP FBS zero. Database online-index fix awaits authenticated SQL Editor; do not claim completion.
