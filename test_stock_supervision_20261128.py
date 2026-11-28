@@ -45,6 +45,12 @@ class SupervisionTests(unittest.TestCase):
   s.save_cache({'destination':{'chat_id':'-1001','verified':True,'verified_at':time.time()-8*86400}})
   with patch.object(psycopg,'connect',side_effect=psycopg.OperationalError('offline')):
    with self.assertRaises(RuntimeError):s.resolve_destination()
+ def test_watchdog_receipt_is_scope_bound_and_never_opens_database(self):
+  import psycopg
+  s.remember('technical:stock-daily:2026-11-28:0700',dict(status='complete',execution_complete=True,delivery_done=True))
+  with patch.object(psycopg,'connect',side_effect=AssertionError('monitor must not consume writer connection')):
+   self.assertTrue(w.read_status('technical:stock-daily:2026-11-28:0700')['delivery_done'])
+   self.assertIsNone(w.read_status('technical:stock-daily:2026-11-27'))
 class WatchdogTests(unittest.TestCase):
  def due(self):return s.latest_due(datetime(2026,11,28,2,20,tzinfo=timezone.utc))
  def test_missing_morning_selects_current_scope_and_dispatches(self):
