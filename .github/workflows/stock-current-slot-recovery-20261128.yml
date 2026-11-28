@@ -27,3 +27,5 @@ jobs:
               payload=json.dumps({'ref':'main','inputs':{'slot':'0700'}}).encode()
               with urllib.request.urlopen(urllib.request.Request(base+'/dispatches',data=payload,headers=headers,method='POST'),timeout=30) as r:print(json.dumps({'recovery':'requested','slot':'2026-11-28:0700','http_status':r.status}))
           PY
+
+# Resume after all historical startup scans were removed and regression tests passed.
