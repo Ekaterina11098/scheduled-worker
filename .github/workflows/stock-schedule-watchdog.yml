@@ -1,0 +1,50 @@
+name: Stock schedule watchdog
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '7,27,47 * * * *'
+  push:
+    paths: ['.github/workflows/stock-schedule-watchdog.yml','.github/stock-watchdog-poke.txt']
+permissions:
+  contents: read
+  actions: write
+concurrency:
+  group: stock-schedule-watchdog
+  cancel-in-progress: false
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      STOCK_SUPERVISION_CACHE_DIR: ${{ runner.temp }}/stock-supervision
+      GH_TOKEN: ${{ github.token }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            stock_supervision.py
+            stock_schedule_watchdog.py
+            stock_deploy_support.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install cryptography 'psycopg[binary]==3.2.9'
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/stock-supervision
+          key: ${{ runner.os }}-stock-supervision-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            ${{ runner.os }}-stock-supervision-v1-
+      - name: Check current due slot and recover only missing or unfinished work
+        id: supervision
+        run: python stock_schedule_watchdog.py
+      - uses: actions/cache/save@v4
+        if: always() && steps.supervision.outputs.cache_changed == 'true'
+        with:
+          path: ${{ runner.temp }}/stock-supervision
+          key: ${{ runner.os }}-stock-supervision-v1-${{ github.run_id }}-${{ github.run_attempt }}
