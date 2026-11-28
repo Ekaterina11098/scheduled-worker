@@ -25,7 +25,7 @@ def main():
   ops=d.get('operations',[])
   assert len(ops)==1 and m.href(ops[0]).split('?')[0]==m.MS+'entity/purchaseorder/'+oid
   assert ops[0]['linkedSum']==d['sum']
-  assert d['rate']['currency']['isoCode']=='CNY'
+  assert next(c for c in currencies if m.href(c)==r.currency(d))['isoCode']=='CNY'
   assert b.D(d['rate'].get('value',1)) in (1,12)
  bodies=[a.body(d,base,'paymentout') for d in before.values() if r.currency(d)!=m.href(base) or b.D(d['rate'].get('value',1))!=1]
  snapshot={'at':m.now(),'before':before,'order':order,'supplies':supplied,'bodies':bodies}
